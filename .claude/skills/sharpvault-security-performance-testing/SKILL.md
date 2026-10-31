@@ -99,7 +99,7 @@ Mark these tests `[Trait("Category", "Performance")]`. They seed realistic volum
 ## 5. Static checks in CI
 
 - `TreatWarningsAsErrors`, nullable enabled, `AnalysisLevel` `latest-recommended` with the .NET security analyzers.
-- CodeQL for C# and dependency review on every pull request.
+- No paid scanning services: CodeQL and GitHub dependency review are not used, because they need GitHub Advanced Security or the dependency graph. Supply chain checks are NuGet audit (all, low, as errors) on restore and the vulnerable package step below. Dependabot version updates (free) keep packages and actions current.
 - `dotnet list package --vulnerable --include-transitive` fails the build on any known vulnerable package.
 - Coverage with coverlet: at least 80% line coverage for Application and Infrastructure, and at least 95% for encryption code. The build fails below these.
 

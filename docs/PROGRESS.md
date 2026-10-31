@@ -17,15 +17,7 @@ This file tracks what is done, what is in progress and what comes next, so each 
   - Security headers on the API and the web (strict CSP, `nosniff`, frame deny, referrer, permissions and cross-origin headers), no `Server` header, 1 MiB request body limit, ProblemDetails and exception handler in every environment.
   - Query strings kept out of request logs, HttpClient logs and trace tags, by code in ServiceDefaults rather than by package defaults.
   - Test infrastructure: Testcontainers Azurite factories and collections, test authentication handler, forged token helpers, storage request recorder (call counts and queries without a partition key), log capture, trace capture, reflection-based layering tests.
-  - CI on GitHub Actions: build with warnings as errors, tests, coverage gate (Application and Infrastructure at 80%), vulnerable package check, CodeQL, dependency review and Dependabot.
-- Encryption core (`feature/encryption-core`, stacked on `feature/solution-foundation`, pull request to follow), requirement ids CLAUDE.md Encryption, SEC-2, SEC-3, SEC-5, TRF-6, TRF-7, OTL-3, AUD-3:
-  - AES-256-GCM envelope format version 1 (32 KiB plaintext cap) with associated data that binds purpose, item id and owner id. Versions `0x80` to `0xFF` are rejected by the server.
-  - Session API (`IEnvelopeEncryptor`, `IDataKeySession`): create or open a data key once per request, encrypt, decrypt, `ReEncrypt` for a new owner without creating a string, and zero the key on dispose.
-  - `IKeyWrapProvider` with two providers: Azure Key Vault (RSA-OAEP-256, versioned key ids, host and key pinning, no Key Vault call at construction) and a development provider (HKDF and AES-GCM, Development only, refused at four layers).
-  - `RewrapDataKeyAsync` for key rotation. The rewrap job itself is not built.
-  - Configuration `Encryption:Provider`, `Encryption:KeyVaultKeyId` and `Encryption:DevelopmentKeyMaterial`, with startup guards and an AppHost parameter that generates the development key material in run mode.
-  - `tests/SharpVault.Benchmarks` (BenchmarkDotNet), unit, integration and performance tests, and the encryption coverage gates (95%).
-  - Documentation in `docs/ENCRYPTION.md`. Nothing stores a secret yet.
+  - CI on GitHub Actions: build with warnings as errors, tests, coverage gate (Application and Infrastructure at 80%), vulnerable package check and Dependabot version updates. CodeQL and dependency review were removed because they need paid GitHub features.
 
 ## In progress
 
