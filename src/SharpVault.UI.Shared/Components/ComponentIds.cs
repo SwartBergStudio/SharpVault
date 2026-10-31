@@ -17,6 +17,6 @@ public static partial class ComponentIds
         return value;
     }
 
-    [GeneratedRegex("^[a-z][a-z0-9-]*$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^[a-z][a-z0-9-]*\\z", RegexOptions.CultureInvariant)]
     private static partial Regex ValidId();
 }
