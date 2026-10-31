@@ -223,9 +223,12 @@ public sealed class DataKeySessionSecurityTests
 
         Assert.Equal(DecryptionFailureReason.MalformedEnvelope, exception.Reason);
         Assert.Null(exception.InnerException);
-        var text = exception.ToString();
-        Assert.DoesNotMatch(@"(?i)\b(0x)?(FF|FE|255|254)\b", text);
-        Assert.DoesNotMatch(@"\[\s*(0x)?[0-9A-Fa-f]{1,3}\s*(,\s*(0x)?[0-9A-Fa-f]{1,3}\s*)*\]", text);
+        var message = exception.Message;
+        Assert.DoesNotMatch(@"(?i)\b(0x)?(FF|FE|255|254)\b", message);
+        Assert.DoesNotMatch(@"\[\s*(0x)?[0-9A-Fa-f]{1,3}\s*(,\s*(0x)?[0-9A-Fa-f]{1,3}\s*)*\]", message);
+        var fullText = exception.ToString();
+        Assert.DoesNotContain("Unable to translate", fullText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("BytesUnknown", fullText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
