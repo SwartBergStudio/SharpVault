@@ -21,6 +21,8 @@ public static class ServiceDefaultsExtensions
     private const string OtlpEndpointKey = "OTEL_EXPORTER_OTLP_ENDPOINT";
     private const string HostingDiagnosticsCategory = "Microsoft.AspNetCore.Hosting.Diagnostics";
     private const string HttpClientCategory = "System.Net.Http.HttpClient";
+    private const string UrlQueryTag = "url.query";
+    private const string UrlFullTag = "url.full";
 
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder)
         where TBuilder : IHostApplicationBuilder
@@ -36,7 +38,7 @@ public static class ServiceDefaultsExtensions
         });
         builder.Services.AddOutputCache(options => options.AddPolicy(
             HealthEndpoints.CachePolicyName,
-            policy => policy.Expire(HealthEndpoints.CacheDuration).SetVaryByQuery([])));
+            policy => policy.Expire(HealthEndpoints.CacheDuration).SetVaryByQuery([]).SetVaryByHost(false)));
         builder.Services.Configure<KestrelServerOptions>(options =>
         {
             options.AddServerHeader = false;
@@ -61,8 +63,14 @@ public static class ServiceDefaultsExtensions
                 .AddRuntimeInstrumentation())
             .WithTracing(tracing => tracing
                 .AddSource(builder.Environment.ApplicationName)
-                .AddAspNetCoreInstrumentation(options => options.Filter = IsTracedRequest)
-                .AddHttpClientInstrumentation());
+                .AddAspNetCoreInstrumentation(options =>
+                {
+                    options.Filter = IsTracedRequest;
+                    options.EnrichWithHttpRequest = (activity, _) => activity.SetTag(UrlQueryTag, null);
+                })
+                .AddHttpClientInstrumentation(options =>
+                    options.EnrichWithHttpRequestMessage = (activity, request) =>
+                        activity.SetTag(UrlFullTag, WithoutQuery(request.RequestUri))));
 
         if (!string.IsNullOrWhiteSpace(builder.Configuration[OtlpEndpointKey]))
         {
@@ -77,8 +85,85 @@ public static class ServiceDefaultsExtensions
     {
         builder.Logging.AddFilter(HostingDiagnosticsCategory, LogLevel.Warning);
         builder.Logging.AddFilter(HttpClientCategory, LogLevel.Warning);
+        builder.Services.PostConfigure<LoggerFilterOptions>(RaiseQueryLoggingRules);
         return builder;
     }
+
+    private static void RaiseQueryLoggingRules(LoggerFilterOptions options)
+    {
+        string[] families = [HostingDiagnosticsCategory, HttpClientCategory];
+        foreach (var family in families)
+        {
+            RaiseFamily(options, family);
+        }
+    }
+
+    private static void RaiseFamily(LoggerFilterOptions options, string family)
+    {
+        var appended = new HashSet<(string? ProviderName, string Category)>();
+        var originalCount = options.Rules.Count;
+        for (var index = 0; index < originalCount; index++)
+        {
+            var rule = options.Rules[index];
+            if (rule.LogLevel >= LogLevel.Warning)
+            {
+                continue;
+            }
+
+            var prefix = RulePrefix(rule.CategoryName);
+            var coversFamily = rule.CategoryName is null
+                || family.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                || prefix.StartsWith(family, StringComparison.OrdinalIgnoreCase);
+            if (!coversFamily)
+            {
+                continue;
+            }
+
+            if (IsFamilyOrDescendant(prefix, family))
+            {
+                options.Rules[index] = new LoggerFilterRule(rule.ProviderName, rule.CategoryName, LogLevel.Warning, rule.Filter);
+                continue;
+            }
+
+            var suffix = RuleSuffix(rule.CategoryName);
+            var appendedCategory = suffix.Length == 0 ? family : family + "*" + suffix;
+            if (appended.Add((rule.ProviderName, appendedCategory.ToUpperInvariant())))
+            {
+                options.Rules.Add(new LoggerFilterRule(rule.ProviderName, appendedCategory, LogLevel.Warning, null));
+            }
+        }
+    }
+
+    private static bool IsFamilyOrDescendant(string prefix, string family) =>
+        prefix.Equals(family, StringComparison.OrdinalIgnoreCase)
+        || prefix.StartsWith(family + ".", StringComparison.OrdinalIgnoreCase);
+
+    private static string RulePrefix(string? categoryName)
+    {
+        if (categoryName is null)
+        {
+            return string.Empty;
+        }
+
+        var wildcardIndex = categoryName.IndexOf('*', StringComparison.Ordinal);
+        return wildcardIndex < 0 ? categoryName : categoryName[..wildcardIndex];
+    }
+
+    private static string RuleSuffix(string? categoryName)
+    {
+        if (categoryName is null)
+        {
+            return string.Empty;
+        }
+
+        var wildcardIndex = categoryName.IndexOf('*', StringComparison.Ordinal);
+        return wildcardIndex < 0 ? string.Empty : categoryName[(wildcardIndex + 1)..];
+    }
+
+    private static string? WithoutQuery(Uri? uri) =>
+        uri is null || !uri.IsAbsoluteUri
+            ? null
+            : uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped);
 
     public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder)
         where TBuilder : IHostApplicationBuilder

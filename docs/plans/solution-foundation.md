@@ -38,7 +38,7 @@ Create the .NET 10 solution that every later feature builds on:
 | CLAUDE.md Storage | `TableServiceClient` through Aspire with `DefaultAzureCredential`. Account keys, SAS and connection strings are rejected outside Development. Tables are created on start, not per request. |
 | CLAUDE.md Auth, VIS-1, VIS-4 | Deny by default: a fallback policy requiring authentication, an endpoint inventory test, and only health endpoints anonymous. |
 | TEN-1..TEN-4, LCK-1 | The authentication and authorization slot and pipeline order that `feature/entra-sign-in` fills. The lock check middleware goes directly after `UseAuthorization()` (section 4, T6). |
-| OTL-3 | A strict CSP baseline. OpenTelemetry redacts query strings by default. No HTTP body or header logging. |
+| OTL-3 | A strict CSP baseline. Query strings are kept out of logs and traces by our own code in ServiceDefaults, not by package defaults, which configuration can switch off (TH25). No HTTP body or header logging. |
 | AUD-3 | Log capture test infrastructure, so every later feature can assert that no secrets appear in logs. |
 | CLAUDE.md Local dev | AppHost with persistent Azurite. Everything except Maui builds and tests on Linux. |
 
@@ -300,7 +300,7 @@ Creates every project file so that later tasks only add source files and never e
    4. If `settings.ServiceUri` is not absolute, its scheme is not `Uri.UriSchemeHttps`, its `Query` is not empty, or its `UserInfo` is not empty, throw `ServiceUriNotAllowed`.
 5. `Storage/TableStorageTableSet.cs`: `public sealed partial class TableStorageTableSet`.
    - Constructor `TableStorageTableSet(IEnumerable<string> names)` validates every name and throws `ArgumentException` (parameter name `names`) with:
-     - `InvalidTableName` unless the name matches the `[GeneratedRegex("^[A-Za-z][A-Za-z0-9]{2,62}$")]` pattern.
+     - `InvalidTableName` unless the name matches the `[GeneratedRegex("^[A-Za-z][A-Za-z0-9]{2,62}\\z")]` pattern. The anchor must be `\z`, never `$`: in .NET `$` also matches before a final `\n`, so `"Secrets\n"` passed validation. This was a bug, fixed with the regression tests `Constructor_NameWithTrailingLineBreak_Throws` and `Constructor_NameWithTrailingLineBreakAtMaximumLength_Throws` (section 7.2).
      - `ReservedTableName` if the name equals `tables` (OrdinalIgnoreCase).
      - `DuplicateTableName` if two names are equal (OrdinalIgnoreCase).
    - It keeps the input order in `public IReadOnlyList<string> Names { get; }`.
@@ -344,18 +344,37 @@ Namespaces are `SharpVault.ServiceDefaults` and `SharpVault.ServiceDefaults.Secu
 3. `ServiceDefaultsExtensions.cs`: `public static class ServiceDefaultsExtensions` with:
    - `AddServiceDefaults<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder`. It calls, in order:
      1. `ConfigureOpenTelemetry`
-     2. `AddDefaultHealthChecks`
-     3. `builder.Services.AddServiceDiscovery()`
-     4. `builder.Services.ConfigureHttpClientDefaults(http => { http.AddStandardResilienceHandler(); http.AddServiceDiscovery(); })`
-     5. `builder.Services.AddOutputCache(options => options.AddPolicy(HealthEndpoints.CachePolicyName, policy => policy.Expire(HealthEndpoints.CacheDuration).SetVaryByQuery([])))`. The empty `SetVaryByQuery` stops cache bypass through random query strings (verified).
-     6. `builder.Services.Configure<KestrelServerOptions>(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = RequestLimits.MaxRequestBodyBytes; })`
-     7. `return builder;`
+     2. `SuppressQueryStringLogging`
+     3. `AddDefaultHealthChecks`
+     4. `builder.Services.AddServiceDiscovery()`
+     5. `builder.Services.ConfigureHttpClientDefaults(http => { http.AddStandardResilienceHandler(); http.AddServiceDiscovery(); })`
+     6. `builder.Services.AddOutputCache(options => options.AddPolicy(HealthEndpoints.CachePolicyName, policy => policy.Expire(HealthEndpoints.CacheDuration).SetVaryByQuery([]).SetVaryByHost(false)))`. The empty `SetVaryByQuery` stops cache bypass through random query strings (verified). `SetVaryByHost(false)` stops cache bypass through random `Host` headers, because the output cache varies by host by default (TH16).
+     7. `builder.Services.Configure<KestrelServerOptions>(options => { options.AddServerHeader = false; options.Limits.MaxRequestBodySize = RequestLimits.MaxRequestBodyBytes; })`
+     8. `return builder;`
    - `ConfigureOpenTelemetry<TBuilder>`:
      - `builder.Logging.AddOpenTelemetry(logging => { logging.IncludeFormattedMessage = true; logging.IncludeScopes = true; })`. This needs `using Microsoft.Extensions.Logging;` (verified).
      - Metrics: AspNetCore, HttpClient and Runtime instrumentation.
-     - Tracing: `AddSource(builder.Environment.ApplicationName)`, AspNetCore instrumentation with a `Filter` that excludes `HealthEndpoints.HealthPath` and `HealthEndpoints.AlivePath` (`StartsWithSegments`, ordinal), and HttpClient instrumentation.
+     - Tracing: `AddSource(builder.Environment.ApplicationName)`, AspNetCore instrumentation and HttpClient instrumentation (TH25):
+       - AspNetCore instrumentation sets `options.Filter` to exclude `HealthEndpoints.HealthPath` and `HealthEndpoints.AlivePath` (`StartsWithSegments`, ordinal), and `options.EnrichWithHttpRequest = (activity, _) => activity.SetTag(UrlQueryTag, null)`, which removes the `url.query` tag from server spans whatever the package's redaction setting is.
+       - HttpClient instrumentation sets `options.EnrichWithHttpRequestMessage = (activity, request) => activity.SetTag(UrlFullTag, WithoutQuery(request.RequestUri))`, so outbound spans carry `url.full` without the query.
+       - `private const string UrlQueryTag = "url.query";` and `private const string UrlFullTag = "url.full";`.
+       - `private static string? WithoutQuery(Uri? uri)` returns null when `uri` is null or not absolute, otherwise `uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped)`. `SchemeAndServer` is scheme, host and non-default port only, so user info (`user:password@`), the query and the fragment are all dropped. Do not use `GetLeftPart(UriPartial.Path)`: it keeps user info.
      - Call `UseOtlpExporter()` only when `builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]` is not null or whitespace. Keep that key in a `private const string`.
      - Do not enable any option that records request or response bodies or headers.
+   - `SuppressQueryStringLogging<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder` (TH25). It keeps query strings out of request and HttpClient logs by code, not by package defaults:
+     - `builder.Logging.AddFilter(HostingDiagnosticsCategory, LogLevel.Warning)` and `builder.Logging.AddFilter(HttpClientCategory, LogLevel.Warning)`, with `private const string HostingDiagnosticsCategory = "Microsoft.AspNetCore.Hosting.Diagnostics";` and `private const string HttpClientCategory = "System.Net.Http.HttpClient";`.
+     - `builder.Services.PostConfigure<LoggerFilterOptions>(RaiseQueryLoggingRules)`, which hardens the filters against configuration such as `Logging:Console:LogLevel:...`, wildcards (`Microsoft.*`), different casing (`microsoft.aspnetcore`) and descendant categories (`System.Net.Http.HttpClient.Default.LogicalHandler`). The rule matching mirrors `LoggerRuleSelector` in Microsoft.Extensions.Logging: a rule category matches a logger category when the logger category starts with the part before `*` and ends with the part after it, both `OrdinalIgnoreCase`, with no dot boundary; provider-specific rules beat global rules; among the rest the longer category wins, and the later rule wins a tie.
+     - `private static void RaiseQueryLoggingRules(LoggerFilterOptions options)` calls `RaiseFamily(options, family)` for each family `F` in `[HostingDiagnosticsCategory, HttpClientCategory]`, in that order.
+     - `private static void RaiseFamily(LoggerFilterOptions options, string family)`:
+       1. `var originalCount = options.Rules.Count;` and `var appended = new HashSet<(string? ProviderName, string Category)>();` for the rules already appended in this pass. De-duplication compares the provider name `Ordinal` (case-sensitive, matching `LoggerRuleSelector`, which compares provider names case-sensitively) and the category `OrdinalIgnoreCase`. Implement it by keying the set on `(rule.ProviderName, appendedCategory.ToUpperInvariant())` with the default tuple equality, which compares strings ordinally; no custom comparer.
+       2. Loop `for (var index = 0; index < originalCount; index++)` over `options.Rules[index]`. Skip the rule when `rule.LogLevel is >= LogLevel.Warning` (so `Warning`, `Error`, `Critical` and `None` stay as configured). A rule with `LogLevel` null, or below `Warning`, is examined.
+       3. `P` is the rule category up to the `*`: `RulePrefix(rule.CategoryName)` returns `string.Empty` for a null category, the text before the first `*` when there is one, otherwise the whole category. `S` is `RuleSuffix(rule.CategoryName)`: the text after the `*`, or `string.Empty` when there is no `*` or no category.
+       4. The rule **applies** when `rule.CategoryName is null`, or `family.StartsWith(P, StringComparison.OrdinalIgnoreCase)`, or `P.StartsWith(family, StringComparison.OrdinalIgnoreCase)`. Otherwise skip it and leave it unchanged.
+       5. If the rule category is `F` or a descendant of `F`, that is, `P.Equals(family, OrdinalIgnoreCase)` or `P.StartsWith(family + ".", OrdinalIgnoreCase)` (this covers `F`, `F*`, `F.*`, `F.Default` and `F.Default.LogicalHandler`), **raise it in place**: `options.Rules[index] = new LoggerFilterRule(rule.ProviderName, rule.CategoryName, LogLevel.Warning, rule.Filter);`. The provider name, category and filter delegate are kept.
+       6. Otherwise **append** a `Warning` rule for `F` with the same provider, unless the same (provider, category) pair was already appended in this pass: `options.Rules.Add(new LoggerFilterRule(rule.ProviderName, appendedCategory, LogLevel.Warning, null));`. `appendedCategory` is `family` when `S` is empty, and `family + "*" + S` when `S` is not empty (D29).
+       7. The original rule is never changed in step 6, so unrelated categories (for example `Microsoft.AspNetCore.Routing` under `Microsoft.AspNetCore.*`, or `System.Net.Http.HttpClientFactoryProbe`) keep their configured level.
+     - Why this wins in every case: an appended rule has the same provider as the rule it answers, its category matches every logger in `F` that the original matched, it is at least as long (`F` starts with `P`, so `|F| >= |P|`), and it comes later in the list, so it wins ties. A raised rule is itself the most specific match, so raising it in place is enough.
+     - `return builder;`
    - `AddDefaultHealthChecks<TBuilder>`: `builder.Services.AddHealthChecks().AddCheck(HealthEndpoints.SelfCheckName, () => HealthCheckResult.Healthy(), [HealthEndpoints.LiveTag]);`
    - `MapDefaultEndpoints(this WebApplication app)`. Both endpoints are mapped in **every** environment (D8). This was verified to compile.
 
@@ -628,7 +647,7 @@ This is the reusable skeleton that later features build on. Namespace `SharpVaul
    - `ConfigureWebHost`:
      - `UseEnvironment(Environments.Development)`
      - `UseSetting($"ConnectionStrings:{TableStorageConnection.Name}", _azurite.GetConnectionString())`. Use `UseSetting`, not `ConfigureAppConfiguration`, because Aspire reads the value early (verified).
-     - `UseSetting("Logging:LogLevel:Default", "Debug")`
+     - `UseSetting("Logging:LogLevel:Default", "Debug")` and `UseSetting("Logging:LogLevel:Microsoft.AspNetCore", "Debug")`. The second is required because `appsettings.json` sets `Microsoft.AspNetCore` to `Warning`, which would hide request logs from the capture provider and let the query string log tests pass without our filter doing anything.
      - `ConfigureLogging(logging => logging.AddProvider(Logs))`
      - `ConfigureTestServices`: `services.AddSingleton<HttpPipelinePolicy>(StorageRequests);` and `services.AddAuthentication(TestAuthenticationHandler.SchemeName).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.SchemeName, _ => { });`
    - Methods:
@@ -641,8 +660,11 @@ This is the reusable skeleton that later features build on. Namespace `SharpVaul
    - In `ConfigureTestServices`, remove the `IHostedService` descriptor whose `ImplementationType` is `TableStorageInitializer`, so no Entra token is requested.
    - Uses the real placeholder JwtBearer scheme, not the test handler.
    - Tests on this factory never call `/health`, because that would try `DefaultAzureCredential` (D27).
-4. `Factories/WebTestFactory.cs`: `extern alias WebApp;` as the first line after the header. `public sealed class WebTestFactory : WebApplicationFactory<WebApp::Program>` with environment Development and `CreateWebClient()` (https://localhost, no automatic redirects).
-5. `Factories/StorageTestCollection.cs`, `ProductionTestCollection.cs` and `WebTestCollection.cs`: `[CollectionDefinition(nameof(X))] public sealed class X : ICollectionFixture<TFactory>;`. Every test class has `[Collection(...)]`.
+4. `Factories/WebTestFactory.cs`: `extern alias WebApp;` as the first line after the header. `public sealed class WebTestFactory : WebApplicationFactory<WebApp::Program>` with:
+   - `public CapturingLoggerProvider Logs { get; } = new();`
+   - `CreateWebClient()` (https://localhost, no automatic redirects).
+   - `ConfigureWebHost`: `UseEnvironment(Environments.Development)`, `UseSetting("Logging:LogLevel:Default", "Debug")`, `UseSetting("Logging:LogLevel:Microsoft.AspNetCore", "Debug")` and `ConfigureLogging(logging => logging.AddProvider(Logs))`. `Microsoft.AspNetCore=Debug` overrides the `Warning` in the Web `appsettings.json`, so the only thing keeping `Microsoft.AspNetCore.Hosting.Diagnostics` request logs (which contain the query string) out of the capture is our `SuppressQueryStringLogging` filter. Without it, `WebHost_SecretInQueryString_IsNotLogged` would pass even if the filter were removed.
+5. `Factories/StorageTestGroup.cs`, `ProductionTestGroup.cs` and `WebTestGroup.cs`: `[CollectionDefinition(nameof(X))] public sealed class X : ICollectionFixture<TFactory>;`. `Factories/PerformanceTestGroup.cs`: `[CollectionDefinition(nameof(PerformanceTestGroup), DisableParallelization = true)] public sealed class PerformanceTestGroup : ICollectionFixture<ApiTestFactory>;`. It gets its own `ApiTestFactory` and Azurite container, and xUnit runs it alone after every parallel collection has finished, so timings are not disturbed by other tests (D30). The names end in `Group`, not `Collection`, because CA1711 forbids the `Collection` suffix on these types (D16). Every test class has `[Collection(...)]`.
 6. `Authentication/TestAuthenticationHandler.cs`: `public sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)`.
    - Constants: `SchemeName = "Test"`, `ObjectIdHeader = "X-Test-Oid"`, `NameHeader = "X-Test-Name"`, `TenantHeader = "X-Test-Tid"`, `RolesHeader = "X-Test-Roles"` (comma separated).
    - With no `X-Test-Oid` header it returns `AuthenticateResult.NoResult()`.
@@ -673,6 +695,18 @@ This is the reusable skeleton that later features build on. Namespace `SharpVaul
     - Members: `Factory`, `Fixture` (AutoFixture), `HttpClient Client` (starts unauthenticated), `SetAuthenticatedClient(TestUser user)`, `CreateUnauthenticatedClient()`, `StorageRequests`, `Logs`, `GetTableClient(string tableName)` (through `StorageAdminClient`) and `AssertLogsDoNotContain(params string[] values)`.
     - `InitializeAsync` clears the recorder and the logs.
     - `DisposeAsync` awaits `Factory.ResetStorageAsync(CancellationToken.None)` and calls `GC.SuppressFinalize(this)`.
+18. `Tracing/RecordedActivity.cs`: `public sealed record RecordedActivity(string SourceName, string DisplayName, IReadOnlyDictionary<string, string> Tags)`. It is an immutable snapshot taken when the activity stops, because `Activity` objects keep changing and can be reused after they stop.
+    - `public static RecordedActivity From(Activity activity)`: copies `activity.Source.Name`, `activity.DisplayName` and every entry of `activity.TagObjects` into a new `Dictionary<string, string>(StringComparer.Ordinal)` with `tags[tag.Key] = Convert.ToString(tag.Value, CultureInfo.InvariantCulture) ?? string.Empty` (indexer, not `Add`, so a repeated key cannot throw inside the listener).
+    - `public bool Targets(string uniquePath)`: true when the `url.path` tag equals `uniquePath` (ordinal), or the `url.full` tag contains `uniquePath` (ordinal).
+    - `public bool ContainsText(string value)`: true when the display name, any tag key or any tag value contains `value` (ordinal).
+    - Tag name constants in `Tracing/TraceTagNames.cs`: `UrlPath = "url.path"`, `UrlFull = "url.full"`, `UrlQuery = "url.query"`, `HttpRequestMethod = "http.request.method"`.
+19. `Tracing/ActivityRecorder.cs`: `public sealed class ActivityRecorder : IDisposable`.
+    - Constants `AspNetCoreSource = "Microsoft.AspNetCore"` and `HttpClientSource = "System.Net.Http"`.
+    - Constructor `ActivityRecorder(string uniquePath, params string[] sourceNames)`. It creates an `ActivityListener` with `ShouldListenTo = source => sourceNames.Contains(source.Name, StringComparer.Ordinal)`, `Sample` and `SampleUsingParentId` returning `ActivitySamplingResult.AllDataAndRecorded`, and `ActivityStopped = OnStopped`, then calls `ActivitySource.AddActivityListener`.
+    - `OnStopped(Activity activity)` enqueues **one** `RecordedActivity.From(activity)` per stop into a `ConcurrentQueue<RecordedActivity>`. When the snapshot `Targets(uniquePath)`, it calls `TrySetResult()` on a `TaskCompletionSource` created with `TaskCreationOptions.RunContinuationsAsynchronously`.
+    - Members: `IReadOnlyList<RecordedActivity> All` (a `ToArray()` copy), `IReadOnlyList<RecordedActivity> Targeted` (only snapshots that target the unique path), `bool AnyContains(string value)` (over **all** snapshots, not only targeted ones), and `Task WaitForTargetedActivityAsync(CancellationToken cancellationToken)` which returns `_targeted.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken)`. This replaces polling with `Task.Delay`, which the test rules forbid. The ASP.NET Core server activity stops when the host disposes the request context, which can be just after the client has the response, so tests must await this before asserting.
+    - `Dispose()` disposes the listener.
+    - The listener is process-wide and other collections run in parallel, so it also records other tests' activities. Tests therefore make their request on a unique path (`/does-not-exist/{Guid:N}` or `/probe/{Guid:N}`) and assert on `Targeted`. The secret check uses `AnyContains` over everything recorded, because a leaked secret in any activity is a failure.
 
 Rules for every test file:
 
@@ -740,15 +774,16 @@ Every threat has at least one named test in section 7. Assume each one exists un
 | TH13 | Tampering | Clickjacking, MIME sniffing, downgrade, referrer leaks | Security headers middleware on every response, including errors | `ApiResponse_AnyRoute_HasSecurityHeaders`, `ApiResponse_Production_HasStrictContentSecurityPolicy`, `HomePage_Response_HasWebSecurityHeaders`, `UnknownRoute_AnonymousCaller_ErrorResponseHasSecurityHeaders` |
 | TH14 | Tampering | XSS through inline script in the Web shell (needed later for OTL-3) | Strict CSP without `unsafe-inline` or `unsafe-eval`, and no `<ImportMap />` | `HomePage_Rendered_ContainsNoInlineScript`, `ForWeb_Always_DisallowsInlineAndEvalScript` |
 | TH15 | Tampering | Cross-origin browser calls to the API | No CORS policy, so no `Access-Control-Allow-Origin` | `CorsPreflight_UntrustedOrigin_ReturnsNoAllowOriginHeader` |
-| TH16 | Denial of service | Anonymous caller forces a storage call per request through `/health` (repeat, random query string, POST) | Output cache for 5 s that ignores the query, GET/HEAD only (POST gets 401, verified), `/alive` never touches storage | `HealthEndpoint_TwentyRequestsWithinCacheWindow_MakesOneStorageCall`, `HealthEndpoint_RandomQueryStrings_MakesOneStorageCall`, `HealthEndpoint_PostRequest_Returns401WithoutStorageCall`, `AliveEndpoint_AnonymousCaller_Returns200WithoutStorageCall` |
+| TH16 | Denial of service | Anonymous caller forces a storage call per request through `/health` (repeat, random query string, random `Host` header, both together, POST) | Output cache for 5 s that varies by neither the query nor the `Host` header (`SetVaryByQuery([])` and `SetVaryByHost(false)`; the output cache varies by host by default), GET/HEAD only (POST gets 401, verified), `/alive` never touches storage | `HealthEndpoint_TwentyRequestsWithinCacheWindow_MakesOneStorageCall`, `HealthEndpoint_RandomQueryStrings_MakesOneStorageCall`, `HealthEndpoint_RandomHostHeaders_MakesOneStorageCall`, `HealthEndpoint_RandomHostHeadersAndQueryStrings_MakesOneStorageCall`, `HealthEndpoint_PostRequest_Returns401WithoutStorageCall`, `AliveEndpoint_AnonymousCaller_Returns200WithoutStorageCall` |
 | TH17 | Denial of service | Huge request bodies | Kestrel `MaxRequestBodySize` is 1 MiB | `AddServiceDefaults_Registered_LimitsRequestBodyToOneMebibyte` |
-| TH18 | Denial of service | Table creation per request, or table scans | Initializer creates tables once at start. The recorder detects queries without a partition key | `Startup_TableSetConfigured_MakesOneStorageCallPerTable`, `StorageRequestRecorder_QueryWithoutPartitionKey_IsReported`, `StorageRequestRecorder_QueryWithPartitionKey_IsNotReported` |
+| TH18 | Denial of service | Table creation per request, or table scans | Initializer creates tables once at start. The recorder detects queries without a partition key | `Startup_TableSetConfigured_MakesOneStorageCallPerTable`, `Startup_DefaultTableSet_CompletesUnder5SecondsWithNoStorageCalls`, `UnknownRoute_FiftyAnonymousRequests_EachCompletesUnder100MillisecondsWithoutStorageCalls`, `StorageRequestRecorder_QueryWithoutPartitionKey_IsReported`, `StorageRequestRecorder_QueryWithPartitionKey_IsNotReported` |
 | TH19 | Denial of service | Liveness flaps when storage is down and the platform restarts instances | `/alive` runs only the `live` check | `AliveEndpoint_StorageCheckFailing_StillReturns200` |
 | TH20 | Leakage | Mediator writes notifications to disk | Persistence explicitly disabled | `AddApplication_Registered_DisablesNotificationPersistence` |
 | TH21 | Information disclosure | `Server: Kestrel` header | `AddServerHeader = false` | `AddServiceDefaults_Registered_HidesServerHeader` |
 | TH22 | Supply chain | Vulnerable or malicious package | NuGet audit (all, low) as errors, CI vulnerable step, dependency review, CodeQL, Dependabot | CI job `build-and-test` step "Vulnerable packages", `dependency-review.yml`, `codeql.yml`. Restore itself fails on NU1901-NU1904 |
 | TH23 | Architecture drift | Domain or Application take a storage or web dependency; UI.Shared takes a server dependency, which breaks MAUI | Reflection layering tests | the six `*_ReferencedAssemblies_*` tests in 7.1 |
 | TH24 | Local data | Persistent Azurite loses or mixes data, or the AppHost runs a different image than the tests | AppHost model tests check lifetime, volume and image | `AppHost_StorageEmulator_UsesPersistentLifetime`, `AppHost_StorageEmulator_MountsDataVolumeAtData`, `AppHost_StorageEmulator_UsesAzuriteImage` |
+| TH25 | Leakage | A secret or token sent in a query string ends up in request or HttpClient logs, or in trace tags (OTL-3, AUD-3). Package defaults are not enough: provider-specific logging configuration (for example `Logging:Console:LogLevel:Microsoft.AspNetCore.Hosting.Diagnostics`) or `OTEL_DOTNET_EXPERIMENTAL_ASPNETCORE_DISABLE_URL_QUERY_REDACTION` turns them back on | `SuppressQueryStringLogging` in ServiceDefaults (called by `AddServiceDefaults`) adds code-level filters at `Warning` for `Microsoft.AspNetCore.Hosting.Diagnostics` and `System.Net.Http.HttpClient`. A `PostConfigure<LoggerFilterOptions>` then hardens them against configuration, including wildcards (`Microsoft.*`), other casing (`microsoft.aspnetcore`) and descendant categories: a rule below `Warning` (or with no level) whose category is the family or a descendant is raised in place to `Warning`; any other rule below `Warning` that covers the family (no category, or an ancestor or wildcard prefix) gets an appended `Warning` rule for the family with the same provider that always wins rule selection (D29). Rules for unrelated categories are not changed. AspNetCore tracing removes the `url.query` tag from server spans (`EnrichWithHttpRequest`). HttpClient tracing sets outbound `url.full` to scheme, host, port and path only (`EnrichWithHttpRequestMessage` with `GetComponents(SchemeAndServer | Path)`), so neither the query nor user info reaches a span | `UnknownRoute_SecretInQueryString_IsNotLogged`, `UnknownRoute_SecretInQueryString_IsNotInTraceTags`, `UnknownRoute_SecretInQueryStringWithPackageRedactionDisabled_IsNotInTraceTags`, `OutboundHttpClient_SecretInQueryString_IsNotInTraceTags`, `OutboundHttpClient_SecretInUserInfoAndQueryString_IsNotInTraceTags`, `WebHost_SecretInQueryString_IsNotLogged`, `SuppressQueryStringLogging_Registered_FiltersHostingDiagnosticsAndHttpClientBelowWarning`, `SuppressQueryStringLogging_ProviderSpecificConfigLowersLevel_EffectiveLevelStaysWarning`, `SuppressQueryStringLogging_WildcardCaseOrDescendantConfig_EffectiveLevelStaysWarning`, `SuppressQueryStringLogging_ProviderRulesDifferOnlyByCase_EffectiveLevelStaysWarning`, `SuppressQueryStringLogging_UnrelatedCategoryConfigured_KeepsConfiguredLevel` |
 
 ## 7. Tests
 
@@ -772,7 +807,7 @@ Conventions:
 | `Application_ReferencedAssemblies_ContainNoAzureSdkOrAspNetCore` | no `Azure.*`, `Microsoft.AspNetCore.*` |
 | `Infrastructure_ReferencedAssemblies_ContainNoApiWebOrUiProject` | no `SharpVault.Api`, `SharpVault.Web`, `SharpVault.UI.Shared` |
 | `UiShared_ReferencedAssemblies_ContainNoServerSideProjectOrServerFramework` | no `SharpVault.Infrastructure`, `SharpVault.Api`, `SharpVault.Web`, `Azure.*`, `Microsoft.AspNetCore.Http*`, `Microsoft.AspNetCore.Hosting*`, `Microsoft.AspNetCore.Mvc*` |
-| `ProductionAssemblies_ConcreteClasses_AreSealed` | every class in a `SharpVault.*` namespace of Domain, Application, Infrastructure, ServiceDefaults, Api, UI.Shared and Web is `sealed`, `abstract` or `static`. Excluded: types with `CompilerGeneratedAttribute` or `GeneratedCodeAttribute`, names containing `<`, and subclasses of `Microsoft.AspNetCore.Components.ComponentBase` (Razor components). If a framework-generated type trips the rule, exclude it by attribute, never by name |
+| `ProductionAssemblies_ConcreteClasses_AreSealed` | every class in a `SharpVault.*` namespace of Domain, Application, Infrastructure, ServiceDefaults, Api, UI.Shared and Web is `sealed`, `abstract` or `static`. Excluded: types with `CompilerGeneratedAttribute` or `GeneratedCodeAttribute`, names containing `<`, and subclasses of `Microsoft.AspNetCore.Components.ComponentBase` (Razor components). One exception is excluded by name: the Razor `_Imports` class, because the Razor compiler emits it without either attribute. It is excluded only when it is named `_Imports` and has the exact generated shape: its declared members are constructors and a method named `Execute`, nothing else (D28). Any other framework-generated type that trips the rule is excluded by attribute, never by name |
 | `ProductionAssemblies_Types_DeclareNoAuthenticationHandler` | no type derives from `Microsoft.AspNetCore.Authentication.AuthenticationHandler<>` |
 | `ProductionAssemblies_Namespaces_StartWithAssemblyName` | every type in a `SharpVault` namespace has a namespace starting with its assembly name |
 
@@ -805,6 +840,8 @@ Conventions:
 - `Constructor_NameWithIllegalCharacter_Throws` (Theory: `Bad-Name`, `Bad Name`, `Bad/Name`, `Bad\Name`, `Bad#Name`, `Bad?Name`, `Bad\u0000Name`, `Bad\tName`, `Tablé1`, `' or PartitionKey ne '`) (Security)
 - `Constructor_ReservedNameTables_Throws` (Theory: `tables`, `Tables`, `TABLES`)
 - `Constructor_DuplicateNamesDifferingOnlyInCase_Throws`
+- `Constructor_NameWithTrailingLineBreak_Throws` (Security, regression for the `$` anchor; Theory: `Secrets\n`, `Secrets\r\n`, `Secrets\n\n`). Throws `ArgumentException` with `InvalidTableName`.
+- `Constructor_NameWithTrailingLineBreakAtMaximumLength_Throws` (regression): `"T"` plus 62 `a` plus `\n` throws `ArgumentException`. With `$` this name passed, because the 63 characters before the line break are valid.
 - `TableNames_All_PassesTableSetValidation`
 
 `Infrastructure/Storage/TableStorageInitializerTests.cs` (NSubstitute `TableServiceClient`)
@@ -833,10 +870,40 @@ Conventions:
 - `AddServiceDefaults_Registered_HidesServerHeader` (Security)
 - `AddServiceDefaults_Registered_LimitsRequestBodyToOneMebibyte` (Security)
 - `AddServiceDefaults_Registered_AddsSelfCheckTaggedLive`
+- `SuppressQueryStringLogging_Registered_FiltersHostingDiagnosticsAndHttpClientBelowWarning` (Security; Theory: `Microsoft.AspNetCore.Hosting.Diagnostics`, `System.Net.Http.HttpClient`): `LoggerFilterOptions.Rules` contains a rule with no provider, that category and `LogLevel.Warning`.
+- `SuppressQueryStringLogging_ProviderSpecificConfigLowersLevel_EffectiveLevelStaysWarning` (Security; same Theory): in Production, configuration sets `Logging:Console:LogLevel` and `Logging:OpenTelemetry:LogLevel` to `Information` for Hosting.Diagnostics and `Debug` for HttpClient. A logger for the category is not enabled for `Information` or `Debug` and is enabled for `Warning`.
+- `SuppressQueryStringLogging_WildcardCaseOrDescendantConfig_EffectiveLevelStaysWarning` (Security; Theory over configuration key and logger category). Build with `WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = Environments.Production })`, add the single key with value `Debug` through `builder.Configuration.AddInMemoryCollection`, call `AddServiceDefaults()`, build, and create the logger from `ILoggerFactory`. The logger is not enabled for `Debug` or `Information` and is enabled for `Warning`. Inputs:
+
+  | Configuration key (value `Debug`) | Logger category |
+  |---|---|
+  | `Logging:Console:LogLevel:Microsoft.AspNetCore.*` | `Microsoft.AspNetCore.Hosting.Diagnostics` |
+  | `Logging:Console:LogLevel:Microsoft.*` | `Microsoft.AspNetCore.Hosting.Diagnostics` |
+  | `Logging:Console:LogLevel:microsoft.aspnetcore` | `Microsoft.AspNetCore.Hosting.Diagnostics` |
+  | `Logging:LogLevel:System.Net.Http.HttpClient.Default` | `System.Net.Http.HttpClient.Default.LogicalHandler` |
+  | `Logging:Console:LogLevel:System.Net.Http.HttpClient.Default.LogicalHandler` | `System.Net.Http.HttpClient.Default.LogicalHandler` |
+  | `Logging:Console:LogLevel:System.Net.Http.*.LogicalHandler` | `System.Net.Http.HttpClient.Default.LogicalHandler` |
+
+  The sixth row is the regression case for D29: the wildcard rule is longer than `System.Net.Http.HttpClient`, so a plain appended `F` rule would lose to it.
+- `SuppressQueryStringLogging_ProviderRulesDifferOnlyByCase_EffectiveLevelStaysWarning` (Security; Theory over rule category and logger category, same setup as above except that the rules are added in code, not through configuration). Before `AddServiceDefaults()`, call `builder.Services.Configure<LoggerFilterOptions>(options => { options.Rules.Add(new LoggerFilterRule("console", category, LogLevel.Debug, null)); options.Rules.Add(new LoggerFilterRule("Console", category, LogLevel.Debug, null)); })`, in that order. Build and create the logger from `ILoggerFactory`. The logger is not enabled for `Debug` or `Information` and is enabled for `Warning`, and `LoggerFilterOptions.Rules` contains an appended `Warning` rule for the family for each of the providers `console` and `Console`. This proves de-duplication does not fold the two provider names together (D29): a case-insensitive comparison would skip the `Console` append, and the `Console` rule at `Debug` would then win for the console provider. Inputs:
+
+  | Rule category (value `Debug`) | Logger category |
+  |---|---|
+  | `Microsoft` | `Microsoft.AspNetCore.Hosting.Diagnostics` |
+  | `System` | `System.Net.Http.HttpClient.Default.LogicalHandler` |
+- `SuppressQueryStringLogging_UnrelatedCategoryConfigured_KeepsConfiguredLevel` (Security; Theory over configuration key and logger category, same setup). The logger **is** enabled for `Debug`, proving the hardening does not raise categories outside the two families. Inputs:
+
+  | Configuration key (value `Debug`) | Logger category |
+  |---|---|
+  | `Logging:Console:LogLevel:Microsoft.AspNetCore.*` | `Microsoft.AspNetCore.Routing.EndpointMiddleware` |
+  | `Logging:Console:LogLevel:Microsoft.AspNetCore.Hosting.Lifetime` | `Microsoft.AspNetCore.Hosting.Lifetime` |
+  | `Logging:Console:LogLevel:System.Net.Http.HttpClientFactoryProbe` | `System.Net.Http.HttpClientFactoryProbe` |
+  | `Logging:LogLevel:SharpVault` | `SharpVault.Api` |
+
+  The third row catches an implementation that raises every rule whose prefix merely starts with `System.Net.Http.HttpClient` instead of checking for `F` or `F.`.
 
 ### 7.3 Test infrastructure self-tests: `tests/SharpVault.IntegrationTests/ApiTests/TestInfrastructureTests.cs`
 
-Collection: StorageTestCollection.
+Collection: StorageTestGroup.
 
 - `ResetStorage_AfterTableCreated_RemovesTable`
 - `StorageRequestRecorder_QueryWithoutPartitionKey_IsReported`: query a table through the **app's** `TableServiceClient` (from `Factory.Services`) with filter `RowKey eq 'x'`.
@@ -844,7 +911,7 @@ Collection: StorageTestCollection.
 - `CapturingLoggerProvider_AppLogsMessage_IsCaptured`
 - `TestAuthenticationHandler_NoHeaders_LeavesCallerAnonymous`
 
-### 7.4 API integration and security tests (Development, Azurite, collection StorageTestCollection)
+### 7.4 API integration and security tests (Development, Azurite, collection StorageTestGroup)
 
 `ApiTests/HealthEndpointTests.cs`
 
@@ -853,6 +920,8 @@ Collection: StorageTestCollection.
 - `HealthEndpoint_StorageCall_IsServicePropertiesRequestNotEntityQuery`: exactly one recorded request, with `IsEntityQuery` false.
 - `HealthEndpoint_TwentyRequestsWithinCacheWindow_MakesOneStorageCall` (Security)
 - `HealthEndpoint_RandomQueryStrings_MakesOneStorageCall` (Security; 20 requests with `?x={Guid}`)
+- `HealthEndpoint_RandomHostHeaders_MakesOneStorageCall` (Security; 20 requests on an isolated factory, each with `Host: h{Guid:N}.example`). Exactly 1 storage call.
+- `HealthEndpoint_RandomHostHeadersAndQueryStrings_MakesOneStorageCall` (Security; 20 requests, each with a random `Host` header and `?x={Guid}`). Exactly 1 storage call.
 - `HealthEndpoint_PostRequest_Returns401WithoutStorageCall` (Security). 401 is the verified status: the framework's 405 endpoint falls under the fallback policy.
 - `HealthEndpoint_CheckThrowsWithSensitiveMessage_Returns503WithStatusOnlyBody` (Security). Use `Factory.WithWebHostBuilder(b => b.ConfigureTestServices(s => s.AddHealthChecks().AddCheck<ThrowingHealthCheck>("throwing")))`. The status is 503 and the body equals `Unhealthy`, without the marker.
 - `AliveEndpoint_AnonymousCaller_Returns200WithoutStorageCall`
@@ -897,13 +966,27 @@ Also in this file:
 `ApiTests/LoggingTests.cs` (Security)
 
 - `UnknownRoute_BearerTokenAndCookieSent_NeitherIsLogged`: send `Authorization: Bearer {ForgedTokens.SignedWithUnknownKey()}` and `Cookie: session={random}`. Neither value is in `Logs`, captured at Debug level.
+- `UnknownRoute_SecretInQueryString_IsNotLogged`: `GET /does-not-exist?token={secret}`. The secret is not in `Logs`.
+- Every trace test below uses `ActivityRecorder` (T10 item 18 and 19): one immutable `RecordedActivity` snapshot per activity stop, a unique path per test, `await recorder.WaitForTargetedActivityAsync(cancellationToken)` before asserting, assertions on `Targeted`, and the secret check with `AnyContains` over everything recorded. No `Task.Delay` polling and no matching on `server.port`.
+- `UnknownRoute_SecretInQueryString_IsNotInTraceTags`: `uniquePath = $"/does-not-exist/{Guid.NewGuid():N}"`, recorder on `AspNetCoreSource` and `HttpClientSource`, then `GET {uniquePath}?token={secret}` (401). Assert:
+  - at least one targeted snapshot from `Microsoft.AspNetCore` has an `http.request.method` tag, so the check cannot pass vacuously;
+  - no targeted snapshot has a `url.query` tag;
+  - `recorder.AnyContains(secret)` is false.
+- `UnknownRoute_SecretInQueryStringWithPackageRedactionDisabled_IsNotInTraceTags`: the same check on a factory with `UseSetting("OTEL_DOTNET_EXPERIMENTAL_ASPNETCORE_DISABLE_URL_QUERY_REDACTION", "true")`, which proves our code removes the query and not the package default.
+- `OutboundHttpClient_SecretInQueryString_IsNotInTraceTags`: start the host (`Factory.Services`) so its tracer provider is active. Get a closed loopback port by starting a `TcpListener` on `IPAddress.Loopback` port 0, reading its port and stopping it. `uniquePath = $"/probe/{Guid.NewGuid():N}"`, recorder on `HttpClientSource`. Send `GET http://127.0.0.1:{port}{uniquePath}?token={secret}` through `new HttpClient(new SocketsHttpHandler())` and expect `HttpRequestException` (connection refused, no network needed). Do not use `Factory.Server.CreateHandler()` (a custom primary handler creates no `System.Net.Http` activity) or `IHttpClientFactory` (the standard resilience handler retries with delays of several seconds). Assert:
+  - exactly one targeted snapshot (`Assert.Single`), and its `url.full` tag equals `http://127.0.0.1:{port}{uniquePath}` exactly. That proves our enrich callback ran, because the runtime's own redaction would leave `?*`;
+  - it has no `url.query` tag;
+  - `recorder.AnyContains(secret)` is false.
+- `OutboundHttpClient_SecretInUserInfoAndQueryString_IsNotInTraceTags` (regression for `GetLeftPart`, which keeps user info): same setup with two different secrets, `userInfoSecret` and `querySecret`, and the URL `http://probeuser:{userInfoSecret}@127.0.0.1:{port}{uniquePath}?token={querySecret}`. Assert:
+  - exactly one targeted snapshot, with `url.full` equal to `http://127.0.0.1:{port}{uniquePath}` exactly;
+  - `recorder.AnyContains(userInfoSecret)`, `recorder.AnyContains(querySecret)` and `recorder.AnyContains("probeuser")` are all false.
 
 `ApiTests/TableStorageStartupTests.cs`
 
 - `Startup_TableSetConfigured_CreatesEveryTableBeforeFirstRequest`: a derived factory with `ConfigureTestServices(s => s.AddSingleton(new TableStorageTableSet(["FoundationProbeOne", "FoundationProbeTwo"])))`. After `CreateClient()`, `StorageAdminClient` lists both tables.
 - `Startup_TableSetConfigured_MakesOneStorageCallPerTable`: the recorder is cleared before the derived factory starts, then counts exactly 2 requests and 0 entity queries.
 
-### 7.5 Production hosting tests: `ApiTests/ProductionHostingTests.cs` (collection ProductionTestCollection, Security)
+### 7.5 Production hosting tests: `ApiTests/ProductionHostingTests.cs` (collection ProductionTestGroup, Security)
 
 - `Startup_ProductionWithAccountKeyConnectionString_FailsWithoutEchoingKey`: use `Factory.WithWebHostBuilder(b => b.UseSetting("ConnectionStrings:tables", <Azurite well-known connection string>))`. `Record.Exception(() => derived.CreateClient())` is an `InvalidOperationException`, and its message contains neither `AccountKey` nor the key.
 - `Startup_ProductionWithSasServiceUri_Fails` (`https://example.table.core.windows.net/?sv=2024-01-01&sig=abc`)
@@ -918,7 +1001,7 @@ Also in this file:
 - `ApiResponse_Production_HasStrictContentSecurityPolicy` (`/alive`, CSP equals the API value)
 - `AliveEndpoint_Production_Returns200Anonymously`
 
-### 7.6 Web tests: `WebTests/WebHostTests.cs` (collection WebTestCollection)
+### 7.6 Web tests: `WebTests/WebHostTests.cs` (collection WebTestGroup)
 
 - `HomePage_AnonymousGet_Returns200WithHeading` (`id="home-heading"`)
 - `HomePage_Response_HasWebSecurityHeaders` (Security; exact web CSP and the other headers)
@@ -930,6 +1013,10 @@ Also in this file:
   - the body contains `id="error-heading"`
   - the body contains neither the marker nor `StackTrace`
 - `WebHealth_AnonymousGet_Returns200`
+- `WebHost_SecretInQueryString_IsNotLogged` (Security): `GET /does-not-exist?token={secret}` on the Web. Assert:
+  - at least one captured entry has a category starting with `Microsoft.AspNetCore.` (ordinal) and level `Debug`. This proves the factory's `Logging:LogLevel:Microsoft.AspNetCore=Debug` is in effect, so the check below exercises our filter rather than the `Warning` from `appsettings.json`;
+  - no captured entry has category `Microsoft.AspNetCore.Hosting.Diagnostics` and a level below `Warning`;
+  - `factory.Logs.ContainsText(secret)` is false.
 
 ### 7.7 AppHost model tests: `tests/SharpVault.AppHost.Tests/AppHostModelTests.cs`
 
@@ -941,14 +1028,20 @@ No collection needed (no shared state). Build with `DistributedApplicationTestin
 - `AppHost_TablesResource_NameMatchesInfrastructureConnectionName`: a resource named `TableStorageConnection.Name` exists
 - `AppHost_ApiProject_WaitsForTables` (`WaitAnnotation` on the `api` resource targeting `tables`)
 - `AppHost_WebProject_WaitsForApi`
+- `AppHost_Model_DeclaresNoParameterResources` (Security): no resource in `builder.Resources` is a `ParameterResource`, so the AppHost declares no secret or key parameters.
+- `AppHost_Source_ContainsNoParametersEnvironmentOverridesOrKeys` (Security; Theory: `AddParameter`, `WithEnvironment`, `AccountKey`, `SharedAccessSignature`, `ConnectionString`, `secret:`): `src/SharpVault.AppHost/AppHost.cs` does not contain the value (OrdinalIgnoreCase).
+- Evaluating the project resources' environment variables was dropped: `ExecutionConfigurationBuilder` hangs when the resources are not running, and these tests never start them. The parameter-resource check and the source scan replace it.
 
-### 7.8 Performance tests: `ApiTests/HealthPerformanceTests.cs` (collection StorageTestCollection, Performance)
+### 7.8 Performance tests: `ApiTests/HealthPerformanceTests.cs` (collection PerformanceTestGroup, Performance)
 
-Warm up with one request, then measure with `Stopwatch.GetTimestamp`/`GetElapsedTime`.
+The class has `[Collection(nameof(PerformanceTestGroup))]`, which has `DisableParallelization = true`, so it runs alone with its own Azurite container (D30). Every test first sends **5 warm-up requests** on the client it measures with and asserts their status codes, then clears the recorder and measures each request with `Stopwatch.GetTimestamp()` and `Stopwatch.GetElapsedTime(started)`. The per-request budgets are unchanged. Budgets are `private static readonly TimeSpan` fields, and failure messages include every timing measured so far.
 
-- `HealthEndpoint_FirstUncachedRequest_CompletesUnder1000Milliseconds`
-- `HealthEndpoint_FiftyCachedRequests_EachCompletesUnder100Milliseconds`
-- `AliveEndpoint_FiftyRequests_EachCompletesUnder50Milliseconds`
+- `HealthEndpoint_FirstUncachedRequest_CompletesUnder1000Milliseconds`: on a fresh isolated host (`Factory.WithWebHostBuilder(_ => { })`), warm up with 5 `GET /alive` (not `/health`, so the cache stays cold), clear the recorder, measure one `GET /health` (200). Under 1000 ms, exactly one storage call, not an entity query.
+- `HealthEndpoint_FiftyCachedRequests_EachCompletesUnder100Milliseconds`: on a fresh isolated host, warm up with 5 `GET /health` (the first fills the cache), clear the recorder, then 50 `GET /health?x={i}`, each 200 and under 100 ms. 0 storage calls in total.
+- `AliveEndpoint_FiftyRequests_EachCompletesUnder50Milliseconds`: warm up with 5 `GET /alive`, then 50 `GET /alive`, each 200 and under 50 ms. 0 storage calls.
+- `UnknownRoute_FiftyAnonymousRequests_EachCompletesUnder100MillisecondsWithoutStorageCalls` (TH1, TH18: the fallback policy rejects unknown routes without touching storage): warm up with 5 anonymous `GET /does-not-exist/warmup` (401), clear the recorder, then 50 anonymous `GET /does-not-exist/{i}`, each 401 and under 100 ms. `StorageRequests.Count` is 0 at the end.
+- `HealthEndpoint_ConcurrentRequestsOnColdCache_MakesAtMostThreeStorageCalls`: on a fresh isolated host, warm up with 5 `GET /alive`, clear the recorder, then 20 parallel `GET /health`. All return 200 and make at most 3 storage calls (`MaxColdBurstStorageCalls`), none of them a query without a partition key. Output-cache coalescing bounds the misses in a cold concurrent burst but does not guarantee exactly one, so this test allows up to 3. The bound is fixed and does not grow with the number of requests. Tests with a single miss (`HealthEndpoint_StorageCall_IsServicePropertiesRequestNotEntityQuery` and every `*_MakesOneStorageCall` test) still assert exactly 1.
+- `Startup_DefaultTableSet_CompletesUnder5SecondsWithNoStorageCalls`: warm up with 5 `GET /alive` on the shared `Client` (this loads and JITs the hosting code), then assert `Assert.Empty(TableNames.All)` as a precondition, clear the recorder, take a timestamp, create `Factory.WithWebHostBuilder(_ => { })` and call `CreateClient()` on it (this builds the host and runs `TableStorageInitializer`). Elapsed is under 5 s and `StorageRequests.Count` is 0. When the first feature adds a name to `TableNames.All`, the precondition fails on purpose, and that feature changes this test to expect exactly `TableNames.All.Count` calls and renames it.
 
 ### 7.9 Commands the reviewer runs
 
@@ -967,16 +1060,17 @@ dotnet list SharpVault.slnx package --vulnerable --include-transitive
 
 ## 8. Performance budgets
 
-All budgets are measured against Azurite in integration tests.
+All budgets are measured against Azurite in integration tests. Timing tests run in the non-parallel `PerformanceTestGroup` collection after 5 warm-up requests (section 7.8, D30).
 
 | Operation | Budget | Storage calls | Test |
 |---|---|---|---|
 | `GET /health`, cache miss | under 1000 ms | exactly 1 (service properties, not an entity query) | `HealthEndpoint_FirstUncachedRequest_CompletesUnder1000Milliseconds`, `HealthEndpoint_StorageCall_IsServicePropertiesRequestNotEntityQuery` |
-| `GET /health`, within the 5 s cache window, any query string | under 100 ms each | 0 | `HealthEndpoint_FiftyCachedRequests_EachCompletesUnder100Milliseconds`, `HealthEndpoint_TwentyRequestsWithinCacheWindow_MakesOneStorageCall`, `HealthEndpoint_RandomQueryStrings_MakesOneStorageCall` |
+| `GET /health`, within the 5 s cache window, any query string or `Host` header | under 100 ms each | 0 | `HealthEndpoint_FiftyCachedRequests_EachCompletesUnder100Milliseconds`, `HealthEndpoint_TwentyRequestsWithinCacheWindow_MakesOneStorageCall`, `HealthEndpoint_RandomQueryStrings_MakesOneStorageCall`, `HealthEndpoint_RandomHostHeaders_MakesOneStorageCall`, `HealthEndpoint_RandomHostHeadersAndQueryStrings_MakesOneStorageCall` |
+| `GET /health`, cold cache, 20 concurrent requests | n/a | at most 3 in total, a fixed bound that does not grow with the request count (output-cache coalescing) | `HealthEndpoint_ConcurrentRequestsOnColdCache_MakesAtMostThreeStorageCalls` |
 | `POST /health` | n/a | 0 | `HealthEndpoint_PostRequest_Returns401WithoutStorageCall` |
 | `GET /alive` | under 50 ms each | 0 | `AliveEndpoint_FiftyRequests_EachCompletesUnder50Milliseconds`, `AliveEndpoint_AnonymousCaller_Returns200WithoutStorageCall` |
-| Any unknown route | n/a | 0 | asserted inside `UnknownRoute_AnonymousCaller_Returns401` (recorder count 0) |
-| API startup | n/a | 1 per entry in `TableNames.All` (0 today), never per request | `Startup_TableSetConfigured_MakesOneStorageCallPerTable` |
+| Any unknown route | under 100 ms each | 0 | `UnknownRoute_FiftyAnonymousRequests_EachCompletesUnder100MillisecondsWithoutStorageCalls`, and asserted inside `UnknownRoute_AnonymousCaller_Returns401` (recorder count 0) |
+| API startup | under 5 s (host build and start, including the table initializer) | 1 per entry in `TableNames.All` (0 today), never per request | `Startup_DefaultTableSet_CompletesUnder5SecondsWithNoStorageCalls`, `Startup_TableSetConfigured_MakesOneStorageCallPerTable` |
 
 - **Queries without a partition key**: none are allowed. The foundation makes no entity queries. The detector is proven by `StorageRequestRecorder_QueryWithoutPartitionKey_IsReported`.
 - **Hot paths and benchmarks**: none in this work. `tests/SharpVault.Benchmarks` is created by `feature/encryption-core`, together with the first hot path.
@@ -1000,7 +1094,7 @@ All budgets are measured against Azurite in integration tests.
 | D13 | Scope | No `Result<T>`, pipeline behaviors, `ICurrentUser`, store interfaces or `docs/STORAGE.md` tables. The first feature that needs each adds it, so nothing speculative is written now. |
 | D14 | Lock files | No `packages.lock.json`. The AppHost restores operating-system-specific DCP and dashboard packages, so `--locked-mode` would fail on a different OS. Supply chain is covered by CPM exact versions, transitive pinning, NuGet audit (all, low, as errors), the CI vulnerable step, dependency review, CodeQL and Dependabot. |
 | D15 | ASPIRE010 | Suppressed in the AppHost only. `AspireUseCliBundle=true` needs the Aspire CLI, which is not available here. DCP and the dashboard from NuGet run the AppHost on Linux (verified: dashboard up, Azurite container and named volume created). |
-| D16 | CA1707 | Disabled only under `tests/`, because the required test names contain underscores. Any other analyzer that fires because of test conventions must be reported to the planner, not suppressed. |
+| D16 | CA1707 and CA1711 | CA1707 is disabled only under `tests/`, because the required test names contain underscores. CA1711 forbids the `Collection` suffix that the skill uses for xUnit collection definitions (`DatabaseTestCollection`). It is fixed by renaming, not suppressing: the classes are `StorageTestGroup`, `ProductionTestGroup` and `WebTestGroup`. Any other analyzer that fires because of test conventions must be reported to the planner, not suppressed. |
 | D17 | Two `Program` types | Api and Web both expose a compiler-generated global `Program`. Test projects reference Web with `Aliases="WebApp"` and write `WebApp::Program` (verified). `SharpVault.AppHost.Tests` is a separate project so Aspire hosting stays out of the API tests. |
 | D18 | Assertions | xUnit `Assert` only. No FluentAssertions (commercial license since v8) and no other assertion library. |
 | D19 | GitHub Actions pinning | The session could not reach the GitHub API, so commit SHAs could not be resolved. Workflows use major tags (`checkout@v5`, `setup-dotnet@v5`, `upload-artifact@v4`, `codeql-action@v4`, `dependency-review-action@v4`). Dependabot keeps them current, and pinning to SHAs is recorded in PROGRESS.md as a follow-up. If a tag does not exist when CI first runs, use the latest major of that action. |
@@ -1012,6 +1106,9 @@ All budgets are measured against Azurite in integration tests.
 | D25 | OpenAPI in tests | Test projects must not call `AddOpenApi`, because the OpenAPI source generator then fails with CS9137 (interceptors). Use `Configure<OpenApiOptions>("v1", ...)` (verified). |
 | D26 | xUnit analyzers | `xUnit1051` requires `TestContext.Current.CancellationToken`. `xUnit2013` requires `Assert.Single` or `Assert.Empty` for size checks. Both are errors under warnings as errors. |
 | D27 | Production factory | Never calls `/health`, which would try `DefaultAzureCredential` against a fake account. The table initializer is removed in that factory. Startup in Production with an https URI was verified to make no network call. |
+| D28 | Razor `_Imports` and the sealed rule | The Razor compiler emits an unsealed `_Imports` class for each `_Imports.razor`. It has neither `CompilerGeneratedAttribute` nor `GeneratedCodeAttribute`, so it cannot be excluded by attribute, and the generated class cannot be sealed. `ProductionAssemblies_ConcreteClasses_AreSealed` therefore excludes it by name plus exact shape: the name is `_Imports` and the declared members are only constructors and a method named `Execute`. A hand-written type named `_Imports` with any other member is still checked. This is the only name-based exclusion. |
+| D29 | Hardening query logging rules | Rules are matched the way `LoggerRuleSelector` matches them: prefix before `*` and suffix after it, `OrdinalIgnoreCase`, no dot boundary, longer category wins, later rule wins a tie. A rule for the family or a descendant is raised in place, because it is the most specific match and only covers that family (a pattern such as `System.Net.Http.HttpClient*` also covers names like `System.Net.Http.HttpClientFactory`, which is accepted). Any other covering rule is left alone and answered with an appended rule, so `Microsoft.AspNetCore.*` at `Debug` still gives `Debug` for `Microsoft.AspNetCore.Routing`. **Refinement of the review request:** when the covering rule has a wildcard with a suffix, the appended category is `F + "*" + suffix` instead of `F`. Reason: `Logging:Console:LogLevel:System.Net.Http.*.LogicalHandler=Debug` is 32 characters and matches `System.Net.Http.HttpClient.Default.LogicalHandler`, so it beats an appended `System.Net.Http.HttpClient` rule (26 characters) and the URI log lines would come back. `F*suffix` matches every logger in the family that the original rule matched and is always at least as long. The sixth row of `SuppressQueryStringLogging_WildcardCaseOrDescendantConfig_EffectiveLevelStaysWarning` proves it. Appends are de-duplicated per (provider, category) within a pass. Provider names are compared case-sensitively because `LoggerRuleSelector` matches a rule's provider name against the provider's type name and alias with an ordinal comparison, so `console` and `Console` are different providers and each needs its own appended rule; folding them would leave the `Console` rule unanswered (`SuppressQueryStringLogging_ProviderRulesDifferOnlyByCase_EffectiveLevelStaysWarning`). |
+| D30 | Performance test isolation | Timing tests ran in `StorageTestGroup` in parallel with the Production and Web collections, so their timings were exposed to noise from other hosts. They now run in `PerformanceTestGroup` with `DisableParallelization = true` and their own Azurite container, after 5 warm-up requests. The per-request budgets (1000, 100 and 50 ms) are unchanged, because the noise came from parallel load and cold paths, not from the code. CI runs Performance tests only on pushes to `main`. |
 
 ## 10. Definition of done for this branch
 

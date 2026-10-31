@@ -8,7 +8,7 @@ using SharpVault.ServiceDefaults;
 
 namespace SharpVault.IntegrationTests.ApiTests;
 
-[Collection(nameof(StorageTestGroup))]
+[Collection(nameof(PerformanceTestGroup))]
 [Trait("Category", "Performance")]
 public sealed class HealthPerformanceTests(ApiTestFactory factory) : BaseIntegrationTest(factory)
 {
@@ -23,9 +23,9 @@ public sealed class HealthPerformanceTests(ApiTestFactory factory) : BaseIntegra
     public async Task HealthEndpoint_FirstUncachedRequest_CompletesUnder1000Milliseconds()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await WarmUpAsync(cancellationToken);
         using var isolated = Factory.WithWebHostBuilder(_ => { });
         using var client = isolated.CreateClient();
+        await WarmUpPathAsync(client, HealthEndpoints.AlivePath, HttpStatusCode.OK, cancellationToken);
         StorageRequests.Clear();
 
         var elapsed = await MeasureAsync(client, HealthEndpoints.HealthPath, cancellationToken);
@@ -40,16 +40,17 @@ public sealed class HealthPerformanceTests(ApiTestFactory factory) : BaseIntegra
     public async Task HealthEndpoint_FiftyCachedRequests_EachCompletesUnder100Milliseconds()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await WarmUpAsync(cancellationToken);
         using var isolated = Factory.WithWebHostBuilder(_ => { });
         using var client = isolated.CreateClient();
-        await client.GetAsync(HealthEndpoints.HealthPath, cancellationToken);
+        await WarmUpPathAsync(client, HealthEndpoints.HealthPath, HttpStatusCode.OK, cancellationToken);
         StorageRequests.Clear();
+        var timings = new List<TimeSpan>();
 
         for (var i = 0; i < 50; i++)
         {
             var elapsed = await MeasureAsync(client, $"{HealthEndpoints.HealthPath}?x={i}", cancellationToken);
-            Assert.True(elapsed < CachedBudget, $"Cached /health request {i} took {elapsed.TotalMilliseconds:F0} ms");
+            timings.Add(elapsed);
+            Assert.True(elapsed < CachedBudget, $"Cached /health request {i} took {elapsed.TotalMilliseconds:F0} ms. {FormatTimings(timings)}");
         }
 
         Assert.Equal(0, StorageRequests.Count);
@@ -60,13 +61,15 @@ public sealed class HealthPerformanceTests(ApiTestFactory factory) : BaseIntegra
     public async Task AliveEndpoint_FiftyRequests_EachCompletesUnder50Milliseconds()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await Client.GetAsync(HealthEndpoints.AlivePath, cancellationToken);
+        await WarmUpPathAsync(Client, HealthEndpoints.AlivePath, HttpStatusCode.OK, cancellationToken);
         StorageRequests.Clear();
+        var timings = new List<TimeSpan>();
 
         for (var i = 0; i < 50; i++)
         {
             var elapsed = await MeasureAsync(Client, HealthEndpoints.AlivePath, cancellationToken);
-            Assert.True(elapsed < AliveBudget, $"/alive request {i} took {elapsed.TotalMilliseconds:F0} ms");
+            timings.Add(elapsed);
+            Assert.True(elapsed < AliveBudget, $"/alive request {i} took {elapsed.TotalMilliseconds:F0} ms. {FormatTimings(timings)}");
         }
 
         Assert.Equal(0, StorageRequests.Count);
@@ -77,13 +80,15 @@ public sealed class HealthPerformanceTests(ApiTestFactory factory) : BaseIntegra
     public async Task UnknownRoute_FiftyAnonymousRequests_EachCompletesUnder100MillisecondsWithoutStorageCalls()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await Client.GetAsync("/does-not-exist", cancellationToken);
+        await WarmUpPathAsync(Client, "/does-not-exist/warmup", HttpStatusCode.Unauthorized, cancellationToken);
         StorageRequests.Clear();
+        var timings = new List<TimeSpan>();
 
         for (var i = 0; i < 50; i++)
         {
             var elapsed = await MeasureAsync(Client, $"/does-not-exist/{i}", cancellationToken, HttpStatusCode.Unauthorized);
-            Assert.True(elapsed < UnknownRouteBudget, $"Unknown route request {i} took {elapsed.TotalMilliseconds:F0} ms");
+            timings.Add(elapsed);
+            Assert.True(elapsed < UnknownRouteBudget, $"Unknown route request {i} took {elapsed.TotalMilliseconds:F0} ms. {FormatTimings(timings)}");
         }
 
         Assert.Equal(0, StorageRequests.Count);
@@ -93,9 +98,9 @@ public sealed class HealthPerformanceTests(ApiTestFactory factory) : BaseIntegra
     public async Task HealthEndpoint_ConcurrentRequestsOnColdCache_MakesAtMostThreeStorageCalls()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await WarmUpAsync(cancellationToken);
         using var isolated = Factory.WithWebHostBuilder(_ => { });
         using var client = isolated.CreateClient();
+        await WarmUpPathAsync(client, HealthEndpoints.AlivePath, HttpStatusCode.OK, cancellationToken);
         StorageRequests.Clear();
 
         var responses = await Task.WhenAll(Enumerable.Range(0, 20)
@@ -110,7 +115,7 @@ public sealed class HealthPerformanceTests(ApiTestFactory factory) : BaseIntegra
     public async Task Startup_DefaultTableSet_CompletesUnder5SecondsWithNoStorageCalls()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await WarmUpAsync(cancellationToken);
+        await WarmUpPathAsync(Client, HealthEndpoints.AlivePath, HttpStatusCode.OK, cancellationToken);
         StorageRequests.Clear();
         var started = Stopwatch.GetTimestamp();
 
@@ -135,9 +140,19 @@ public sealed class HealthPerformanceTests(ApiTestFactory factory) : BaseIntegra
         return elapsed;
     }
 
-    private async Task WarmUpAsync(CancellationToken cancellationToken)
+    private static async Task WarmUpPathAsync(
+        HttpClient client,
+        string path,
+        HttpStatusCode expected,
+        CancellationToken cancellationToken)
     {
-        await Client.GetAsync(HealthEndpoints.HealthPath, cancellationToken);
-        await Client.GetAsync(HealthEndpoints.AlivePath, cancellationToken);
+        for (var i = 0; i < 5; i++)
+        {
+            var response = await client.GetAsync(path, cancellationToken);
+            Assert.Equal(expected, response.StatusCode);
+        }
     }
+
+    private static string FormatTimings(IEnumerable<TimeSpan> timings) =>
+        "Timings (ms): " + string.Join(", ", timings.Select(timing => timing.TotalMilliseconds.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)));
 }

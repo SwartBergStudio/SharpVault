@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using SharpVault.IntegrationTests.Factories;
 using SharpVault.IntegrationTests.Support;
 using SharpVault.ServiceDefaults.Security;
@@ -37,6 +38,27 @@ public sealed partial class WebHostTests(WebTestFactory factory)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync(cancellationToken);
         Assert.Contains("id=\"home-heading\"", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task WebHost_SecretInQueryString_IsNotLogged()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var secret = "query-secret-" + Guid.NewGuid().ToString("N");
+        using var client = factory.CreateWebClient();
+
+        var response = await client.GetAsync($"/does-not-exist?token={secret}", cancellationToken);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        Assert.Contains(
+            factory.Logs.Entries,
+            entry => entry.Category.StartsWith("Microsoft.AspNetCore.", StringComparison.Ordinal) && entry.Level == LogLevel.Debug);
+        Assert.DoesNotContain(
+            factory.Logs.Entries,
+            entry => entry.Category == "Microsoft.AspNetCore.Hosting.Diagnostics" && entry.Level < LogLevel.Warning);
+        Assert.False(factory.Logs.ContainsText(secret), "A captured log entry contained the query string secret.");
     }
 
     [Fact]

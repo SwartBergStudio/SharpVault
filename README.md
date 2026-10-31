@@ -12,12 +12,17 @@ Blazor web app · .NET MAUI mobile and desktop apps · Azure Table Storage · Mi
 [![.NET MAUI](https://img.shields.io/badge/.NET%20MAUI-Mobile-512BD4)](https://dotnet.microsoft.com/apps/maui)
 [![Aspire](https://img.shields.io/badge/Aspire-Local%20dev-512BD4)](https://learn.microsoft.com/dotnet/aspire/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![CI](https://github.com/SwartBergStudio/SharpVault/actions/workflows/ci.yml/badge.svg)](https://github.com/SwartBergStudio/SharpVault/actions/workflows/ci.yml)
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/swartbergstudio)
 
 </div>
 
 ---
 
 > ⚠️ **Status: Early development.** SharpVault has not been independently security-audited. Please don't use it as your only store for important credentials yet.
+>
+> So far the repository contains the solution foundation: the build, local Aspire setup, storage registration, the API and web hosts without features, and CI. The features listed below are planned and not built yet.
 
 ## ✨ Why SharpVault?
 
@@ -71,7 +76,7 @@ The full specification is in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
 ## 🔒 Security model
 
-SharpVault uses **server-side envelope encryption**:
+SharpVault is designed to use **server-side envelope encryption**. The encryption code is not part of the foundation, so this section describes the planned design:
 
 ```
 Secret value ──► AES-256-GCM (unique data key + nonce) ──► Encrypted value ──► Azure Table Storage
@@ -91,19 +96,26 @@ SharpVault follows **Clean Architecture**, with a shared UI layer so web and mob
 
 ```
 SharpVault/
+├── SharpVault.slnx                   # Solution (Linux build and tests)
+├── global.json, Directory.Build.props, Directory.Packages.props
 ├── src/
-│   ├── SharpVault.Domain/            # Entities and core rules
-│   ├── SharpVault.Application/       # Use cases (CQRS requests and handlers)
-│   ├── SharpVault.Infrastructure/    # Table Storage, Key Vault, encryption
-│   ├── SharpVault.Api/               # ASP.NET Core minimal APIs
-│   ├── SharpVault.UI.Shared/         # Razor Class Library (shared components)
-│   ├── SharpVault.Web/               # Blazor web app
-│   ├── SharpVault.Maui/              # .NET MAUI Blazor Hybrid app
+│   ├── SharpVault.Domain/            # Core rules (empty until features add entities)
+│   ├── SharpVault.Application/       # CQRS via SwartBerg.Mediator, mapping, validation
+│   ├── SharpVault.Infrastructure/    # Azure Table Storage registration
+│   ├── SharpVault.Api/               # ASP.NET Core minimal API host
+│   ├── SharpVault.UI.Shared/         # Razor Class Library (shared UI)
+│   ├── SharpVault.Web/               # Blazor web app host
+│   ├── SharpVault.Maui/              # .NET MAUI Blazor Hybrid app (planned in feature/maui-app)
 │   ├── SharpVault.AppHost/           # Aspire orchestration for local development
-│   └── SharpVault.ServiceDefaults/   # OpenTelemetry, health checks, resilience
-└── tests/
-    ├── SharpVault.UnitTests/
-    └── SharpVault.IntegrationTests/
+│   └── SharpVault.ServiceDefaults/   # OpenTelemetry, health checks, security headers
+├── tests/
+│   ├── SharpVault.UnitTests/
+│   ├── SharpVault.IntegrationTests/  # Api and Web hosts with Azurite (Testcontainers)
+│   └── SharpVault.AppHost.Tests/     # Aspire AppHost model tests
+├── eng/
+│   └── CoverageGate.cs               # Coverage threshold check used in CI
+├── docs/                             # Requirements, progress, local development, storage, testing
+└── .github/                          # CI, CodeQL, dependency review and Dependabot
 ```
 
 ## 🛠️ Tech Stack
@@ -112,12 +124,12 @@ SharpVault/
 |--------------|-----------------------------------------------------|
 | Language     | C# / .NET 10                                        |
 | Web UI       | Blazor                                              |
-| Mobile       | .NET MAUI Blazor Hybrid                             |
+| Mobile       | .NET MAUI Blazor Hybrid (planned)                   |
 | API          | ASP.NET Core Minimal APIs, OpenAPI, Scalar          |
 | Application  | SwartBerg.Mediator (CQRS), Mapster, FluentValidation |
 | Storage      | Azure Table Storage (`Azure.Data.Tables`)           |
-| Keys         | Azure Key Vault                                     |
-| Auth         | Microsoft Entra ID (Microsoft.Identity.Web, MSAL)   |
+| Keys         | Azure Key Vault (planned)                           |
+| Auth         | Microsoft Entra ID, Microsoft.Identity.Web (planned) |
 | Local dev    | .NET Aspire with a persistent Azurite container     |
 | Testing      | xUnit, Testcontainers (Azurite), AutoFixture        |
 
@@ -125,9 +137,9 @@ SharpVault/
 
 ### Prerequisites
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Aspire runs Azurite in a container)
-- The .NET MAUI workload (for mobile): `dotnet workload install maui`
-- An Entra ID tenant where you can create app registrations (see `docs/ENTRA-SETUP.md`)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Aspire runs Azurite in a container, and the integration tests start one)
+- An Entra ID tenant, needed once sign-in lands in `feature/entra-sign-in`. Nothing in the foundation needs one.
+- The .NET MAUI workload is not needed yet, because the MAUI project is planned in `feature/maui-app`.
 
 ### Clone and run
 
@@ -137,15 +149,19 @@ cd SharpVault
 dotnet run --project src/SharpVault.AppHost
 ```
 
-The Aspire dashboard opens with the API, the web app and Azurite running. Azurite uses a persistent container and data volume, so your local data survives between debug sessions.
+The Aspire dashboard opens with the API, the web app and Azurite running. Azurite uses a persistent container and data volume, so your local data survives between debug sessions. For the HTTPS profile, run `dotnet dev-certs https --trust` if you get a certificate error.
+
+The web app is a static shell without sign-in. The API answers only `/health` and `/alive` anonymously and returns 401 for every other route until sign-in lands. The OpenAPI document and Scalar are available in Development only.
+
+See [docs/LOCAL-DEV.md](docs/LOCAL-DEV.md) for profiles, wiping local data and coverage commands.
 
 ### Run the tests
 
 ```bash
-dotnet test
+dotnet test SharpVault.slnx --filter "Category!=Performance"
 ```
 
-Integration tests start their own Azurite container with Testcontainers, so Docker must be running.
+Integration tests start their own Azurite container with Testcontainers, so Docker must be running. See [docs/TESTING.md](docs/TESTING.md) for the test projects and helpers.
 
 ## 🗺️ Roadmap
 
@@ -185,5 +201,9 @@ Copyright © 2026 SwartBergStudio
 Built with 💜 and C#
 
 ⭐ If you find SharpVault useful, please give it a star!
+
+☕ Or support development:
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/swartbergstudio)
 
 </div>
