@@ -22,7 +22,7 @@ Blazor web app · .NET MAUI mobile and desktop apps · Azure Table Storage · Mi
 
 > ⚠️ **Status: Early development.** SharpVault has not been independently security-audited. Please don't use it as your only store for important credentials yet.
 >
-> So far the repository contains the solution foundation: the build, local Aspire setup, storage registration, the API and web hosts without features, and CI. It also contains the encryption core (envelope encryption and key wrap providers), which no feature uses yet. The features listed below are planned and not built yet.
+> So far the repository contains the solution foundation (build, local Aspire setup, storage registration, CI), the encryption core (envelope encryption and key wrap providers, which no feature uses yet), Microsoft Entra ID sign-in limited to one tenant with app roles, and the Vault Steel theme. There is no vault, sharing, lock or transfer feature yet. The API has one admin endpoint, a read-only user list. The unticked features below are planned and not built.
 
 ## ✨ Why SharpVault?
 
@@ -59,8 +59,8 @@ The full specification is in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 - [ ] Append-only audit log of every reveal, share, lock and transfer, with search and CSV export
 
 ### Security
-- [ ] AES-256-GCM encryption with a unique key per secret, wrapped by your Azure Key Vault
-- [ ] Microsoft Entra ID sign-in, limited to your tenant, with `SharpVault.Admin` and `SharpVault.User` roles
+- [x] AES-256-GCM encryption with a unique key per secret, wrapped by your Azure Key Vault (encryption core only: no feature stores secrets yet)
+- [x] Microsoft Entra ID sign-in, limited to your tenant, with `SharpVault.Admin` and `SharpVault.User` roles
 - [ ] Managed identity access to Table Storage and Key Vault, no secrets in configuration
 - [ ] Clipboard auto-clear and idle auto-lock
 
@@ -89,7 +89,7 @@ What exists today:
 - AES-256-GCM envelopes (version 1) with a random data key per item. The purpose, item id and owner id are bound to each ciphertext as associated data.
 - A Key Vault key wrap provider (RSA-OAEP-256, through the app's managed identity). It is tested with fakes. Provisioning the vault, the key and the role assignment is part of deployment and is not done yet.
 - A development key wrap provider for local runs. It refuses to run outside the Development environment, and the AppHost generates its key material.
-- Entra ID sign-in is not built yet (`feature/entra-sign-in`). Until it lands, the API rejects every request except `/health` and `/alive`.
+- Entra ID sign-in is built for one tenant. The API accepts only v2 access tokens for its own scope, from the configured tenant, with a `SharpVault.User` or `SharpVault.Admin` role. Every request also checks the user's lock status. Setup is in [docs/ENTRA-SETUP.md](docs/ENTRA-SETUP.md).
 
 Secret values will be decrypted only when a user explicitly reveals or copies them, and every reveal will be audited. That part comes with the vault feature.
 
@@ -104,15 +104,15 @@ SharpVault/
 ├── SharpVault.slnx                   # Solution (Linux build and tests)
 ├── global.json, Directory.Build.props, Directory.Packages.props
 ├── src/
-│   ├── SharpVault.Domain/            # Core rules (empty until features add entities)
-│   ├── SharpVault.Application/       # CQRS via SwartBerg.Mediator, mapping, validation
-│   ├── SharpVault.Infrastructure/    # Azure Table Storage registration, encryption core and key wrap providers
+│   ├── SharpVault.Domain/            # Core rules (user and audit entry types, no methods yet)
+│   ├── SharpVault.Application/       # CQRS via SwartBerg.Mediator, mapping, validation, user access gate
+│   ├── SharpVault.Infrastructure/    # Azure Table Storage (users, audit log), encryption core and key wrap providers
 │   ├── SharpVault.Api/               # ASP.NET Core minimal API host
 │   ├── SharpVault.UI.Shared/         # Razor Class Library (shared UI)
 │   ├── SharpVault.Web/               # Blazor web app host
 │   ├── SharpVault.Maui/              # .NET MAUI Blazor Hybrid app (planned in feature/maui-app)
 │   ├── SharpVault.AppHost/           # Aspire orchestration for local development
-│   └── SharpVault.ServiceDefaults/   # OpenTelemetry, health checks, security headers
+│   └── SharpVault.ServiceDefaults/   # OpenTelemetry, health checks, security headers, Entra identity helpers
 ├── tests/
 │   ├── SharpVault.UnitTests/
 │   ├── SharpVault.IntegrationTests/  # Api and Web hosts with Azurite (Testcontainers)
@@ -120,7 +120,7 @@ SharpVault/
 │   └── SharpVault.Benchmarks/        # BenchmarkDotNet benchmarks for encryption (not a test project)
 ├── eng/
 │   └── CoverageGate.cs               # Coverage threshold check used in CI
-├── docs/                             # Requirements, progress, local development, storage, testing
+├── docs/                             # Requirements, progress, local development, storage, testing, Entra setup, theme
 └── .github/                          # CI and Dependabot
 ```
 
@@ -135,16 +135,17 @@ SharpVault/
 | Application  | SwartBerg.Mediator (CQRS), Mapster, FluentValidation |
 | Storage      | Azure Table Storage (`Azure.Data.Tables`)           |
 | Keys         | Azure Key Vault (provider built, not provisioned)   |
-| Auth         | Microsoft Entra ID, Microsoft.Identity.Web (planned) |
+| Auth         | Microsoft Entra ID, Microsoft.Identity.Web (one tenant, app roles) |
+| Theme        | Vault Steel: CSS tokens, self-hosted Archivo and JetBrains Mono, see [docs/THEME.md](docs/THEME.md) |
 | Local dev    | .NET Aspire with a persistent Azurite container     |
-| Testing      | xUnit, Testcontainers (Azurite), AutoFixture        |
+| Testing      | xUnit, bUnit, Testcontainers (Azurite), AutoFixture |
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Aspire runs Azurite in a container, and the integration tests start one)
-- An Entra ID tenant, needed once sign-in lands in `feature/entra-sign-in`. Nothing in the foundation needs one.
+- An Entra ID tenant with two app registrations, to sign in. The repository ships placeholders only. See [docs/ENTRA-SETUP.md](docs/ENTRA-SETUP.md). The tests do not need a tenant.
 - The .NET MAUI workload is not needed yet, because the MAUI project is planned in `feature/maui-app`.
 
 ### Clone and run
@@ -155,11 +156,11 @@ cd SharpVault
 dotnet run --project src/SharpVault.AppHost
 ```
 
-The Aspire dashboard opens with the API, the web app and Azurite running. Azurite uses a persistent container and data volume, so your local data survives between debug sessions. For the HTTPS profile, run `dotnet dev-certs https --trust` if you get a certificate error.
+The API and the web app read their Entra settings when they start, and they stop with an error if the tenant or client ids are missing. Set them with `dotnet user-secrets` first, as described in [docs/ENTRA-SETUP.md](docs/ENTRA-SETUP.md). After that the Aspire dashboard opens with the API, the web app and Azurite running. Azurite uses a persistent container and data volume, so your local data survives between debug sessions. For the HTTPS profile, run `dotnet dev-certs https --trust` if you get a certificate error.
 
-The web app is a static shell without sign-in. The API answers only `/health` and `/alive` anonymously and returns 401 for every other route until sign-in lands. The OpenAPI document and Scalar are available in Development only.
+The web app has a home page with a sign-in link, an account page, and access-denied, signed-out and sign-in-error pages. The API answers `/health` and `/alive` anonymously, returns 401 without a valid token, and returns 403 for a signed-in caller who has no accepted role or who is locked. The OpenAPI document and Scalar are available in Development only.
 
-See [docs/LOCAL-DEV.md](docs/LOCAL-DEV.md) for profiles, wiping local data and coverage commands.
+See [docs/LOCAL-DEV.md](docs/LOCAL-DEV.md) for profiles, wiping local data and coverage commands, and [docs/THEME.md](docs/THEME.md) for the theme.
 
 ### Run the tests
 

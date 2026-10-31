@@ -27,7 +27,7 @@ Role assignments belong to the deployment work, which is not in this repository 
 
 ## Tables
 
-Tables are listed in `TableNames.All`. The list is empty today, so the foundation creates no tables.
+Tables are listed in `TableNames.All`. Today that is `Users` (one row per user, written on sign-in with ETag concurrency) and `AuditLog` (append-only audit entries). They are created once at startup.
 
 | Table | Partition key | Row key | Purpose |
 |---|---|---|---|

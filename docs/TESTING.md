@@ -4,8 +4,8 @@
 
 | Project | What it tests | Infrastructure |
 |---|---|---|
-| `tests/SharpVault.UnitTests` | Storage guard, table name validation and initializer, Application registration, security headers, ServiceDefaults registration, encryption (`Infrastructure/Encryption`, `Application/Encryption`), and reflection-based architecture tests (`Architecture/LayeringTests.cs`, `Architecture/RepositoryConfigurationTests.cs`). It references Web with the alias `WebApp`. | xUnit, AutoFixture, NSubstitute. No containers. |
-| `tests/SharpVault.IntegrationTests` | API and Web hosts over HTTP, real Azurite, health, authorization, security headers, error handling, logging, tracing, encryption startup and performance. | `WebApplicationFactory`, Testcontainers Azurite, AutoFixture. Docker must be running. |
+| `tests/SharpVault.UnitTests` | Storage guard, table name validation and initializer, Application registration, security headers, ServiceDefaults registration, encryption (`Infrastructure/Encryption`, `Application/Encryption`), user access gate and options (`Application/Users`), guest policy, API token and access checks (`Api/Security`), Web token and credential checks (`Web`), the theme (`UiShared/Theme`, bUnit, source scans, contrast and size budgets), and reflection-based architecture tests (`Architecture/LayeringTests.cs`, `Architecture/RepositoryConfigurationTests.cs`). It references Web with the alias `WebApp`. | xUnit, AutoFixture, NSubstitute, bUnit. No containers. |
+| `tests/SharpVault.IntegrationTests` | API and Web hosts over HTTP, real Azurite, health, authorization matrix, sign-in and token validation with locally signed tokens, lock enforcement, user provisioning, the admin user list, the Web sign-in flow and account pages, security headers, error handling, logging, tracing, encryption startup and performance. | `WebApplicationFactory`, Testcontainers Azurite, AutoFixture. Docker must be running. No Entra ID call. |
 | `tests/SharpVault.AppHost.Tests` | The AppHost model: Azurite lifetime, data volume, image and tag, and the development key material parameter (run mode only, API only). It builds the model with `DistributedApplicationTestingBuilder`, and it does not start the containers. | Aspire.Hosting.Testing. No Docker needed. |
 | `tests/SharpVault.Benchmarks` | BenchmarkDotNet benchmarks for the encryption hot paths. It is not a test project, so `dotnet test` does not run it. See [LOCAL-DEV.md](LOCAL-DEV.md#benchmarks). | BenchmarkDotNet. No containers. |
 
@@ -19,7 +19,8 @@ Integration tests share hosts through xUnit collections, so an expensive host (w
 |---|---|---|---|---|
 | `StorageTestGroup` | `ApiTestFactory` | Development | Azurite container (in-memory persistence) with a `StorageRequestRecorder` attached | Most API tests: health, authorization, security headers, error handling, logging, table startup |
 | `ProductionTestGroup` | `ProductionApiTestFactory` | Production | No Azurite. It uses a fake `https` service URI and removes `TableStorageInitializer`, so it never calls storage | `ProductionHostingTests`: guard startup failures without echoing values, forged and test-header callers get 401 outside Development, no OpenAPI or Scalar routes, strict CSP |
-| `WebTestGroup` | `WebTestFactory` | Development | None | Web host tests: shell, headers, no inline script, error page, query string logging |
+| `WebTestGroup` | `WebTestFactory` | Development | None | Web host tests: shell, headers, no inline script, error page, query string logging, sign-in pages and the account page |
+| `WebApiTestGroup` | `ApiTestFactory` and `WebTestFactory` | Development | Azurite (through `ApiTestFactory`) | One collection that holds both hosts, for tests that need the Web and the API together |
 | `PerformanceTestGroup` | `ApiTestFactory` | Development | Its own Azurite container | Timing tests (`Category=Performance`). `DisableParallelization = true`, after 5 warm-up requests |
 
 The collection classes are named `StorageTestGroup`, `ProductionTestGroup`, `WebTestGroup` and `PerformanceTestGroup`. xUnit's CA1711 rule forbids the `Collection` suffix, so do not rename them to `...Collection`.
@@ -28,10 +29,14 @@ The collection classes are named `StorageTestGroup`, `ProductionTestGroup`, `Web
 
 ## Helpers
 
-- **`TestUsers`** (`Authentication/TestUsers.cs`): named test identities, for example `AuthenticatedWithoutRole`. Each has an object id, display name, tenant id (`TestTenant.Id`) and roles.
-- **`TestAuthenticationHandler`**: the `Test` authentication scheme, registered only in the test host. It reads the caller from the `X-Test-Oid`, `X-Test-Name`, `X-Test-Tid` and `X-Test-Roles` headers. `AddHeaders(client, user)` sets them. It is a test-only type, and the architecture test forbids `AuthenticationHandler` subclasses in production assemblies.
+- **`TestUsers`** and **`TestUser`** (`Authentication/`): named test identities, for example `AuthenticatedWithoutRole`. Each has an object id, display name, tenant id (`TestTenant.Id`) and roles.
+- **`TestSigningKeys`**, **`TestTokens`** and **`TestTokenBuilder`**: locally generated RSA signing keys and v2 access tokens for a `TestUser`. `TestTokens.Create(user)` returns a valid token. `For(user)` returns a builder with `WithClaim`, `WithoutClaim`, `ExpiresAt`, `NotBefore` and `SignedWith` for tampering tests. The tokens are validated by the real JwtBearer and Microsoft.Identity.Web pipeline.
+- **`TestIdentityProvider`**: sets the tenant-specific issuer and a static OpenID configuration for the API and the Web, so no test reaches Entra ID or the network. `TestApi` holds the API client id and scope, and `TestWebApp` holds the Web's.
+- **`SpoofedTestHeaders`**: sends the old `X-Test-Oid`, `X-Test-Name`, `X-Test-Tid` and `X-Test-Roles` headers. Nothing reads them, so a caller that only sends them must get 401.
 - **`CallerKind` and `CallerClients`**: the authorization matrix. `CallerKind` lists the callers (`Anonymous`, `AuthenticatedWithoutRole`, `AlgNoneToken`, `UnknownKeyToken`, and more). `CallerClients.CreateFor` builds a client for each.
-- **`ForgedTokens`**: `AlgNone()` builds an unsigned `alg: none` token, and `SignedWithUnknownKey()` builds a token signed with a key the API does not trust. Both must get 401.
+- **`ForgedTokens`**: `AlgNone()` builds an unsigned `alg: none` token, and `SignedWithUnknownKey()` builds a token signed with a key the API does not trust. Both must get 401. **`TamperedTokens`** (`Support/`) covers other edited tokens.
+- **`FakeTokenAcquisition`** (`Support/`): a fake `ITokenAcquisition` for the Web, so Web tests never call Entra ID for a downstream token. **`TestCookieSignInStartupFilter`** adds a test-only `/test/sign-in` route to the Web host, and **`WebSignIn.CreateClientAsync`** uses it to build a client with a signed-in session cookie.
+- **`ThrowingUserStore`**, **`InterleavingUserStore`** and **`ThrowingAuditLog`** (`Support/`): failure injection and race simulation for the user access gate.
 - **`StorageRequestRecorder`**: an `HttpPipelinePolicy` that the factory adds to the Azure client. It records every storage request. Use `Count` for call counts, `Requests` for details, `Clear()` between steps, and `QueriesWithoutPartitionKey()` to find table scans. `RecordedStorageRequest.IsEntityQuery` and `HasPartitionKeyCondition` drive the check.
 - **`CapturingLoggerProvider`**: captures every log entry (`Entries`, with category, level, message and exception). `ContainsText(value)` checks the captured text. Use it to prove that secrets, tokens and query strings never reach logs.
 - **`ActivityRecorder`** and **`RecordedActivity`**: capture ASP.NET Core and HttpClient activities and their tags, for example `url.query` and `url.full`.
@@ -50,6 +55,11 @@ The collection classes are named `StorageTestGroup`, `ProductionTestGroup`, `Web
 - **`PerformanceKeyVaultHandler`**: an in-process Key Vault factory and HTTP handler for the Key Vault performance tests. It makes no network call.
 - **`EncryptionMessageText`** (unit and integration): copies of the exact messages from `EncryptionMessages`, so tests compare messages without trusting the production constants.
 - **`TestEncryptionOptions`**: builds options with random development key material.
+
+### Theme helpers
+
+- `tests/SharpVault.UnitTests/UiShared/Theme/` holds the theme tests. They run in every pull request. `ThemeContrastTests` computes the contrast ratios from `app.css`, and `ThemeSourceScanTests` enforces the CSP rules in [THEME.md](THEME.md#content-security-policy).
+- Run only the theme and component tests with `dotnet test SharpVault.slnx --filter "FullyQualifiedName~UiShared"`.
 
 No test calls a live Azure service. Key Vault behaviour is tested with the fakes above. A manual smoke test against a real vault is documented in [ENCRYPTION.md](ENCRYPTION.md#local-development).
 
