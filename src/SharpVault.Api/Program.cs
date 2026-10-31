@@ -1,6 +1,7 @@
 // SharpVault - Copyright (c) SwartBergStudio.
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
+using SharpVault.Api.Endpoints;
 using SharpVault.Api.Errors;
 using SharpVault.Api.OpenApi;
 using SharpVault.Api.Security;
@@ -29,6 +30,8 @@ app.UseAuthorization();
 app.UseOutputCache();
 
 app.MapApiDocumentation();
+app.MapMeEndpoints();
+app.MapAdminUserEndpoints();
 app.MapDefaultEndpoints();
 
 await app.RunAsync();
