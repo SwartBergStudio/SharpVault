@@ -14,6 +14,8 @@ Blazor web app · .NET MAUI mobile and desktop apps · Azure Table Storage · Mi
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![CI](https://github.com/SwartBergStudio/SharpVault/actions/workflows/ci.yml/badge.svg)](https://github.com/SwartBergStudio/SharpVault/actions/workflows/ci.yml)
 
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/swartbergstudio)
+
 </div>
 
 ---
@@ -199,5 +201,9 @@ Copyright © 2026 SwartBergStudio
 Built with 💜 and C#
 
 ⭐ If you find SharpVault useful, please give it a star!
+
+☕ Or support development:
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/swartbergstudio)
 
 </div>
