@@ -335,8 +335,11 @@ Namespace `SharpVault.ServiceDefaults.Identity`. The Api and the Web both use th
 
    ```
    now = timeProvider.GetUtcNow()
-   if cache.TryGet(user.UserId, out cached) and not IsSignInDue(cached.LastSignInAt, now):
-       return Decide(cached.Status)
+   if cache.TryGet(user.UserId, out cached):
+       if cached.Status != Active:
+           return Denied                                          (no storage read, no write, even when a sign-in is due; D33)
+       if not IsSignInDue(cached.LastSignInAt, now):
+           return Allowed
    stored = await users.GetAsync(user.UserId)
    if stored is null:
        return await ProvisionAsync(user, now)
@@ -374,6 +377,7 @@ Namespace `SharpVault.ServiceDefaults.Identity`. The Api and the Web both use th
 
    - The user row is written **before** the audit entry. The ETag (on replace) or the insert conflict (on add) makes exactly one concurrent request the winner, and only the winner writes the audit entry. A lock written between the read and the replace makes the replace fail with `Conflict`, so the lock is never overwritten and no sign-in is recorded.
    - The gate never catches storage exceptions except to log and rethrow the audit failure. Nothing is cached after an exception.
+   - A cached entry that is not `Active` is denied straight from the cache, **before** `IsSignInDue` is evaluated: no `GetAsync`, no `AddAsync`, no `ReplaceAsync` and no `AppendAsync`, whatever `LastSignInAt` is. Only a cached `Active` entry goes through the `IsSignInDue` path. A locked user's `LastSignInAt` is never updated (D30), so without this rule every request after the sign-in interval would miss the cache and read storage (D33). The cache TTL still bounds how long an unlock takes to be seen.
    - Log messages (`[LoggerMessage]`, user id only): `LogUserProvisioned` (Information, `"User {UserId} provisioned"`), `LogSignInRecorded` (Information), `LogLockedUserDenied` (Warning, `"Access denied for locked user {UserId}"`), `LogSignInWriteConflict` (Debug), and `LogSignInAuditFailed` (Error, with the exception).
    - Add `UserRowMissing` = `"The user row disappeared during the access check."` to `UserAccessMessages`.
 3. `Features/Tenancy/ConfiguredGuestAccessPolicy.cs`: `public sealed class ConfiguredGuestAccessPolicy(IOptionsMonitor<TenancyOptions> options) : IGuestAccessPolicy`, which returns `ValueTask.FromResult(options.CurrentValue.AllowGuests)`.
@@ -947,6 +951,7 @@ Every threat has at least one named test in section 7. Assume each one exists un
 | A12 | An admin sees vault data of others (VIS-2) | The list DTO holds only directory data, status and last sign-in | `AdminUsers_Response_ContainsOnlyDirectoryAndStatusFields` |
 | A13 | A future endpoint forgets a policy | Fallback and default are the User policy; the inventory test requires an explicit SharpVault policy | `Endpoints_EveryRoute_IsAllowListedAnonymousOrHasExplicitPolicy`, `FallbackPolicy_Configured_RequiresSharpVaultUserAccess` |
 | A14 | The gate runs twice per request (storage amplification) | Decision memoized in `HttpContext.Items` | `GetMe_CacheDisabled_MakesExactlyOneUsersReadPerRequest`, `HandleRequirementAsync_TwoRequirementsSameRequest_CallsGateOnce` |
+| A15 | Locked account storage-read amplification: a locked user's `LastSignInAt` never advances (D30), so once the sign-in interval has passed every request with a valid token would bypass the cache and point-read `Users` | A cached non-`Active` entry is denied from the cache before `IsSignInDue` is checked, with no storage read and no sign-in write; the cache TTL bounds unlock latency (D33) | `CheckAsync_CachedLockedUserAfterSignInInterval_DeniesWithoutStorageCalls` |
 
 ### 6.3 Input, denial of service and audit
 
@@ -1043,6 +1048,7 @@ Also in this file:
 - `CheckAsync_LockedAfterCaching_DeniedOnceTtlExpires` (S, A7): advance by TTL + 1 ms.
 - `CheckAsync_Invalidated_ReadsFreshStatus` (S, A7)
 - `CheckAsync_CachedButSignInDue_ReadsAndRecords`
+- `CheckAsync_CachedLockedUserAfterSignInInterval_DeniesWithoutStorageCalls` (S, A15): the store returns a `Locked` row whose `LastSignInAt` is now minus 2 hours (older than `SignInRecordInterval`). The first call reads it and caches it. Clear the substitutes' received calls, advance the clock by 1 s (inside the TTL), and call again: the result is `Denied`, and `GetAsync`, `AddAsync`, `ReplaceAsync` and `AppendAsync` each received 0 calls.
 - `CheckAsync_StoreThrows_DoesNotCacheAndPropagates` (S, A8)
 - `CheckAsync_AuditAppendThrows_LogsErrorAndPropagates`
 - `CheckAsync_TwoUsers_DoNotShareCacheEntries` (S)
@@ -1408,7 +1414,8 @@ Measured against Azurite in `PerformanceTestGroup` after 5 warm-up requests. Sto
 | Operation | Budget | Storage calls |
 |---|---|---|
 | Any request denied before the gate (anonymous, forged, wrong tenant or audience, app-only, no role, guest) | under 50 ms | **0** |
-| Authorized request, cache hit, sign-in not due (Active or Locked) | under 50 ms | **0** |
+| Authorized request, cache hit, Active, sign-in not due | under 50 ms | **0** |
+| Authorized request, cache hit, Locked (whether or not a sign-in is due) | under 50 ms | **0**: denied from the cache, no read and no sign-in write (D33) |
 | Authorized request, cache miss or disabled, sign-in not due | under 200 ms | **1** point read on `Users` |
 | First request of a new user | under 500 ms | **3**: point read (404), `Users` insert, `AuditLog` insert |
 | Sign-in due (once per `SignInRecordInterval`, default 1 h) | under 500 ms | **3**: point read, `Users` replace with ETag, `AuditLog` insert |
@@ -1458,6 +1465,7 @@ Measured against Azurite in `PerformanceTestGroup` after 5 warm-up requests. Sto
 | D30 | Locked users and audit | A locked user's request writes nothing (no `LastSignInAt` and no `SignIn` entry). The denial is logged at Warning with the user id. Auditing denied attempts is a sensible addition for `feature/user-lock` (PROGRESS follow-up). AUD-2 does not list it. |
 | D31 | LCK-3 "ends sessions" | Out of scope. With this feature, a locked user's Web cookie stays valid, but every page that needs data gets 403 from the API and shows access denied. `feature/user-lock` should add session revocation (Graph `revokeSignInSessions` and a Web-side check). This is a PROGRESS follow-up. |
 | D32 | Email semantics | `Email` is the `email` claim, otherwise `preferred_username` when it contains `@`. It is for display and search only. It can be unverified or changed by a tenant admin, so it never identifies a user, never authorizes, and `ICurrentUser` does not expose it (A11). |
+| D33 | Cached locked users and the sign-in interval | **In `UserAccessGate`, a cached entry that is not `Active` is denied directly from the cache, with no storage read and no sign-in write, regardless of whether a sign-in is due. Only cached `Active` entries go through the `IsSignInDue` path.** Reason: a locked user's `LastSignInAt` is never updated (D30), so if the sign-in check ran first, a locked user would cause one storage read per request after the sign-in interval (read amplification on the single `user` partition, A15). The cache TTL (default 5 s, at most 30 s) still bounds unlock latency. |
 
 ## 10. Definition of done for this branch
 
