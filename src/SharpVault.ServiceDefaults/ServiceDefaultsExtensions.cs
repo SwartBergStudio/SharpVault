@@ -100,7 +100,7 @@ public static class ServiceDefaultsExtensions
 
     private static void RaiseFamily(LoggerFilterOptions options, string family)
     {
-        var appendedProviders = new HashSet<string?>(StringComparer.OrdinalIgnoreCase);
+        var appended = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var originalCount = options.Rules.Count;
         for (var index = 0; index < originalCount; index++)
         {
@@ -111,22 +111,32 @@ public static class ServiceDefaultsExtensions
             }
 
             var prefix = RulePrefix(rule.CategoryName);
-            if (!family.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                && !prefix.StartsWith(family, StringComparison.OrdinalIgnoreCase))
+            var coversFamily = rule.CategoryName is null
+                || family.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                || prefix.StartsWith(family, StringComparison.OrdinalIgnoreCase);
+            if (!coversFamily)
             {
                 continue;
             }
 
-            if (prefix.Length >= family.Length)
+            if (IsFamilyOrDescendant(prefix, family))
             {
                 options.Rules[index] = new LoggerFilterRule(rule.ProviderName, rule.CategoryName, LogLevel.Warning, rule.Filter);
+                continue;
             }
-            else if (appendedProviders.Add(rule.ProviderName))
+
+            var suffix = RuleSuffix(rule.CategoryName);
+            var appendedCategory = suffix.Length == 0 ? family : family + "*" + suffix;
+            if (appended.Add($"{rule.ProviderName}\n{appendedCategory}"))
             {
-                options.Rules.Add(new LoggerFilterRule(rule.ProviderName, family, LogLevel.Warning, null));
+                options.Rules.Add(new LoggerFilterRule(rule.ProviderName, appendedCategory, LogLevel.Warning, null));
             }
         }
     }
+
+    private static bool IsFamilyOrDescendant(string prefix, string family) =>
+        prefix.Equals(family, StringComparison.OrdinalIgnoreCase)
+        || prefix.StartsWith(family + ".", StringComparison.OrdinalIgnoreCase);
 
     private static string RulePrefix(string? categoryName)
     {
@@ -137,6 +147,17 @@ public static class ServiceDefaultsExtensions
 
         var wildcardIndex = categoryName.IndexOf('*', StringComparison.Ordinal);
         return wildcardIndex < 0 ? categoryName : categoryName[..wildcardIndex];
+    }
+
+    private static string RuleSuffix(string? categoryName)
+    {
+        if (categoryName is null)
+        {
+            return string.Empty;
+        }
+
+        var wildcardIndex = categoryName.IndexOf('*', StringComparison.Ordinal);
+        return wildcardIndex < 0 ? string.Empty : categoryName[(wildcardIndex + 1)..];
     }
 
     private static string? WithoutQuery(Uri? uri) =>
