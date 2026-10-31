@@ -1,7 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <UserSecretsId>eaf4784d-acb3-4af7-a406-e61db7cdc3a3</UserSecretsId>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Identity.Web" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../SharpVault.UI.Shared/SharpVault.UI.Shared.csproj" />
     <ProjectReference Include="../SharpVault.ServiceDefaults/SharpVault.ServiceDefaults.csproj" />

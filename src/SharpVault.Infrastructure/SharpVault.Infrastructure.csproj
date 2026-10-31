@@ -3,7 +3,11 @@
     <PackageReference Include="Aspire.Azure.Data.Tables" />
     <PackageReference Include="Azure.Data.Tables" />
     <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="SharpVault.UnitTests" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../SharpVault.Application/SharpVault.Application.csproj" />

@@ -1,8 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <UserSecretsId>cc2c3932-17c4-4016-8b79-7a368cbb5f86</UserSecretsId>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Scalar.AspNetCore" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Microsoft.Identity.Web" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../SharpVault.Application/SharpVault.Application.csproj" />
