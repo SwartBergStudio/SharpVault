@@ -1,0 +1,5 @@
+# Normalise line endings in the repository; Windows checkouts get CRLF where tools expect it
+* text=auto eol=lf
+*.sln text eol=crlf
+*.{cmd,bat,ps1} text eol=crlf
+*.{png,jpg,jpeg,gif,ico,svg,woff,woff2,ttf,pfx,snk} binary
