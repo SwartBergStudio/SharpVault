@@ -6,8 +6,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SharpVault.ServiceDefaults;
 
@@ -152,6 +154,46 @@ public sealed class ServiceDefaultsExtensionsTests
         var returned = app.MapDefaultEndpoints();
 
         Assert.Same(app, returned);
+    }
+
+    [Theory]
+    [Trait("Category", "Security")]
+    [InlineData("Microsoft.AspNetCore.Hosting.Diagnostics")]
+    [InlineData("System.Net.Http.HttpClient")]
+    public void SuppressQueryStringLogging_Registered_FiltersHostingDiagnosticsAndHttpClientBelowWarning(string category)
+    {
+        using var app = BuildApp();
+
+        var rules = app.Services.GetRequiredService<IOptions<LoggerFilterOptions>>().Value.Rules;
+
+        Assert.Contains(rules, rule =>
+            rule.ProviderName is null
+            && rule.CategoryName == category
+            && rule.LogLevel == LogLevel.Warning);
+    }
+
+    [Theory]
+    [Trait("Category", "Security")]
+    [InlineData("Microsoft.AspNetCore.Hosting.Diagnostics")]
+    [InlineData("System.Net.Http.HttpClient")]
+    public void SuppressQueryStringLogging_ProviderSpecificConfigLowersLevel_EffectiveLevelStaysWarning(string category)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Logging:Console:LogLevel:Microsoft.AspNetCore.Hosting.Diagnostics"] = "Information",
+            ["Logging:Console:LogLevel:System.Net.Http.HttpClient"] = "Debug",
+            ["Logging:OpenTelemetry:LogLevel:Microsoft.AspNetCore.Hosting.Diagnostics"] = "Information",
+            ["Logging:OpenTelemetry:LogLevel:System.Net.Http.HttpClient"] = "Debug",
+        });
+        builder.AddServiceDefaults();
+        using var app = builder.Build();
+
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(category);
+
+        Assert.False(logger.IsEnabled(LogLevel.Information));
+        Assert.False(logger.IsEnabled(LogLevel.Debug));
+        Assert.True(logger.IsEnabled(LogLevel.Warning));
     }
 
     private static bool IsOutputCachePolicy(object metadata) =>

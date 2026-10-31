@@ -124,6 +124,46 @@ public sealed class HealthEndpointTests(ApiTestFactory factory) : BaseIntegratio
 
     [Fact]
     [Trait("Category", "Security")]
+    public async Task HealthEndpoint_RandomHostHeaders_MakesOneStorageCall()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var isolated = CreateIsolatedFactory();
+        using var client = isolated.CreateClient();
+        StorageRequests.Clear();
+
+        for (var i = 0; i < 20; i++)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, HealthEndpoints.HealthPath);
+            request.Headers.Host = $"h{Guid.NewGuid():N}.example";
+            var response = await client.SendAsync(request, cancellationToken);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        Assert.Equal(1, StorageRequests.Count);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task HealthEndpoint_RandomHostHeadersAndQueryStrings_MakesOneStorageCall()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var isolated = CreateIsolatedFactory();
+        using var client = isolated.CreateClient();
+        StorageRequests.Clear();
+
+        for (var i = 0; i < 20; i++)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, $"{HealthEndpoints.HealthPath}?x={Guid.NewGuid()}");
+            request.Headers.Host = $"h{Guid.NewGuid():N}.example";
+            var response = await client.SendAsync(request, cancellationToken);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        Assert.Equal(1, StorageRequests.Count);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
     public async Task HealthEndpoint_HeadRequests_MakeOneStorageCall()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

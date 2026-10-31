@@ -41,6 +41,22 @@ public sealed partial class WebHostTests(WebTestFactory factory)
 
     [Fact]
     [Trait("Category", "Security")]
+    public async Task WebHost_SecretInQueryString_IsNotLogged()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var secret = "query-secret-" + Guid.NewGuid().ToString("N");
+        using var client = factory.CreateWebClient();
+
+        var response = await client.GetAsync($"/does-not-exist?token={secret}", cancellationToken);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        Assert.NotEmpty(factory.Logs.Entries);
+        Assert.False(factory.Logs.ContainsText(secret), "A captured log entry contained the query string secret.");
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
     public async Task HomePage_Response_HasWebSecurityHeaders()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
