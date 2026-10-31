@@ -16,6 +16,16 @@ var api = builder.AddProject<Projects.SharpVault_Api>(AppHostResourceNames.Api)
     .WaitFor(tables)
     .WithHttpHealthCheck(AppHostResourceNames.HealthPath);
 
+if (builder.ExecutionContext.IsRunMode)
+{
+    var developmentKeyMaterial = builder.AddParameter(
+        AppHostResourceNames.DevelopmentKeyMaterial,
+        new GenerateParameterDefault { MinLength = AppHostResourceNames.DevelopmentKeyMaterialLength, Special = false },
+        secret: true,
+        persist: true);
+    api.WithEnvironment(AppHostResourceNames.DevelopmentKeyMaterialVariable, developmentKeyMaterial);
+}
+
 builder.AddProject<Projects.SharpVault_Web>(AppHostResourceNames.Web)
     .WithExternalHttpEndpoints()
     .WithReference(api)

@@ -27,6 +27,18 @@ This starts the Aspire AppHost with these resources:
 
 The launch profiles in `src/SharpVault.AppHost/Properties/launchSettings.json` set `ASPNETCORE_ENVIRONMENT` to `Development`, so the API serves OpenAPI at `/openapi/v1.json` and Scalar at `/scalar`.
 
+## Development encryption key
+
+In run mode the AppHost adds a secret parameter, `development-key-material`, and passes it to `api` as `Encryption__DevelopmentKeyMaterial`. The API then wraps data keys with the development key provider, which only runs in the Development environment. The AppHost generates the value once, with 64 characters, and stores it in the AppHost user secrets under `Parameters:development-key-material`. Later runs reuse it, so data in the persistent Azurite volume stays readable.
+
+Publish mode declares no parameter, and the web app receives no encryption settings. To reset the key, remove it together with the local data, because data encrypted with the old key cannot be decrypted with a new one:
+
+```bash
+dotnet user-secrets remove Parameters:development-key-material --project src/SharpVault.AppHost
+```
+
+Then wipe the Azurite volume as described in [Wipe local data](#wipe-local-data). The design and the Key Vault setup are in [ENCRYPTION.md](ENCRYPTION.md).
+
 Profiles:
 
 - `https` (the default): dashboard at `https://localhost:17260`.
@@ -93,10 +105,22 @@ The test projects, collections and helpers are described in [TESTING.md](TESTING
 dotnet test SharpVault.slnx -c Release --filter "Category!=Performance" --settings tests/coverage.runsettings --collect "XPlat Code Coverage" --results-directory TestResults
 dotnet tool restore
 dotnet reportgenerator "-reports:TestResults/**/coverage.cobertura.xml" "-targetdir:TestResults/coverage" "-reporttypes:Cobertura"
-dotnet run eng/CoverageGate.cs -- TestResults/coverage/Cobertura.xml SharpVault.Application=80 SharpVault.Infrastructure=80
+dotnet run eng/CoverageGate.cs -- TestResults/coverage/Cobertura.xml SharpVault.Application=80 SharpVault.Infrastructure=80 SharpVault.Domain.Encryption=95 SharpVault.Infrastructure.Encryption=95
 ```
 
-`eng/CoverageGate.cs` fails the command when a namespace prefix is below its threshold. ReportGenerator cannot enforce thresholds itself.
+The thresholds are 80% for `SharpVault.Application` and `SharpVault.Infrastructure`, and 95% for the encryption namespaces `SharpVault.Domain.Encryption` and `SharpVault.Infrastructure.Encryption`. `eng/CoverageGate.cs` fails the command when a namespace prefix is below its threshold. ReportGenerator cannot enforce thresholds itself. The benchmark project is excluded from coverage in `tests/coverage.runsettings`.
+
+## Benchmarks
+
+`tests/SharpVault.Benchmarks` contains BenchmarkDotNet benchmarks for the encryption hot paths: `Encrypt`, `Decrypt` and `ReEncrypt` on 32 bytes, 1 KiB and 32 KiB, and `CreateDataKey`, `OpenDataKey` and `RewrapDataKey` on the development provider. The Key Vault paths are network bound and are covered by call-count tests instead.
+
+Run them in Release, with the short job for real numbers:
+
+```bash
+dotnet run -c Release --project tests/SharpVault.Benchmarks -- --filter '*' --job short
+```
+
+The benchmark project is not a test project. `dotnet test` does not run it. Pull requests that touch these paths paste the before and after tables into the description. CI runs `--job dry` as a smoke test on pushes to `main`. The run fails only when a benchmark fails, and the results are not compared.
 
 ## Vulnerable packages
 
