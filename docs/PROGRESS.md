@@ -7,7 +7,7 @@ This file tracks what is done, what is in progress and what comes next, so each 
 - Repository setup: README, AGPL-3.0 license, CLAUDE.md conventions, CODEOWNERS, SECURITY.md,
   CONTRIBUTING.md, issue and pull request templates, .editorconfig with license header, .gitattributes.
 - Claude setup: project skills in `.claude/skills/` and planner, implementer, test-writer, reviewer and docs-writer agents in `.claude/agents/`.
-- Solution foundation (`feature/solution-foundation`, pull request pending review), no requirement id:
+- Solution foundation (`feature/solution-foundation`, pull request SwartBergStudio/SharpVault#4), no requirement id:
   - Solution `SharpVault.slnx`, `global.json` (SDK 10.0.100, Aspire SDK 13.6.4), `Directory.Build.props` (warnings as errors, analyzers, NuGet audit) and `Directory.Packages.props` (central package management).
   - Projects: Domain (empty), Application (Mediator, Mapster and FluentValidation registration), Infrastructure (Table Storage registration), ServiceDefaults, Api, UI.Shared, Web (static shell, no authentication yet), AppHost, and the test projects `SharpVault.UnitTests`, `SharpVault.IntegrationTests` and `SharpVault.AppHost.Tests`.
   - Aspire AppHost that runs the API and the web app against a persistent Azurite container (`WithDataVolume()` and `ContainerLifetime.Persistent`).
@@ -18,16 +18,23 @@ This file tracks what is done, what is in progress and what comes next, so each 
   - Query strings kept out of request logs, HttpClient logs and trace tags, by code in ServiceDefaults rather than by package defaults.
   - Test infrastructure: Testcontainers Azurite factories and collections, test authentication handler, forged token helpers, storage request recorder (call counts and queries without a partition key), log capture, trace capture, reflection-based layering tests.
   - CI on GitHub Actions: build with warnings as errors, tests, coverage gate (Application and Infrastructure at 80%), vulnerable package check, CodeQL, dependency review and Dependabot.
+- Encryption core (`feature/encryption-core`, stacked on `feature/solution-foundation`, pull request to follow), requirement ids CLAUDE.md Encryption, SEC-2, SEC-3, SEC-5, TRF-6, TRF-7, OTL-3, AUD-3:
+  - AES-256-GCM envelope format version 1 (32 KiB plaintext cap) with associated data that binds purpose, item id and owner id. Versions `0x80` to `0xFF` are rejected by the server.
+  - Session API (`IEnvelopeEncryptor`, `IDataKeySession`): create or open a data key once per request, encrypt, decrypt, `ReEncrypt` for a new owner without creating a string, and zero the key on dispose.
+  - `IKeyWrapProvider` with two providers: Azure Key Vault (RSA-OAEP-256, versioned key ids, host and key pinning, no Key Vault call at construction) and a development provider (HKDF and AES-GCM, Development only, refused at four layers).
+  - `RewrapDataKeyAsync` for key rotation. The rewrap job itself is not built.
+  - Configuration `Encryption:Provider`, `Encryption:KeyVaultKeyId` and `Encryption:DevelopmentKeyMaterial`, with startup guards and an AppHost parameter that generates the development key material in run mode.
+  - `tests/SharpVault.Benchmarks` (BenchmarkDotNet), unit, integration and performance tests, and the encryption coverage gates (95%).
+  - Documentation in `docs/ENCRYPTION.md`. Nothing stores a secret yet.
 
 ## In progress
 
-- `feature/encryption-core`, stacked on `feature/solution-foundation`: implemented and under review. Scope: AES-256-GCM envelope encryption, `IKeyWrapProvider` with Key Vault and development providers, unit tests, and the `SharpVault.Benchmarks` project.
+- `feature/entra-sign-in`, branched from `feature/solution-foundation`: planning. Scope: Entra ID for API and web, single tenant, app roles, `ICurrentUser`, users table and the lock check on every request.
 
 ## Next
 
 The product specification is `docs/REQUIREMENTS.md`. Build in this order, one `feature/{name}` branch and pull request each:
 
-3. `feature/entra-sign-in`: Entra ID for API and web, single-tenant and guest checks, app roles, `ICurrentUser`, users table, lock check on every request (TEN, LCK-1).
 4. `feature/vault-and-folders`: secrets, folders, reveal and copy auditing, password generator, history, recycle bin (SEC, FLD).
 5. `feature/sharing`: shares with colleagues, folder shares, directory search (SHR).
 6. `feature/one-time-links`: one-time share links with fragment keys and browser decryption (OTL).
@@ -42,9 +49,14 @@ The product specification is `docs/REQUIREMENTS.md`. Build in this order, one `f
 - Pin GitHub Actions to commit SHAs instead of major tags (D19). Dependabot keeps the tags current until then.
 - `feature/maui-app`: add `SharpVault.Maui`, add `SharpVault.Linux.slnf` (every project except Maui), switch the Linux CI job to the filter, and add a macOS or Windows job with the MAUI workload (D1).
 - Deployment feature: configure HTTPS-only ingress. The foundation has no HTTPS redirect or HSTS on purpose (D9).
+- Deployment feature: provision the Key Vault key, the role assignment (Key Vault Crypto User) and `Encryption__KeyVaultKeyId` for each environment (see `docs/ENCRYPTION.md`).
 - `feature/entra-sign-in`: decide whether the fallback policy also requires a SharpVault role (D4), and review `form-action 'self'` for the OIDC sign-out form (D21).
 - First interactive UI feature: set up Playwright and the `WebTestFactory` E2E support (D23).
 - Decide on pull request SwartBergStudio/SharpVault#3 (Buy Me A Coffee badge). The README on this branch has no such badge.
+- Key rewrap maintenance job using `RewrapDataKeyAsync` (D8). Old Key Vault key versions must stay enabled until it has migrated every wrapped key.
+- `feature/vault-and-folders` or `feature/offboarding-transfers`, whichever comes first: decide the data key per field (D5) and how TRF-7 moves metadata fields between owners (D5a). `ReEncrypt` works only within one session, so it cannot move a field from the source user's metadata key to the target user's key. Record the choice in the plan. See `docs/ENCRYPTION.md`.
+- `feature/vault-and-folders`: give every history entry its own item id (D24), so a history envelope cannot replace the current value.
+- Ask to allow learn.microsoft.com in the session to confirm Key Vault throttling limits (D27).
 
 **Local environment notes**
 
