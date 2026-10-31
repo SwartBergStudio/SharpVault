@@ -100,7 +100,7 @@ public static class ServiceDefaultsExtensions
 
     private static void RaiseFamily(LoggerFilterOptions options, string family)
     {
-        var appended = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var appended = new HashSet<(string? ProviderName, string Category)>();
         var originalCount = options.Rules.Count;
         for (var index = 0; index < originalCount; index++)
         {
@@ -127,7 +127,7 @@ public static class ServiceDefaultsExtensions
 
             var suffix = RuleSuffix(rule.CategoryName);
             var appendedCategory = suffix.Length == 0 ? family : family + "*" + suffix;
-            if (appended.Add($"{rule.ProviderName}\n{appendedCategory}"))
+            if (appended.Add((rule.ProviderName, appendedCategory.ToUpperInvariant())))
             {
                 options.Rules.Add(new LoggerFilterRule(rule.ProviderName, appendedCategory, LogLevel.Warning, null));
             }
