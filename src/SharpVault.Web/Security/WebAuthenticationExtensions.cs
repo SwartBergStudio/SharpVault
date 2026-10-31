@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Identity.Web;
 using Microsoft.Identity.Web.TokenCacheProviders.Distributed;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using SharpVault.ServiceDefaults.Identity;
 using SharpVault.UI.Shared.Navigation;
@@ -51,6 +52,11 @@ public static class WebAuthenticationExtensions
     internal static void ConfigureOpenIdConnect(OpenIdConnectOptions options, EntraApplicationSettings entra)
     {
         options.MapInboundClaims = false;
+        if (options.TokenHandler is JsonWebTokenHandler tokenHandler)
+        {
+            tokenHandler.MapInboundClaims = false;
+        }
+
         options.TokenValidationParameters.NameClaimType = EntraClaimTypes.Name;
         options.TokenValidationParameters.RoleClaimType = EntraClaimTypes.Roles;
         options.TokenValidationParameters.ValidIssuers = [entra.V2Issuer];

@@ -7,8 +7,6 @@ namespace SharpVault.ServiceDefaults.Identity;
 
 public static class EntraTokenChecks
 {
-    private const string GuidFormat = "D";
-
     public static TokenCheckResult CheckAccessToken(ClaimsPrincipal? principal, EntraApplicationSettings settings, string requiredScope)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -58,7 +56,7 @@ public static class EntraTokenChecks
     {
         value = Guid.Empty;
         var claims = principal.FindAll(claimType).Take(2).ToArray();
-        return claims.Length == 1 && Guid.TryParseExact(claims[0].Value, GuidFormat, out value);
+        return claims.Length == 1 && CanonicalGuid.TryParse(claims[0].Value, out value);
     }
 
     private static bool HasScope(ClaimsPrincipal principal, string requiredScope)

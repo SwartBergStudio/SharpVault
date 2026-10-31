@@ -58,9 +58,9 @@ public sealed partial class SharpVaultApiClient(
             {
                 case HttpStatusCode.OK:
                     var profile = await response.Content.ReadFromJsonAsync<CurrentUserProfile>(cancellationToken);
-                    return profile is null
+                    return !IsValidProfile(profile)
                         ? ApiResponse<CurrentUserProfile>.Failed()
-                        : ApiResponse<CurrentUserProfile>.Success(profile);
+                        : ApiResponse<CurrentUserProfile>.Success(profile!);
                 case HttpStatusCode.Unauthorized:
                     return ApiResponse<CurrentUserProfile>.SignInRequired();
                 case HttpStatusCode.Forbidden:
@@ -70,12 +70,16 @@ public sealed partial class SharpVaultApiClient(
                     return ApiResponse<CurrentUserProfile>.Failed();
             }
         }
-        catch (Exception exception) when (exception is JsonException or HttpRequestException)
+        catch (Exception exception) when (exception is JsonException or HttpRequestException
+            || (exception is TaskCanceledException && !cancellationToken.IsCancellationRequested))
         {
             LogApiCallThrew(logger, exception.GetType().Name);
             return ApiResponse<CurrentUserProfile>.Failed();
         }
     }
+
+    private static bool IsValidProfile(CurrentUserProfile? profile) =>
+        profile is not null && profile.UserId != Guid.Empty && !string.IsNullOrWhiteSpace(profile.DisplayName);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Interactive sign-in is required to call the API")]
     private static partial void LogSignInRequired(ILogger logger);

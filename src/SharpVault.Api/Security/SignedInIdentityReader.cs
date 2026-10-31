@@ -9,8 +9,6 @@ namespace SharpVault.Api.Security;
 
 public static class SignedInIdentityReader
 {
-    private const string GuidFormat = "D";
-
     public static bool TryRead(ClaimsPrincipal principal, EntraApplicationSettings settings, [NotNullWhen(true)] out SignedInIdentity? identity)
     {
         ArgumentNullException.ThrowIfNull(principal);
@@ -19,7 +17,7 @@ public static class SignedInIdentityReader
         identity = null;
         var objectIds = principal.FindAll(EntraClaimTypes.ObjectId).ToList();
         if (objectIds.Count != 1
-            || !Guid.TryParseExact(objectIds[0].Value, GuidFormat, out var userId)
+            || !CanonicalGuid.TryParse(objectIds[0].Value, out var userId)
             || userId == Guid.Empty)
         {
             return false;

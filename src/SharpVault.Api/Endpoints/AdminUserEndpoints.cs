@@ -1,6 +1,7 @@
 // SharpVault - Copyright (c) SwartBergStudio.
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
+using System.Globalization;
 using Mediator;
 using SharpVault.Api.Errors;
 using SharpVault.Api.Security;
@@ -29,14 +30,33 @@ public static class AdminUserEndpoints
         return app;
     }
 
+    private const string PageSizeField = "PageSize";
+    private const string PageSizeInvalid = "PageSize must be between 1 and 100.";
+
     private static async Task<IResult> ListUsersAsync(
-        int? pageSize,
+        string? pageSize,
         string? continuationToken,
         IMediator mediator,
         CancellationToken cancellationToken)
     {
-        var query = new ListUsersQuery(pageSize ?? ListUsersQuery.DefaultPageSize, continuationToken);
+        if (!TryParsePageSize(pageSize, out var size))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]> { [PageSizeField] = [PageSizeInvalid] });
+        }
+
+        var query = new ListUsersQuery(size, continuationToken);
         var result = await mediator.Send(query, cancellationToken);
         return result.ToHttpResult();
+    }
+
+    private static bool TryParsePageSize(string? value, out int size)
+    {
+        if (value is null)
+        {
+            size = ListUsersQuery.DefaultPageSize;
+            return true;
+        }
+
+        return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out size);
     }
 }
