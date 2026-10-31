@@ -198,9 +198,9 @@ public sealed class ServiceDefaultsExtensionsTests
 
     [Theory]
     [Trait("Category", "Security")]
-    [InlineData("Microsoft", "Microsoft.AspNetCore.Hosting.Diagnostics")]
-    [InlineData("System", "System.Net.Http.HttpClient.Default.LogicalHandler")]
-    public void SuppressQueryStringLogging_ProviderRulesDifferOnlyByCase_EffectiveLevelStaysWarning(string ancestor, string category)
+    [InlineData("Microsoft", "Microsoft.AspNetCore.Hosting.Diagnostics", "Microsoft.AspNetCore.Hosting.Diagnostics")]
+    [InlineData("System", "System.Net.Http.HttpClient.Default.LogicalHandler", "System.Net.Http.HttpClient")]
+    public void SuppressQueryStringLogging_ProviderRulesDifferOnlyByCase_EffectiveLevelStaysWarning(string ancestor, string category, string family)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
         builder.Logging.AddConsole();
@@ -213,10 +213,19 @@ public sealed class ServiceDefaultsExtensionsTests
         using var app = builder.Build();
 
         var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(category);
+        var rules = app.Services.GetRequiredService<IOptions<LoggerFilterOptions>>().Value.Rules;
 
         Assert.False(logger.IsEnabled(LogLevel.Debug));
         Assert.False(logger.IsEnabled(LogLevel.Information));
         Assert.True(logger.IsEnabled(LogLevel.Warning));
+        Assert.Contains(rules, rule =>
+            rule.ProviderName == "console"
+            && rule.CategoryName == family
+            && rule.LogLevel == LogLevel.Warning);
+        Assert.Contains(rules, rule =>
+            rule.ProviderName == "Console"
+            && rule.CategoryName == family
+            && rule.LogLevel == LogLevel.Warning);
     }
 
     [Theory]
