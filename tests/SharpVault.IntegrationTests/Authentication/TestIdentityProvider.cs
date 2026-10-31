@@ -48,6 +48,7 @@ public static class TestIdentityProvider
             configuration.SigningKeys.Add(TestSigningKeys.Primary);
             options.Configuration = configuration;
             options.ConfigurationManager = new StaticConfigurationManager<OpenIdConnectConfiguration>(configuration);
+            options.Events.OnRedirectToIdentityProviderForSignOut = _ => Task.CompletedTask;
         });
     }
 
