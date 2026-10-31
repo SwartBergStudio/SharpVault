@@ -196,7 +196,7 @@ T1 (alone, first)
    </Project>
    ```
 
-5. `tests/SharpVault.Benchmarks/Program.cs`: header, `using BenchmarkDotNet.Running;`, then `BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);`.
+5. `tests/SharpVault.Benchmarks/Program.cs`: header, `using BenchmarkDotNet.Running;`, the constants `const int SuccessExitCode = 0;` and `const int FailureExitCode = 1;`, then `var summaries = BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);` and `return summaries.Any(summary => summary.HasCriticalValidationErrors || summary.Reports.Any(report => !report.Success)) ? FailureExitCode : SuccessExitCode;`. Without the exit code, BenchmarkDotNet returns 0 even when a benchmark fails validation or throws, so the T8 smoke run could never fail.
 6. `dotnet sln SharpVault.slnx add --solution-folder tests tests/SharpVault.Benchmarks/SharpVault.Benchmarks.csproj`. Verified: it lands in `/tests/`, and `dotnet test SharpVault.slnx` skips it.
 7. `tests/coverage.runsettings`: `Exclude` becomes `[SharpVault.*Tests]*,[SharpVault.AppHost]*,[SharpVault.Benchmarks]*`.
 
@@ -310,7 +310,7 @@ All files are under `src/SharpVault.Infrastructure/Encryption/`. Every class is 
      1. Disposed check, `EnsureValid` and `ArgumentNullException.ThrowIfNull(envelope)`.
      2. `length = ReadPlaintextLength(context, envelope)`.
      3. `rented = ArrayPool<byte>.Shared.Rent(length)` and `plaintext = rented.AsSpan(0, length)`.
-     4. `try { Open(context, envelope, plaintext); return StrictUtf8.GetString(plaintext); } finally { CryptographicOperations.ZeroMemory(plaintext); ArrayPool<byte>.Shared.Return(rented); }`
+     4. `try { Open(context, envelope, plaintext); return StrictUtf8.GetString(plaintext); } catch (DecoderFallbackException) { throw Fail(context, MalformedEnvelope); } finally { CryptographicOperations.ZeroMemory(plaintext); ArrayPool<byte>.Shared.Return(rented); }`. An authenticated envelope whose plaintext is not valid UTF-8 (only possible when it was built outside `Encrypt`) must not surface a `DecoderFallbackException`, because its message and `BytesUnknown` carry plaintext bytes (TH17).
    - `ReEncrypt(source, target, envelope)`:
      1. Disposed check, `EnsureValid` on both contexts, and a null check on the envelope.
      2. `length = ReadPlaintextLength(source, envelope)`, `reEncrypted = new byte[Overhead + length]`, `body = reEncrypted.AsSpan(HeaderSize, length)`.
@@ -399,19 +399,20 @@ All files are under `src/SharpVault.Infrastructure/Encryption/`. Every class is 
   7. `_associatedData = Encoding.UTF8.GetBytes(KeyId)`.
   8. In a `finally`, `ZeroMemory(inputKeyMaterial)`.
 - `public string KeyId { get; }`
+- `private bool _disposed;`
 - `WrapAsync(dataKey, ct)`:
-  1. A null check, and `ArgumentException(InvalidDataKeyLength, nameof(dataKey))` unless the key is 32 bytes.
+  1. `ObjectDisposedException.ThrowIf(_disposed, this)`, then a null check, and `ArgumentException(InvalidDataKeyLength, nameof(dataKey))` unless the key is 32 bytes.
   2. `wrapped = new byte[60]` with a random 12-byte nonce in front.
   3. `using var aesGcm = new AesGcm(_keyEncryptionKey, 16)` (one per call, which makes the provider thread-safe), then `Encrypt(nonce, dataKey, wrapped[12..44], wrapped[44..], _associatedData)`.
   4. Return `Task.FromResult(new WrappedDataKey(KeyId, Algorithm, wrapped))`.
 - `UnwrapAsync(wrappedKey, ct)`:
-  1. A null check.
+  1. `ObjectDisposedException.ThrowIf(_disposed, this)`, then a null check.
   2. If the algorithm or key id differs from this provider's (Ordinal), throw `SecretDecryptionException(KeyMismatch)`.
   3. If `Value is null` or its length is not 60, throw `MalformedWrappedKey`.
   4. `dataKey = GC.AllocateUninitializedArray<byte>(32, pinned: true)`, then decrypt into it.
   5. Catch `AuthenticationTagMismatchException`: zero `dataKey` and throw `AuthenticationFailed`.
   6. Return `Task.FromResult(dataKey)`.
-- `Dispose() => CryptographicOperations.ZeroMemory(_keyEncryptionKey);`
+- `Dispose()`: if already disposed, return. Otherwise set `_disposed = true`, then `CryptographicOperations.ZeroMemory(_keyEncryptionKey)`. A disposed provider never wraps or unwraps with the zeroed KEK.
 
 **Acceptance**: the build is clean. The provider never logs.
 
@@ -545,7 +546,7 @@ Files in `src/SharpVault.Infrastructure/Encryption/KeyVault/`:
 `.github/workflows/ci.yml`:
 
 1. The coverage gate step becomes `dotnet run eng/CoverageGate.cs -- TestResults/coverage/Cobertura.xml SharpVault.Application=80 SharpVault.Infrastructure=80 SharpVault.Domain.Encryption=95 SharpVault.Infrastructure.Encryption=95`.
-2. Job `performance`, after the performance tests: a step "Benchmarks smoke run" running `dotnet run -c Release --project tests/SharpVault.Benchmarks -- --filter '*' --job dry`. It proves the benchmarks still run. The results are not compared.
+2. Job `performance`, after the performance tests: a step "Benchmarks smoke run" running `dotnet run -c Release --project tests/SharpVault.Benchmarks -- --filter '*' --job dry`. It proves the benchmarks still run: the step fails when `Program` returns exit code 1 (any summary with critical validation errors or a failed report, T1 step 5). The results are not compared.
 
 **Acceptance**: the YAML parses with the foundation's `python3 -c "import yaml..."` check.
 
@@ -642,14 +643,14 @@ Every surface this work touches has threats listed with their proving tests. The
 | TH9 | Key confusion | A development-wrapped key accepted by the Key Vault provider, or the reverse | Exact algorithm and key id checks before any call | `UnwrapAsync_DevelopmentWrappedKey_ThrowsKeyMismatchWithoutCallingKeyVault`, `UnwrapAsync_KeyVaultWrappedKey_ThrowsKeyMismatch` |
 | TH10 | Key confusion / downgrade | Stored algorithm changed to `RSA1_5` to get a padding oracle out of Key Vault | Always sends RSA-OAEP-256, and the stored algorithm must equal it exactly | `UnwrapAsync_AlgorithmNotRsaOaep256_ThrowsKeyMismatchWithoutCallingKeyVault`, `KeyVaultRequests_WrapAndUnwrap_UseRsaOaep256OnTheWire` |
 | TH11 | SSRF / leakage | A stored key id points unwrap at another host, vault or key, so the wrapped key and a bearer token go to the attacker | The key id must be an https version of the configured vault and key under `/keys/`, with no query, fragment or user info, and at most 512 characters. Challenge resource verification stays on | `UnwrapAsync_KeyIdNotAVersionOfConfiguredKey_ThrowsKeyMismatchWithoutCallingKeyVault`, `IsVersionOf_Mismatch_ReturnsFalse`, `TryParseConfigured_InvalidKeyId_ReturnsFalse`, `KeyVaultRequests_AnyOperation_GoOnlyToConfiguredVaultHost`, `CreateOptions_Always_KeepsChallengeResourceVerification` |
-| TH12 | Key confusion | Key Vault (or a misconfiguration) wraps with an unexpected key | The wrap result must be a version of the configured key with an RSA-sized value | `WrapAsync_KeyVaultReturnsOtherKeyId_ThrowsUnexpectedKey`, `WrapAsync_KeyVaultReturnsVersionlessKeyId_ThrowsUnexpectedKey`, `WrapAsync_KeyVaultReturnsUnexpectedWrappedLength_ThrowsUnexpectedKey` |
+| TH12 | Key confusion | Key Vault (or a misconfiguration) wraps with an unexpected key | The wrap result must be a version of the configured key with an RSA-sized value | `WrapAsync_KeyVaultReturnsUnexpectedKeyId_ThrowsUnexpectedKey`, `WrapAsync_KeyVaultReturnsUnexpectedWrappedLength_ThrowsUnexpectedKey` |
 | TH13 | Key confusion | An unwrap returns a key that is not 32 bytes | The encryptor rejects it and zeroes it | `OpenDataKeyAsync_UnwrappedKeyWrongLength_ZeroesItAndThrowsMalformedWrappedKey` |
 | TH14 | Escalation / config | Development provider runs outside Development | Four layers: the registration guard, the options validator on start, the constructor guard (forced at startup by the hosted check), and an architecture test limiting providers to two. Undefined enum numbers are rejected | `Constructor_NonDevelopmentEnvironment_Throws`, `ResolveProvider_NonDevelopmentWithExplicitDevelopmentProvider_Throws`, `ResolveProvider_UndefinedProviderValue_Throws`, `Validate_NonDevelopmentWithDevelopmentProvider_Fails`, `AddEncryption_ProductionWithDevelopmentProvider_ThrowsDuringRegistration`, `Startup_ProductionWithDevelopmentProvider_FailsWithoutEchoingKeyMaterial`, `Startup_StagingWithDevelopmentProvider_Fails`, `Startup_ProductionWithProviderAsNumberOne_Fails`, `ProductionAssemblies_KeyWrapProviders_AreOnlyKeyVaultAndDevelopment` |
 | TH15 | Leakage / config | Development key material leaks into non-development configuration, the repository or a publish manifest | The guard rejects the material outside Development. The repository configuration test forbids `KeyMaterial`. The AppHost parameter exists only in run mode, only for the API | `ResolveProvider_NonDevelopmentWithDevelopmentKeyMaterial_ThrowsWithoutEchoingValue`, `Startup_ProductionWithDevelopmentKeyMaterial_FailsWithoutEchoingIt`, `ConfigurationFile_Content_ContainsNoConnectionStringsOrSecrets` (updated), `AppHost_PublishMode_DeclaresNoParameterResources`, `AppHost_WebProject_ReceivesNoEncryptionSettings` |
 | TH16 | Leakage | Plaintext, data keys, key material, envelopes or tokens in logs | Logs carry only the item id, purpose and reason. SDK content logging is off and `Authorization` is not a logged header | `Decrypt_FailedAuthentication_LogsIdsAndReasonWithoutData`, `EnvelopeEncryptor_DevelopmentHostRoundTrip_LogsNoPlaintextKeyMaterialOrEnvelope`, `EnvelopeEncryptor_DevelopmentHostTamperedEnvelope_LogsWarningWithoutData`, `KeyVaultRequests_VerboseSdkLogging_NeverContainDataKeyWrappedKeyOrToken`, `CreateOptions_Always_DisablesContentLogging`, `CreateOptions_Always_DoesNotLogAuthorizationHeader` |
-| TH17 | Leakage | Secrets in exception messages or `ToString()` of exceptions | Constant messages. `SecretDecryptionException` has no inner exception or data. Guard messages never echo configuration | `Exceptions_FromEveryFailurePath_ContainNoPlaintextKeyOrEnvelope`, `SecretDecryptionException_AnyReason_UsesConstantMessage`, `Encrypt_PlaintextOverMaximumBytes_ThrowsWithoutPlaintextInMessage`, `ResolveProvider_NonDevelopmentWithInvalidKeyId_ThrowsWithoutEchoingValue`, `Startup_DevelopmentWithShortKeyMaterial_FailsWithoutEchoingIt` |
+| TH17 | Leakage | Secrets in exception messages or `ToString()` of exceptions | Constant messages. `SecretDecryptionException` has no inner exception or data. Guard messages never echo configuration. A `DecoderFallbackException` (which carries the offending bytes) is mapped to `MalformedEnvelope` | `Exceptions_FromEveryFailurePath_ContainNoPlaintextKeyOrEnvelope`, `Decrypt_AuthenticatedInvalidUtf8_ThrowsMalformedEnvelopeWithoutBytes`, `SecretDecryptionException_AnyReason_UsesConstantMessage`, `Encrypt_PlaintextOverMaximumBytes_ThrowsWithoutPlaintextInMessage`, `ResolveProvider_NonDevelopmentWithInvalidKeyId_ThrowsWithoutEchoingValue`, `Startup_DevelopmentWithShortKeyMaterial_FailsWithoutEchoingIt` |
 | TH18 | Leakage | `ToString()`, string interpolation or a debugger shows key material | `WrappedDataKey.ToString` shows only the key id, algorithm and length. Sessions, providers and options are classes without custom formatting | `WrappedDataKey_ToString_ShowsKeyIdAlgorithmAndLengthOnly`, `DataKeySession_ToString_ContainsNoKeyOrPlaintext`, `DevelopmentKeyWrapProvider_ToString_ContainsNoKeyMaterial`, `EncryptionOptions_ToString_ContainsNoKeyMaterial`, `KeyId_Always_DoesNotContainKeyMaterial` |
-| TH19 | Leakage (memory) | Data keys or plaintext bytes stay in memory | The session zeroes its key on `Dispose`. Every failure path zeroes. Pooled plaintext buffers are zeroed before they go back to the pool. The Key Vault provider passes the caller's array without copying. The development KEK is zeroed on dispose. Residual risk: D18 | `Dispose_AfterCreate_ZeroesTheDataKeyPassedToWrap`, `Dispose_AfterOpen_ZeroesTheDataKeyReturnedByUnwrap`, `DataKey_BeforeDispose_IsNotAllZeros`, `CreateDataKeyAsync_WrapThrows_ZeroesDataKeyAndPropagates`, `CreateDataKeyAsync_Cancelled_ZeroesDataKeyAndThrowsOperationCanceled`, `OpenDataKeyAsync_UnwrappedKeyWrongLength_ZeroesItAndThrowsMalformedWrappedKey`, `RewrapDataKeyAsync_Always_UnwrapsOnceWrapsOnceAndZeroesKey`, `RewrapDataKeyAsync_WrapThrows_ZeroesUnwrappedKey`, `WrapAsync_ValidDataKey_PassesSameArrayWithoutCopy`, `Dispose_ThenUnwrapPreviouslyWrappedKey_ThrowsAuthenticationFailed`, `Dispose_AfterKeyVaultOpen_ZeroesTheSdkReturnedKey` |
+| TH19 | Leakage (memory) | Data keys or plaintext bytes stay in memory | The session zeroes its key on `Dispose`. Every failure path zeroes. Pooled plaintext buffers are zeroed before they go back to the pool. The Key Vault provider passes the caller's array without copying. The development KEK is zeroed on dispose, and a disposed development provider refuses to wrap or unwrap. Residual risk: D18 | `Dispose_AfterCreate_ZeroesTheDataKeyPassedToWrap`, `Dispose_AfterOpen_ZeroesTheDataKeyReturnedByUnwrap`, `DataKey_BeforeDispose_IsNotAllZeros`, `CreateDataKeyAsync_WrapThrows_ZeroesDataKeyAndPropagates`, `CreateDataKeyAsync_Cancelled_ZeroesDataKeyAndThrowsOperationCanceled`, `OpenDataKeyAsync_UnwrappedKeyWrongLength_ZeroesItAndThrowsMalformedWrappedKey`, `RewrapDataKeyAsync_Always_UnwrapsOnceWrapsOnceAndZeroesKey`, `RewrapDataKeyAsync_WrapThrows_ZeroesUnwrappedKey`, `WrapAsync_ValidDataKey_PassesSameArrayWithoutCopy`, `WrapAsync_AfterDispose_ThrowsObjectDisposedException`, `UnwrapAsync_AfterDispose_ThrowsObjectDisposedException`, `Dispose_CalledTwice_DoesNotThrowAndKeyStaysZero`, `Dispose_AfterKeyVaultOpen_ZeroesTheSdkReturnedKey` |
 | TH20 | Bug | A session used after `Dispose` encrypts with a zeroed key | `ObjectDisposedException` on every member | `Encrypt_AfterDispose_ThrowsObjectDisposedException`, `Decrypt_AfterDispose_ThrowsObjectDisposedException`, `ReEncrypt_AfterDispose_ThrowsObjectDisposedException`, `Dispose_Twice_DoesNotThrow` |
 | TH21 | Availability / rotation | Rotating the KEK makes old data unreadable, or new data keeps the old version | Unwrap uses the recorded versioned key id. New wraps use the latest version (after a restart when the SDK wraps locally). `RewrapDataKeyAsync` migrates. The development key id changes with the key material | `UnwrapAsync_AfterKeyRotation_UnwrapsOldVersionWithItsOwnClient`, `WrapAsync_AfterKeyRotation_UsesNewVersion`, `RewrapDataKeyAsync_AfterRotation_WrapsWithNewVersionAndOpensToSameKey`, `UnwrapAsync_WrappedByOtherKeyMaterial_ThrowsKeyMismatch`, `KeyId_DifferentKeyMaterial_Differs` |
 | TH22 | Bug / tampering | Truncated envelope or wrapped key causes an out-of-range read or a crash | Length checks before slicing | `Decrypt_EnvelopeShorterThanOverhead_ThrowsMalformedEnvelope`, `Decrypt_EnvelopeTruncatedByOneByte_ThrowsAuthenticationFailed`, `Decrypt_NullEnvelope_ThrowsArgumentNullException`, `UnwrapAsync_WrappedValueLengthNotRsaSize_ThrowsMalformedWithoutCallingKeyVault`, `UnwrapAsync_WrongLength_ThrowsMalformedWrappedKey`, `UnwrapAsync_NullValue_ThrowsMalformedWrappedKey` |
@@ -720,6 +721,7 @@ Side channels: SharpVault code compares no secret values. The platform AES-GCM v
 - `Decrypt_EnvelopeShorterThanOverhead_ThrowsMalformedEnvelope` (Theory: every length 0 to 28)
 - `Decrypt_EnvelopeTruncatedByOneByte_ThrowsAuthenticationFailed`
 - `Decrypt_EnvelopeOverMaximumLength_ThrowsMalformedEnvelope` (`MaxEnvelopeBytes + 1`, with version byte `0x01`)
+- `Decrypt_AuthenticatedInvalidUtf8_ThrowsMalformedEnvelopeWithoutBytes` (TH17): build a valid envelope with raw `AesGcm` under the session's data key (`RecordingKeyWrapProvider.WrapInputs[0]`) over the bytes `0x68 0xFF 0xFE`. `Decrypt` throws `SecretDecryptionException` with reason `MalformedEnvelope` and no inner exception, and its `ToString()` contains neither `FF`, `FE` nor `[`.
 - `Encrypt_PlaintextOverMaximumBytes_ThrowsWithoutPlaintextInMessage` (32,769 ASCII bytes; message `PlaintextTooLarge`)
 - `Encrypt_MultiByteTextOverMaximumBytes_Throws` (10,923 `€` = 32,769 bytes)
 - `Encrypt_LoneSurrogate_ThrowsArgumentException` (Theory: `"\ud800"`, `"a\udc00b"`; message `PlaintextNotValidUnicode`)
@@ -780,7 +782,9 @@ Side channels: SharpVault code compares no secret values. The platform AES-GCM v
 - `UnwrapAsync_WrongLength_ThrowsMalformedWrappedKey` (Security; Theory: 0, 59, 61, 256)
 - `UnwrapAsync_NullValue_ThrowsMalformedWrappedKey`
 - `UnwrapAsync_TwoCalls_ReturnDifferentArrays`
-- `Dispose_ThenUnwrapPreviouslyWrappedKey_ThrowsAuthenticationFailed` (Security; proves the KEK is zeroed)
+- `WrapAsync_AfterDispose_ThrowsObjectDisposedException` (Security)
+- `UnwrapAsync_AfterDispose_ThrowsObjectDisposedException` (Security; a value wrapped before `Dispose`)
+- `Dispose_CalledTwice_DoesNotThrowAndKeyStaysZero` (Security; reads the private `_keyEncryptionKey` array by reflection before disposing, then asserts the second `Dispose` does not throw and every byte is zero)
 - `DevelopmentKeyWrapProvider_ToString_ContainsNoKeyMaterial` (Security)
 - `WrapAndUnwrap_InParallel_AllRoundTrip` (Security; 1,000 parallel)
 
@@ -811,8 +815,7 @@ Side channels: SharpVault code compares no secret values. The platform AES-GCM v
 - `WrapAsync_ValidDataKey_ReturnsVersionedKeyIdRsaOaep256AndWrappedValue`
 - `WrapAsync_ValidDataKey_PassesSameArrayWithoutCopy` (Security; `Assert.Same`)
 - `WrapAsync_DataKeyNot32Bytes_ThrowsWithoutCallingKeyVault` (Theory: 0, 16, 31, 33, 64)
-- `WrapAsync_KeyVaultReturnsOtherKeyId_ThrowsUnexpectedKey` (Security)
-- `WrapAsync_KeyVaultReturnsVersionlessKeyId_ThrowsUnexpectedKey` (Security)
+- `WrapAsync_KeyVaultReturnsUnexpectedKeyId_ThrowsUnexpectedKey` (Security; Theory over the key id `FakeKeyVault` returns: other key name, other vault, sibling-suffix host `x.vault.azure.net.evil.example`, `http`, other port, `/secrets/` path, `/certificates/` path, `//keys` path, a query string, a development id `development:0123456789abcdef`, and the versionless configured id; every row throws `InvalidOperationException` with message `KeyVaultReturnedUnexpectedKey`)
 - `WrapAsync_KeyVaultReturnsUnexpectedWrappedLength_ThrowsUnexpectedKey` (Security)
 - `WrapAsync_AfterKeyRotation_UsesNewVersion` (Security)
 - `WrapAsync_WithToken_PassesTokenToClient`
@@ -858,7 +861,8 @@ Use `HostEnvironments.Named(...)`.
 - `ResolveProvider_UndefinedProviderValue_Throws` (Theory: `(KeyWrapProviderKind)2` and `(KeyWrapProviderKind)(-1)`, in both environments; message `UnknownProvider`)
 - `TryResolveProvider_InvalidSettings_ReturnsFalseWithSameMessageAsResolve`
 - `ResolveProvider_NullArguments_ThrowArgumentNullException`
-- `Validate_ValidSettings_Succeeds`
+- `Validate_ValidDevelopmentSettings_Succeeds`
+- `Validate_ValidProductionSettings_Succeeds`
 - `Validate_NonDevelopmentWithDevelopmentProvider_Fails` (the failure message equals `DevelopmentProviderNotAllowed`)
 - `EncryptionOptions_ToString_ContainsNoKeyMaterial`
 
@@ -1002,6 +1006,7 @@ The reference column is a BenchmarkDotNet `--job short` run of the prototype in 
 | D3 | Associated data | Version, purpose, item id and owner id, each length-prefixed (section 4.4). The item id and owner id are required by CLAUDE.md. The purpose stops a field swap within one secret (TH4). The version stops downgrade. Length prefixes keep the encoding unambiguous if id types change. Guids are written big-endian, so the bytes match the canonical string order on every platform. |
 | D4 | Purpose labels | Lowercase dotted labels, at most 64 characters, defined as constants by the consuming feature. Suggested for vault-and-folders: `secret.name`, `secret.username`, `secret.value`, `secret.notes`, `secret.url`, `secret.tags`, `folder.name`. They are persisted format: never rename them. |
 | D5 | Data key per field (recommendation for vault-and-folders) | With one data key per secret for every field, listing a page of 50 secrets (names are encrypted, SEC-2) needs 50 Key Vault unwraps per request. That threatens the 500 ms list budget, and Key Vault throttles crypto operations per vault per 10 seconds. **Recommended**: names, tags and folder names under one per-user "metadata" data key (one unwrap per list request), and username, value, notes and URL under a per-secret data key (one unwrap per reveal, which keeps CLAUDE.md's "each secret value has its own random data key"). The API here supports both. vault-and-folders makes the final decision and records it in its plan. |
+| D5a | D5 and TRF-7 do not fit yet | `ReEncrypt` works only within one session, so source and target share one data key. Moving names, tags and folder names from the source user's metadata key (D5) to the target user's metadata key during a transfer (TRF-7) therefore cannot be done with this API. It would need a cross-session re-encrypt such as `byte[] ReEncrypt(EncryptionContext source, IDataKeySession targetSession, EncryptionContext target, byte[] envelope)`, or the fields that move in a transfer must stay under per-secret data keys. This branch does not add that member. `feature/vault-and-folders` (or `feature/offboarding-transfers`, whichever comes first) must decide and record the choice in its plan. |
 | D6 | Wrapped key storage | Three properties: `DataKeyId`, `DataKeyAlgorithm` and `WrappedDataKey` (section 4.5), rather than one binary blob, so a future rewrap job can see versions without parsing. The version is inside `DataKeyId`, so a separate version column cannot drift out of step. |
 | D7 | Key Vault key id | Configured **versionless**; stored **versioned**, exactly as Key Vault returns it. Every stored id is validated as a version of the configured vault and key before use (TH11). This needed an explicit `/keys/` path check, because `KeyVaultKeyIdentifier.TryCreate` accepts `/secrets/` and `/certificates/` (verified). The vault host is not restricted to `*.vault.azure.net`, so Managed HSM and sovereign clouds work, and configuration is trusted. |
 | D8 | Rotation | When the identity may read the key, the SDK caches the public key per client and wraps locally (verified), so a new KEK version is used for new wraps only after the API restarts. That is acceptable and documented: rotate, restart, keep old versions enabled. A rewrap job using `RewrapDataKeyAsync` is a PROGRESS.md follow-up. Old versions must never be disabled or deleted while any wrapped key references them, or data becomes unreadable (the error surfaces as `RequestFailedException` 403 or 404, TH26). |
