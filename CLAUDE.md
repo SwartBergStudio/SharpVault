@@ -87,10 +87,19 @@ The project skills in `.claude/skills/` describe how we work. Use them instead o
   The development key provider must refuse to run outside the Development environment.
 - Never log secret values, data keys or decrypted content. Audit every reveal and every transfer.
 
-## Admin transfer
+## Product requirements
 
-Admins can transfer a user's secrets to another user (for example when an employee leaves).
-Transfers run as idempotent, resumable `TransferJob`s and are always written to the audit log.
+`docs/REQUIREMENTS.md` is the product specification. Plan every feature against it and reference its requirement ids
+(for example `TRF-3`) in plans, tests and pull requests. The rules that matter most:
+
+- Single Entra tenant per deployment. Only members of that tenant can sign in or receive shares.
+- A user sees only their own vault plus what is shared with them. Admin rights never grant access to other users' secrets.
+- Admins can lock users. Lock status is checked on every request.
+- Transfers (left the company, dismissed, deceased, role change) need a reason and approval by a second admin.
+  The target user sees nothing until the transfer is approved and completed.
+- One-time share links open once for anyone with the link. The link key lives in the URL fragment and decryption happens
+  in the browser (JS interop with Web Crypto is allowed for this one case), so the server cannot read link contents.
+- Every lock, unlock, transfer step, reveal and share is written to the append-only audit log, never with secret values.
 
 ## Local development and testing
 

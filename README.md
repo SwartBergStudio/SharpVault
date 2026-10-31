@@ -26,34 +26,48 @@ SharpVault is a team password manager for organisations that already run on Micr
 - **Sign in with your organisation account**: Microsoft Entra ID with app roles for admins and users.
 - **Cheap to run**: secrets live in Azure Table Storage, accessed with Entra role-based access (no storage keys).
 - **Your keys, your Key Vault**: every secret is encrypted with its own key, wrapped by a key in your Azure Key Vault.
-- **Built for staff changes**: admins can transfer a leaving employee's secrets to someone else, with a full audit trail.
+- **Built for staff changes**: when someone leaves, is dismissed or passes away, admins lock them out and transfer their secrets, with a second admin's approval and a full audit trail.
+- **Private by default**: each user sees only their own vault and what is shared with them. Admin rights do not unlock anyone else's secrets.
 - **One codebase, every platform**: a shared Razor Class Library powers both the Blazor web app and the .NET MAUI apps.
 - **Open source**: transparent code you can inspect and trust.
 
 ## 🧩 Features
 
-### Core
-- [ ] Encrypted vault for passwords, secure notes, API keys and other secrets
+The full specification is in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
+### Vault
+- [ ] Encrypted vault for logins, secure notes, API keys and cards
+- [ ] Folders and sub-folders, tags and search
 - [ ] Strong password and passphrase generator
-- [ ] Folders, tags and fast metadata search
-- [ ] Share a secret with another user (read or edit)
+- [ ] Secret history with restore, and a recycle bin
+
+### Sharing
+- [ ] Share secrets or whole folders with colleagues in your Entra tenant (view, edit or manage)
+- [ ] One-time share links for anyone, destroyed after one view or when they expire
+- [ ] Each user sees only their own vault and what is shared with them
 
 ### Administration
-- [ ] **Transfer secrets** from one user to another, for example when an employee leaves
-- [ ] Resumable transfer jobs, so an interrupted transfer never loses or duplicates secrets
-- [ ] Audit log of every reveal, share and transfer, with filtering
-- [ ] User overview with secret counts
+- [ ] Lock users out instantly, or schedule a lock for their last day
+- [ ] Transfer a user's secrets when they leave, are dismissed or pass away
+- [ ] Every transfer needs a written reason and approval by a second admin
+- [ ] Admins never see other users' secrets unless they receive them through an approved transfer
+- [ ] Append-only audit log of every reveal, share, lock and transfer, with search and CSV export
 
 ### Security
-- [ ] AES-256-GCM encryption with a unique key per secret
-- [ ] Data keys wrapped by Azure Key Vault (envelope encryption), with key rotation support
-- [ ] Microsoft Entra ID sign-in with `SharpVault.Admin` and `SharpVault.User` app roles
+- [ ] AES-256-GCM encryption with a unique key per secret, wrapped by your Azure Key Vault
+- [ ] Microsoft Entra ID sign-in, limited to your tenant, with `SharpVault.Admin` and `SharpVault.User` roles
 - [ ] Managed identity access to Table Storage and Key Vault, no secrets in configuration
 - [ ] Clipboard auto-clear and idle auto-lock
 
 ### Platforms
 - [ ] Blazor web app
 - [ ] .NET MAUI for Android, iOS, Windows and macOS
+
+### Later
+- [ ] Import from Keeper, Bitwarden, 1Password and CSV
+- [ ] TOTP codes, attachments and a password health report
+- [ ] Browser extension and mobile autofill
+- [ ] Sharing with Entra groups
 
 ## 🔒 Security model
 
@@ -135,10 +149,11 @@ Integration tests start their own Azurite container with Testcontainers, so Dock
 
 ## 🗺️ Roadmap
 
-- [ ] **v0.1**: Solution foundation, encryption, Table Storage, Entra sign-in
-- [ ] **v0.2**: Secrets, sharing and password generator in the Blazor web app
-- [ ] **v0.3**: Admin secret transfer and audit log
-- [ ] **v0.4**: .NET MAUI apps
+- [ ] **v0.1**: Solution foundation, encryption, Table Storage, Entra sign-in limited to one tenant
+- [ ] **v0.2**: Vault with folders, password generator, secret history
+- [ ] **v0.3**: Sharing with colleagues and one-time share links
+- [ ] **v0.4**: User lock, offboarding transfers with second-admin approval, audit log
+- [ ] **v0.5**: .NET MAUI apps
 - [ ] **v1.0**: Independent security audit and stable release
 
 ## 🤝 Contributing

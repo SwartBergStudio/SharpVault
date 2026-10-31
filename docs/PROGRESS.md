@@ -10,12 +10,16 @@ This file tracks what is done and what comes next, so each work session can cont
 
 ## Next
 
-1. Solution scaffold on .NET 10: projects, Directory.Build.props, Directory.Packages.props, CI workflow.
-2. Domain and Application layers with SwartBerg.Mediator.
-3. Encryption (AES-256-GCM, IKeyWrapProvider with Key Vault and development providers) with unit tests.
-4. Table Storage infrastructure and repositories.
-5. API endpoints with Entra ID authentication and role policies.
-6. Aspire AppHost with persistent Azurite.
-7. Integration tests with Testcontainers.Azurite.
-8. Admin secret transfer end to end.
-9. Blazor UI in UI.Shared, Web host, then the MAUI scaffold.
+The product specification is `docs/REQUIREMENTS.md`. Build in this order, one `feature/{name}` branch and pull request each:
+
+1. `feature/solution-foundation`: .NET 10 solution scaffold, Directory.Build.props, Directory.Packages.props, Aspire AppHost with persistent Azurite, CI workflow.
+2. `feature/encryption-core`: AES-256-GCM envelope encryption, `IKeyWrapProvider` with Key Vault and development providers, unit tests.
+3. `feature/entra-sign-in`: Entra ID for API and web, single-tenant and guest checks, app roles, `ICurrentUser`, users table, lock check on every request (TEN, LCK-1).
+4. `feature/vault-and-folders`: secrets, folders, reveal and copy auditing, password generator, history, recycle bin (SEC, FLD).
+5. `feature/sharing`: shares with colleagues, folder shares, directory search (SHR).
+6. `feature/one-time-links`: one-time share links with fragment keys and browser decryption (OTL).
+7. `feature/user-lock`: lock, scheduled lock, unlock, reasons (LCK, RSN).
+8. `feature/offboarding-transfers`: transfer requests, second-admin approval, resumable transfer job (TRF).
+9. `feature/audit-log`: audit search, filters, CSV export, user history (AUD).
+10. `feature/admin-settings`: admin settings (ADM).
+11. `feature/maui-app`: .NET MAUI app on the shared UI.
