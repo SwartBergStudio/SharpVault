@@ -17,6 +17,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SharpVault.AppHost.Tests/SharpVault.AppHost.Tests.csproj" />
+    <Project Path="tests/SharpVault.Benchmarks/SharpVault.Benchmarks.csproj" />
     <Project Path="tests/SharpVault.IntegrationTests/SharpVault.IntegrationTests.csproj" />
     <Project Path="tests/SharpVault.UnitTests/SharpVault.UnitTests.csproj" />
   </Folder>
