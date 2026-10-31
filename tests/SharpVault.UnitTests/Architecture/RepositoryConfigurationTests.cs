@@ -19,6 +19,7 @@ public sealed class RepositoryConfigurationTests
         "devstoreaccount1",
         "Password",
         "ClientSecret",
+        "KeyMaterial",
     ];
 
     public static TheoryData<string> ConfigurationFiles

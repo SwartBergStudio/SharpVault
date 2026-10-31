@@ -10,6 +10,7 @@ using Microsoft.Extensions.Azure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using SharpVault.Infrastructure.Encryption;
 using SharpVault.Infrastructure.Storage;
 
 namespace SharpVault.Infrastructure;
@@ -27,6 +28,7 @@ public static class DependencyInjection
         builder.Services.AddSingleton(new TableStorageTableSet(TableNames.All));
         builder.Services.AddHostedService<TableStorageInitializer>();
         builder.Services.TryAddSingleton(TimeProvider.System);
+        builder.AddEncryption();
 
         return builder;
     }

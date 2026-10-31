@@ -6,7 +6,7 @@
         <Configuration>
           <Format>cobertura</Format>
           <Include>[SharpVault.*]*</Include>
-          <Exclude>[SharpVault.*Tests]*,[SharpVault.AppHost]*</Exclude>
+          <Exclude>[SharpVault.*Tests]*,[SharpVault.AppHost]*,[SharpVault.Benchmarks]*</Exclude>
           <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
           <ExcludeByFile>**/obj/**/*.cs</ExcludeByFile>
           <SkipAutoProps>true</SkipAutoProps>
