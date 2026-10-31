@@ -87,6 +87,10 @@ public sealed partial class DataKeySession : IDataKeySession
             Open(context, envelope, plaintext);
             return StrictUtf8.GetString(plaintext);
         }
+        catch (DecoderFallbackException)
+        {
+            throw Fail(context, DecryptionFailureReason.MalformedEnvelope);
+        }
         finally
         {
             CryptographicOperations.ZeroMemory(plaintext);

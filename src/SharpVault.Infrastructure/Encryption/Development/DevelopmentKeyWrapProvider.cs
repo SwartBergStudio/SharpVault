@@ -24,6 +24,7 @@ public sealed class DevelopmentKeyWrapProvider : IKeyWrapProvider, IDisposable
 
     private readonly byte[] _keyEncryptionKey;
     private readonly byte[] _associatedData;
+    private bool _disposed;
 
     public DevelopmentKeyWrapProvider(IHostEnvironment environment, IOptions<EncryptionOptions> options)
     {
@@ -60,6 +61,7 @@ public sealed class DevelopmentKeyWrapProvider : IKeyWrapProvider, IDisposable
 
     public Task<WrappedDataKey> WrapAsync(byte[] dataKey, CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(dataKey);
         if (dataKey.Length != EnvelopeFormat.DataKeySize)
         {
@@ -82,6 +84,7 @@ public sealed class DevelopmentKeyWrapProvider : IKeyWrapProvider, IDisposable
 
     public Task<byte[]> UnwrapAsync(WrappedDataKey wrappedKey, CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(wrappedKey);
 
         if (!string.Equals(wrappedKey.Algorithm, Algorithm, StringComparison.Ordinal)
@@ -116,5 +119,14 @@ public sealed class DevelopmentKeyWrapProvider : IKeyWrapProvider, IDisposable
         return Task.FromResult(dataKey);
     }
 
-    public void Dispose() => CryptographicOperations.ZeroMemory(_keyEncryptionKey);
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        CryptographicOperations.ZeroMemory(_keyEncryptionKey);
+    }
 }

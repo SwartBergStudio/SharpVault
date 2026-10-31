@@ -3,4 +3,11 @@
 
 using BenchmarkDotNet.Running;
 
-BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
+const int SuccessExitCode = 0;
+const int FailureExitCode = 1;
+
+var summaries = BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
+
+return summaries.Any(summary => summary.HasCriticalValidationErrors || summary.Reports.Any(report => !report.Success))
+    ? FailureExitCode
+    : SuccessExitCode;
