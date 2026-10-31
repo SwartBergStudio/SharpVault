@@ -13,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using SharpVault.Application.Common.Interfaces;
 using SharpVault.Infrastructure.Audit;
+using SharpVault.Infrastructure.Encryption;
 using SharpVault.Infrastructure.Storage;
 using SharpVault.Infrastructure.Users;
 
@@ -35,6 +36,7 @@ public static class DependencyInjection
         builder.Services.AddSingleton<IUserStore, TableUserStore>();
         builder.Services.AddSingleton<IAuditLog, TableAuditLog>();
         builder.Services.AddSingleton<IUserAccessCache, UserAccessCache>();
+        builder.AddEncryption();
 
         return builder;
     }

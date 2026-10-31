@@ -2,6 +2,9 @@
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
 using System.Reflection;
+using SharpVault.Infrastructure.Encryption;
+using SharpVault.Infrastructure.Encryption.Development;
+using SharpVault.Infrastructure.Encryption.KeyVault;
 using SharpVault.UnitTests.Support;
 
 namespace SharpVault.UnitTests.Architecture;
@@ -221,6 +224,55 @@ public sealed class LayeringTests
                 || item.Reference.StartsWith("SharpVault.UnitTests", StringComparison.Ordinal)
                 || item.Reference.StartsWith("SharpVault.IntegrationTests", StringComparison.Ordinal))
             .Select(item => item.Assembly + " -> " + item.Reference)
+            .ToList();
+
+        Assert.Empty(offenders);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void ProductionAssemblies_KeyWrapProviders_AreOnlyKeyVaultAndDevelopment()
+    {
+        var implementations = ProductionAssemblyNamesList()
+            .SelectMany(name => LoadTypes(name))
+            .Where(type => type.IsClass && !type.IsAbstract && typeof(IKeyWrapProvider).IsAssignableFrom(type))
+            .Select(type => type.FullName)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        var expected = new[] { typeof(DevelopmentKeyWrapProvider).FullName, typeof(KeyVaultKeyWrapProvider).FullName }
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(expected, implementations);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void ProductionAssemblies_KeyWrapProviderInterface_IsImplementedByNoOtherInterface()
+    {
+        var derivedInterfaces = ProductionAssemblyNamesList()
+            .SelectMany(name => LoadTypes(name))
+            .Where(type => type.IsInterface && type != typeof(IKeyWrapProvider) && typeof(IKeyWrapProvider).IsAssignableFrom(type))
+            .Select(type => type.FullName)
+            .ToList();
+
+        Assert.Empty(derivedInterfaces);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void SourceFiles_Src_DoNotUseSystemRandom()
+    {
+        var offenders = Directory.EnumerateFiles(Path.Combine(RepositoryRoot.Path, "src"), "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+                && !path.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            .Where(path =>
+            {
+                var content = File.ReadAllText(path);
+                return content.Contains("new Random(", StringComparison.Ordinal)
+                    || content.Contains("Random.Shared", StringComparison.Ordinal);
+            })
+            .Select(path => Path.GetRelativePath(RepositoryRoot.Path, path))
             .ToList();
 
         Assert.Empty(offenders);

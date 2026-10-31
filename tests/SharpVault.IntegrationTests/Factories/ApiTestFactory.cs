@@ -1,6 +1,7 @@
 // SharpVault - Copyright (c) SwartBergStudio.
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
+using System.Security.Cryptography;
 using Azure.Core.Pipeline;
 using System.Net.Http.Headers;
 using Azure.Data.Tables;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using SharpVault.Infrastructure.Encryption;
 using SharpVault.Infrastructure.Storage;
 using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Logging;
@@ -29,6 +31,8 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>, IAsyncLifet
     public StorageRequestRecorder StorageRequests { get; } = new();
 
     public CapturingLoggerProvider Logs { get; } = new();
+
+    public string DevelopmentKeyMaterial { get; } = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
 
     public string AzuriteConnectionString => _azurite.GetConnectionString();
 
@@ -91,6 +95,7 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>, IAsyncLifet
         builder.UseSetting($"ConnectionStrings:{TableStorageConnection.Name}", _azurite.GetConnectionString());
         TestIdentityProvider.ApplyApiSettings(builder);
         builder.UseSetting("UserAccess:CacheTtl", "00:00:00");
+        builder.UseSetting($"{EncryptionOptions.SectionName}:{nameof(EncryptionOptions.DevelopmentKeyMaterial)}", DevelopmentKeyMaterial);
         builder.UseSetting("Logging:LogLevel:Default", "Debug");
         builder.UseSetting("Logging:LogLevel:Microsoft", "Debug");
         builder.UseSetting("Logging:LogLevel:Microsoft.AspNetCore", "Debug");

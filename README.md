@@ -22,7 +22,7 @@ Blazor web app · .NET MAUI mobile and desktop apps · Azure Table Storage · Mi
 
 > ⚠️ **Status: Early development.** SharpVault has not been independently security-audited. Please don't use it as your only store for important credentials yet.
 >
-> So far the repository contains the solution foundation: the build, local Aspire setup, storage registration, the API and web hosts without features, and CI. The features listed below are planned and not built yet.
+> So far the repository contains the solution foundation: the build, local Aspire setup, storage registration, the API and web hosts without features, and CI. It also contains the encryption core (envelope encryption and key wrap providers), which no feature uses yet. The features listed below are planned and not built yet.
 
 ## ✨ Why SharpVault?
 
@@ -76,17 +76,22 @@ The full specification is in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
 ## 🔒 Security model
 
-SharpVault is designed to use **server-side envelope encryption**. The encryption code is not part of the foundation, so this section describes the planned design:
+SharpVault uses **server-side envelope encryption**. The encryption core is built, with no secret stored yet. The design and formats are in [docs/ENCRYPTION.md](docs/ENCRYPTION.md).
 
 ```
-Secret value ──► AES-256-GCM (unique data key + nonce) ──► Encrypted value ──► Azure Table Storage
+Secret value ──► AES-256-GCM (random data key + nonce) ──► Encrypted value ──► Azure Table Storage
                          │
       Data key ──► wrapped by Key Vault key (RSA-OAEP-256) ──► Wrapped key stored with the secret
 ```
 
-- Each secret has its own random 256-bit data key, and the secret id and owner are bound to the ciphertext.
-- Data keys can only be unwrapped through your organisation's Azure Key Vault, using the app's managed identity.
-- Secret values are decrypted only when a user explicitly reveals or copies them, and every reveal is audited.
+What exists today:
+
+- AES-256-GCM envelopes (version 1) with a random data key per item. The purpose, item id and owner id are bound to each ciphertext as associated data.
+- A Key Vault key wrap provider (RSA-OAEP-256, through the app's managed identity). It is tested with fakes. Provisioning the vault, the key and the role assignment is part of deployment and is not done yet.
+- A development key wrap provider for local runs. It refuses to run outside the Development environment, and the AppHost generates its key material.
+- Entra ID sign-in is not built yet (`feature/entra-sign-in`). Until it lands, the API rejects every request except `/health` and `/alive`.
+
+Secret values will be decrypted only when a user explicitly reveals or copies them, and every reveal will be audited. That part comes with the vault feature.
 
 **This is not a zero-knowledge design, on purpose.** Because admins must be able to transfer secrets when people leave, the application (through your Key Vault) can decrypt secrets. Whoever controls your Azure tenant and Key Vault controls access to the data, so protect those accordingly.
 
@@ -101,7 +106,7 @@ SharpVault/
 ├── src/
 │   ├── SharpVault.Domain/            # Core rules (empty until features add entities)
 │   ├── SharpVault.Application/       # CQRS via SwartBerg.Mediator, mapping, validation
-│   ├── SharpVault.Infrastructure/    # Azure Table Storage registration
+│   ├── SharpVault.Infrastructure/    # Azure Table Storage registration, encryption core and key wrap providers
 │   ├── SharpVault.Api/               # ASP.NET Core minimal API host
 │   ├── SharpVault.UI.Shared/         # Razor Class Library (shared UI)
 │   ├── SharpVault.Web/               # Blazor web app host
@@ -111,11 +116,12 @@ SharpVault/
 ├── tests/
 │   ├── SharpVault.UnitTests/
 │   ├── SharpVault.IntegrationTests/  # Api and Web hosts with Azurite (Testcontainers)
-│   └── SharpVault.AppHost.Tests/     # Aspire AppHost model tests
+│   ├── SharpVault.AppHost.Tests/     # Aspire AppHost model tests
+│   └── SharpVault.Benchmarks/        # BenchmarkDotNet benchmarks for encryption (not a test project)
 ├── eng/
 │   └── CoverageGate.cs               # Coverage threshold check used in CI
 ├── docs/                             # Requirements, progress, local development, storage, testing
-└── .github/                          # CI, CodeQL, dependency review and Dependabot
+└── .github/                          # CI and Dependabot
 ```
 
 ## 🛠️ Tech Stack
@@ -128,7 +134,7 @@ SharpVault/
 | API          | ASP.NET Core Minimal APIs, OpenAPI, Scalar          |
 | Application  | SwartBerg.Mediator (CQRS), Mapster, FluentValidation |
 | Storage      | Azure Table Storage (`Azure.Data.Tables`)           |
-| Keys         | Azure Key Vault (planned)                           |
+| Keys         | Azure Key Vault (provider built, not provisioned)   |
 | Auth         | Microsoft Entra ID, Microsoft.Identity.Web (planned) |
 | Local dev    | .NET Aspire with a persistent Azurite container     |
 | Testing      | xUnit, Testcontainers (Azurite), AutoFixture        |
