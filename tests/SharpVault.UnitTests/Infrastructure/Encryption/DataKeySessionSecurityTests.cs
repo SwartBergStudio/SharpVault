@@ -197,6 +197,38 @@ public sealed class DataKeySessionSecurityTests
     }
 
     [Fact]
+    public async Task Decrypt_AuthenticatedInvalidUtf8_ThrowsMalformedEnvelopeWithoutBytes()
+    {
+        var harness = new EncryptionHarness();
+        using var session = await harness.CreateSessionAsync();
+        var key = harness.Provider.WrapInputs[0].ToArray();
+        var context = EncryptionContexts.Random();
+        byte[] plaintext = [0x68, 0xFF, 0xFE];
+        var associatedData = new byte[EnvelopeAssociatedData.MaxLength];
+        var written = EnvelopeAssociatedData.Write(EnvelopeFormat.Version1, context, associatedData);
+        var envelope = new byte[EnvelopeFormat.Overhead + plaintext.Length];
+        envelope[0] = EnvelopeFormat.Version1;
+        RandomNumberGenerator.Fill(envelope.AsSpan(1, EnvelopeFormat.NonceSize));
+        using (var aes = new AesGcm(key, EnvelopeFormat.TagSize))
+        {
+            aes.Encrypt(
+                envelope.AsSpan(1, EnvelopeFormat.NonceSize),
+                plaintext,
+                envelope.AsSpan(EnvelopeFormat.HeaderSize, plaintext.Length),
+                envelope.AsSpan(envelope.Length - EnvelopeFormat.TagSize),
+                associatedData.AsSpan(0, written));
+        }
+
+        var exception = Assert.Throws<SecretDecryptionException>(() => session.Decrypt(context, envelope));
+
+        Assert.Equal(DecryptionFailureReason.MalformedEnvelope, exception.Reason);
+        Assert.Null(exception.InnerException);
+        var text = exception.ToString();
+        Assert.DoesNotMatch(@"(?i)\b(0x)?(FF|FE|255|254)\b", text);
+        Assert.DoesNotMatch(@"\[\s*(0x)?[0-9A-Fa-f]{1,3}\s*(,\s*(0x)?[0-9A-Fa-f]{1,3}\s*)*\]", text);
+    }
+
+    [Fact]
     public async Task Decrypt_EnvelopeSwappedBetweenItemsWithSameDataKey_ThrowsAuthenticationFailed()
     {
         var harness = new EncryptionHarness();

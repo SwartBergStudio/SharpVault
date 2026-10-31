@@ -513,16 +513,14 @@ public sealed class DevelopmentKeyWrapProviderTests
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task Dispose_ThenUnwrapPreviouslyWrappedKey_ThrowsAuthenticationFailed()
+    public async Task UnwrapAsync_AfterDispose_ThrowsObjectDisposedException()
     {
         var provider = CreateProvider(RandomMaterial());
         var wrapped = await provider.WrapAsync(RandomDataKey(), TestContext.Current.CancellationToken);
         provider.Dispose();
 
-        var exception = await Assert.ThrowsAsync<SecretDecryptionException>(
+        await Assert.ThrowsAsync<ObjectDisposedException>(
             () => provider.UnwrapAsync(wrapped, TestContext.Current.CancellationToken));
-
-        Assert.Equal(DecryptionFailureReason.AuthenticationFailed, exception.Reason);
     }
 
     [Fact]
@@ -541,30 +539,31 @@ public sealed class DevelopmentKeyWrapProviderTests
     }
 
     [Fact]
-    public void Dispose_CalledTwice_DoesNotThrow()
+    [Trait("Category", "Security")]
+    public void Dispose_CalledTwice_DoesNotThrowAndKeyStaysZero()
     {
         var provider = CreateProvider(RandomMaterial());
+        var field = typeof(DevelopmentKeyWrapProvider).GetField("_keyEncryptionKey", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        var keyEncryptionKey = Assert.IsType<byte[]>(field.GetValue(provider));
 
         provider.Dispose();
         var exception = Record.Exception(provider.Dispose);
 
         Assert.Null(exception);
+        Assert.All(keyEncryptionKey, static value => Assert.Equal(0, value));
     }
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task Dispose_ThenWrapAndUnwrapAgain_DoesNotRoundTripThroughANewlyWrappedKey()
+    public async Task WrapAsync_AfterDispose_ThrowsObjectDisposedException()
     {
-        var material = RandomMaterial();
-        var provider = CreateProvider(material);
+        var provider = CreateProvider(RandomMaterial());
         var dataKey = RandomDataKey();
         provider.Dispose();
 
-        var wrapped = await provider.WrapAsync(dataKey, TestContext.Current.CancellationToken);
-        using var fresh = CreateProvider(material);
-
-        await Assert.ThrowsAsync<SecretDecryptionException>(
-            () => fresh.UnwrapAsync(wrapped, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => provider.WrapAsync(dataKey, TestContext.Current.CancellationToken));
     }
 
     [Fact]
