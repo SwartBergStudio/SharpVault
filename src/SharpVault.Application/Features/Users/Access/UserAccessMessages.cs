@@ -10,4 +10,6 @@ internal static class UserAccessMessages
     public const string CacheMaxEntriesOutOfRange = "UserAccess:CacheMaxEntries must be between 100 and 1000000.";
 
     public const string SignInRecordIntervalOutOfRange = "UserAccess:SignInRecordInterval must be between 1 minute and 24 hours.";
+
+    public const string UserRowMissing = "The user row disappeared during the access check.";
 }
