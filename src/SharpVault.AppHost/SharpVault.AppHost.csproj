@@ -1,0 +1,14 @@
+<Project Sdk="Aspire.AppHost.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UserSecretsId>d077b220-aade-4981-b607-d0331a536cae</UserSecretsId>
+    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.Azure.Storage" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../SharpVault.Api/SharpVault.Api.csproj" />
+    <ProjectReference Include="../SharpVault.Web/SharpVault.Web.csproj" />
+  </ItemGroup>
+</Project>

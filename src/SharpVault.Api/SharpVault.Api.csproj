@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Scalar.AspNetCore" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../SharpVault.Application/SharpVault.Application.csproj" />
+    <ProjectReference Include="../SharpVault.Infrastructure/SharpVault.Infrastructure.csproj" />
+    <ProjectReference Include="../SharpVault.ServiceDefaults/SharpVault.ServiceDefaults.csproj" />
+  </ItemGroup>
+</Project>

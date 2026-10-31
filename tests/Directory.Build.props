@@ -1,0 +1,13 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3.mtp-off" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="coverlet.collector" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
