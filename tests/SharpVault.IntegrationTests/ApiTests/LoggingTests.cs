@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Factories;
 using SharpVault.IntegrationTests.Support;
+using SharpVault.IntegrationTests.Tracing;
 
 namespace SharpVault.IntegrationTests.ApiTests;
 
@@ -126,46 +127,46 @@ public sealed class LoggingTests(ApiTestFactory factory) : BaseIntegrationTest(f
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var secret = "outbound-secret-" + Fixture.Create<Guid>().ToString("N");
-        using var isolated = Factory.WithWebHostBuilder(_ => { });
-        using var hostClient = isolated.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
-        await hostClient.GetAsync("/alive", cancellationToken);
         var port = GetFreePort();
-        var captured = new System.Collections.Concurrent.ConcurrentBag<string>();
-        var activityCount = 0;
-        using var listener = new ActivityListener
-        {
-            ShouldListenTo = source => source.Name == "System.Net.Http",
-            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
-            SampleUsingParentId = (ref ActivityCreationOptions<string> _) => ActivitySamplingResult.AllDataAndRecorded,
-            ActivityStopped = activity =>
-            {
-                Interlocked.Increment(ref activityCount);
-                captured.Add(activity.DisplayName);
-                foreach (var tag in activity.TagObjects)
-                {
-                    captured.Add($"{tag.Key}={tag.Value}");
-                }
-            },
-        };
-        ActivitySource.AddActivityListener(listener);
-        using var outbound = new HttpClient(new SocketsHttpHandler());
+        var uniquePath = $"/probe/{Guid.NewGuid():N}";
+        _ = Factory.Services;
+        using var recorder = new ActivityRecorder(uniquePath, ActivityRecorder.HttpClientSource);
 
-        await Assert.ThrowsAsync<HttpRequestException>(
-            () => outbound.GetAsync($"http://127.0.0.1:{port}/probe?token={secret}", cancellationToken));
+        await SendOutboundProbeAsync($"http://127.0.0.1:{port}{uniquePath}?token={secret}", recorder, cancellationToken);
 
-        Assert.True(activityCount > 0, "No outbound activity was captured, so the check would pass vacuously.");
-        Assert.Contains($"url.full=http://127.0.0.1:{port}/probe", captured);
-        Assert.DoesNotContain(captured, value => value.Contains(secret, StringComparison.Ordinal));
-        Assert.DoesNotContain(captured, value => value.StartsWith("url.query=", StringComparison.Ordinal));
+        var targeted = Assert.Single(recorder.Targeted);
+        Assert.Equal($"http://127.0.0.1:{port}{uniquePath}", targeted.Tags[TraceTagNames.UrlFull]);
+        Assert.DoesNotContain(TraceTagNames.UrlQuery, targeted.Tags.Keys);
+        Assert.False(recorder.AnyContains(secret), "A recorded activity contained the query string secret.");
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition, CancellationToken cancellationToken)
+    [Fact]
+    public async Task OutboundHttpClient_SecretInUserInfoAndQueryString_IsNotInTraceTags()
     {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (!condition() && DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(25, cancellationToken);
-        }
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var userInfoSecret = "userinfo-secret-" + Fixture.Create<Guid>().ToString("N");
+        var querySecret = "query-secret-" + Fixture.Create<Guid>().ToString("N");
+        var port = GetFreePort();
+        var uniquePath = $"/probe/{Guid.NewGuid():N}";
+        _ = Factory.Services;
+        using var recorder = new ActivityRecorder(uniquePath, ActivityRecorder.HttpClientSource);
+
+        await SendOutboundProbeAsync($"http://probeuser:{userInfoSecret}@127.0.0.1:{port}{uniquePath}?token={querySecret}", recorder, cancellationToken);
+
+        var targeted = Assert.Single(recorder.Targeted);
+        Assert.Equal($"http://127.0.0.1:{port}{uniquePath}", targeted.Tags[TraceTagNames.UrlFull]);
+        Assert.False(recorder.AnyContains(userInfoSecret), "A recorded activity contained the user info secret.");
+        Assert.False(recorder.AnyContains(querySecret), "A recorded activity contained the query string secret.");
+        Assert.False(recorder.AnyContains("probeuser"), "A recorded activity contained the user name.");
+    }
+
+    private static async Task SendOutboundProbeAsync(string url, ActivityRecorder recorder, CancellationToken cancellationToken)
+    {
+        using var outbound = new HttpClient(new SocketsHttpHandler());
+
+        await Assert.ThrowsAnyAsync<HttpRequestException>(() => outbound.GetAsync(url, cancellationToken));
+
+        await recorder.WaitForTargetedActivityAsync(cancellationToken);
     }
 
     private static int GetFreePort()
@@ -180,32 +181,18 @@ public sealed class LoggingTests(ApiTestFactory factory) : BaseIntegrationTest(f
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = isolated.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
         await client.GetAsync("/alive", cancellationToken);
-        var captured = new System.Collections.Concurrent.ConcurrentBag<string>();
-        var activityCount = 0;
-        using var listener = new ActivityListener
-        {
-            ShouldListenTo = source => source.Name is "Microsoft.AspNetCore" or "System.Net.Http",
-            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
-            SampleUsingParentId = (ref ActivityCreationOptions<string> _) => ActivitySamplingResult.AllDataAndRecorded,
-            ActivityStopped = activity =>
-            {
-                Interlocked.Increment(ref activityCount);
-                captured.Add(activity.DisplayName);
-                foreach (var tag in activity.TagObjects)
-                {
-                    captured.Add($"{tag.Key}={tag.Value}");
-                }
-            },
-        };
-        ActivitySource.AddActivityListener(listener);
+        var uniquePath = $"/does-not-exist/{Guid.NewGuid():N}";
+        using var recorder = new ActivityRecorder(uniquePath, ActivityRecorder.AspNetCoreSource, ActivityRecorder.HttpClientSource);
 
-        await client.GetAsync($"/does-not-exist?token={secret}", cancellationToken);
-        await WaitUntilAsync(() => Volatile.Read(ref activityCount) > 0, cancellationToken);
+        var response = await client.GetAsync($"{uniquePath}?token={secret}", cancellationToken);
+        await recorder.WaitForTargetedActivityAsync(cancellationToken);
 
-        Assert.True(activityCount > 0, "No activity was captured, so the check would pass vacuously.");
-        Assert.Contains(captured, value => value.StartsWith("http.request.method=", StringComparison.Ordinal));
-        Assert.DoesNotContain(captured, value => value.Contains(secret, StringComparison.Ordinal));
-        Assert.DoesNotContain(captured, value => value.StartsWith("url.query=", StringComparison.Ordinal));
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains(
+            recorder.Targeted,
+            activity => activity.SourceName == ActivityRecorder.AspNetCoreSource && activity.Tags.ContainsKey(TraceTagNames.HttpRequestMethod));
+        Assert.DoesNotContain(recorder.Targeted, activity => activity.Tags.ContainsKey(TraceTagNames.UrlQuery));
+        Assert.False(recorder.AnyContains(secret), "A recorded activity contained the query string secret.");
     }
 
     [Fact]

@@ -27,6 +27,7 @@ public sealed class WebTestFactory : WebApplicationFactory<WebApp::Program>
         builder.UseEnvironment(Environments.Development);
         builder.UseSetting("Logging:LogLevel:Default", "Debug");
         builder.UseSetting("Logging:LogLevel:Microsoft", "Debug");
+        builder.UseSetting("Logging:LogLevel:Microsoft.AspNetCore", "Debug");
         builder.ConfigureLogging(logging =>
         {
             logging.SetMinimumLevel(LogLevel.Debug);

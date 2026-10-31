@@ -196,6 +196,46 @@ public sealed class ServiceDefaultsExtensionsTests
         Assert.True(logger.IsEnabled(LogLevel.Warning));
     }
 
+    [Theory]
+    [Trait("Category", "Security")]
+    [InlineData("Logging:Console:LogLevel:Microsoft.AspNetCore.*", "Microsoft.AspNetCore.Hosting.Diagnostics")]
+    [InlineData("Logging:Console:LogLevel:Microsoft.*", "Microsoft.AspNetCore.Hosting.Diagnostics")]
+    [InlineData("Logging:Console:LogLevel:microsoft.aspnetcore", "Microsoft.AspNetCore.Hosting.Diagnostics")]
+    [InlineData("Logging:LogLevel:System.Net.Http.HttpClient.Default", "System.Net.Http.HttpClient.Default.LogicalHandler")]
+    [InlineData("Logging:Console:LogLevel:System.Net.Http.HttpClient.Default.LogicalHandler", "System.Net.Http.HttpClient.Default.LogicalHandler")]
+    [InlineData("Logging:Console:LogLevel:System.Net.Http.*.LogicalHandler", "System.Net.Http.HttpClient.Default.LogicalHandler")]
+    public void SuppressQueryStringLogging_WildcardCaseOrDescendantConfig_EffectiveLevelStaysWarning(string settingKey, string category)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { [settingKey] = "Debug" });
+        builder.AddServiceDefaults();
+        using var app = builder.Build();
+
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(category);
+
+        Assert.False(logger.IsEnabled(LogLevel.Information));
+        Assert.False(logger.IsEnabled(LogLevel.Debug));
+        Assert.True(logger.IsEnabled(LogLevel.Warning));
+    }
+
+    [Theory]
+    [Trait("Category", "Security")]
+    [InlineData("Logging:Console:LogLevel:Microsoft.AspNetCore.*", "Microsoft.AspNetCore.Routing.EndpointMiddleware")]
+    [InlineData("Logging:Console:LogLevel:Microsoft.AspNetCore.Hosting.Lifetime", "Microsoft.AspNetCore.Hosting.Lifetime")]
+    [InlineData("Logging:Console:LogLevel:System.Net.Http.HttpClientFactoryProbe", "System.Net.Http.HttpClientFactoryProbe")]
+    [InlineData("Logging:LogLevel:SharpVault", "SharpVault.Api")]
+    public void SuppressQueryStringLogging_UnrelatedCategoryConfigured_KeepsConfiguredLevel(string settingKey, string category)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { [settingKey] = "Debug" });
+        builder.AddServiceDefaults();
+        using var app = builder.Build();
+
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(category);
+
+        Assert.True(logger.IsEnabled(LogLevel.Debug));
+    }
+
     private static bool IsOutputCachePolicy(object metadata) =>
         metadata.GetType().Namespace == "Microsoft.AspNetCore.OutputCaching";
 
