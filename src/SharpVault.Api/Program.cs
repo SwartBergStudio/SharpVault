@@ -1,6 +1,7 @@
 // SharpVault - Copyright (c) SwartBergStudio.
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
+using SharpVault.Api.Errors;
 using SharpVault.Api.OpenApi;
 using SharpVault.Api.Security;
 using SharpVault.Application;
@@ -14,7 +15,8 @@ builder.AddServiceDefaults();
 builder.Services.AddApplication();
 builder.AddInfrastructure();
 builder.Services.AddProblemDetails();
-builder.Services.AddApiAuthentication();
+builder.Services.AddExceptionHandler<ValidationExceptionHandler>();
+builder.AddApiAuthentication();
 builder.Services.AddApiDocumentation();
 
 var app = builder.Build();
