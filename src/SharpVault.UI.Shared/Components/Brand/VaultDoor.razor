@@ -1,0 +1,54 @@
+<svg id="@Id" class="@ClassNames" viewBox="0 0 120 120" aria-hidden="true" focusable="false">
+    <rect class="vault-door__hinge" x="1" y="38" width="8" height="14" rx="2" />
+    <rect class="vault-door__hinge" x="1" y="68" width="8" height="14" rx="2" />
+    <circle class="vault-door__rim" cx="60" cy="60" r="56" />
+    <g class="vault-door__bolts">
+        <rect x="57" y="8" width="6" height="10" rx="1.5" transform="rotate(0 60 60)" />
+        <rect x="57" y="8" width="6" height="10" rx="1.5" transform="rotate(45 60 60)" />
+        <rect x="57" y="8" width="6" height="10" rx="1.5" transform="rotate(90 60 60)" />
+        <rect x="57" y="8" width="6" height="10" rx="1.5" transform="rotate(135 60 60)" />
+        <rect x="57" y="8" width="6" height="10" rx="1.5" transform="rotate(180 60 60)" />
+        <rect x="57" y="8" width="6" height="10" rx="1.5" transform="rotate(225 60 60)" />
+        <rect x="57" y="8" width="6" height="10" rx="1.5" transform="rotate(270 60 60)" />
+        <rect x="57" y="8" width="6" height="10" rx="1.5" transform="rotate(315 60 60)" />
+    </g>
+    <circle class="vault-door__face" cx="60" cy="60" r="44" />
+    <circle class="vault-door__face-ring" cx="60" cy="60" r="36" />
+    <g class="vault-door__wheel">
+        <line x1="60" y1="60" x2="60" y2="34" />
+        <line x1="60" y1="60" x2="82.52" y2="73" />
+        <line x1="60" y1="60" x2="37.48" y2="73" />
+        <circle cx="60" cy="34" r="3.5" />
+        <circle cx="82.52" cy="73" r="3.5" />
+        <circle cx="37.48" cy="73" r="3.5" />
+        <circle class="vault-door__hub" cx="60" cy="60" r="9" />
+    </g>
+</svg>
+
+@code {
+    [Parameter]
+    public VaultDoorVariant Variant { get; set; }
+
+    [Parameter]
+    public bool Sealing { get; set; }
+
+    [Parameter]
+    public string? Id { get; set; }
+
+    private string ClassNames
+    {
+        get
+        {
+            var variantClass = Variant == VaultDoorVariant.Mark ? "vault-door--mark" : "vault-door--hero";
+            return Sealing ? $"vault-door {variantClass} vault-door--sealing" : $"vault-door {variantClass}";
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Id is not null)
+        {
+            ComponentIds.EnsureValid(Id, nameof(Id));
+        }
+    }
+}

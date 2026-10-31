@@ -1,0 +1,80 @@
+@if (Open)
+{
+    <div id="@($"{IdPrefix}-backdrop")" class="sv-dialog-backdrop">
+        <section id="@($"{IdPrefix}-dialog")" class="@DialogClass" role="dialog" aria-modal="true" aria-labelledby="@TitleId" tabindex="-1" @ref="_dialog" @onkeydown="HandleKeyDownAsync">
+            <header class="sv-dialog__header">
+                <h2 id="@TitleId" class="sv-dialog__title">
+                    @if (Danger)
+                    {
+                        <Icon Name="IconName.Danger" />
+                    }
+                    @Title
+                </h2>
+            </header>
+            <div class="sv-dialog__body">@ChildContent</div>
+            @if (Footer is not null)
+            {
+                <footer class="sv-dialog__footer">@Footer</footer>
+            }
+        </section>
+    </div>
+}
+
+@code {
+    private const string EscapeKey = "Escape";
+
+    private ElementReference _dialog;
+    private bool _wasOpen;
+    private bool _focusPending;
+
+    [Parameter, EditorRequired]
+    public string IdPrefix { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool Open { get; set; }
+
+    [Parameter]
+    public bool Danger { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public RenderFragment? Footer { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private string TitleId => $"{IdPrefix}-title";
+
+    private string DialogClass => Danger ? "sv-dialog sv-dialog--danger" : "sv-dialog";
+
+    protected override void OnParametersSet()
+    {
+        ComponentIds.EnsureValid(IdPrefix, nameof(IdPrefix));
+        _focusPending = Open && !_wasOpen;
+        _wasOpen = Open;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusPending)
+        {
+            return;
+        }
+
+        _focusPending = false;
+        await _dialog.FocusAsync();
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == EscapeKey)
+        {
+            await OnCancel.InvokeAsync();
+        }
+    }
+}

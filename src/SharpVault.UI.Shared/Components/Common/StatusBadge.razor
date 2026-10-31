@@ -1,0 +1,39 @@
+<span id="@Id" class="sv-status sv-status--@StatusClass">
+    <Icon Name="@ResolvedIcon" />
+    <span class="sv-status__label">@ResolvedLabel</span>
+</span>
+
+@code {
+    [Parameter]
+    public SecurityStatus Status { get; set; }
+
+    [Parameter]
+    public string? Label { get; set; }
+
+    [Parameter]
+    public IconName? Icon { get; set; }
+
+    [Parameter]
+    public string? Id { get; set; }
+
+    private string StatusClass => Status.ToString().ToLowerInvariant();
+
+    private IconName ResolvedIcon => Icon ?? Status switch
+    {
+        SecurityStatus.Active => IconName.ShieldCheck,
+        SecurityStatus.Locked => IconName.Lock,
+        SecurityStatus.Warning => IconName.Warning,
+        SecurityStatus.Danger => IconName.Danger,
+        _ => IconName.Info,
+    };
+
+    private string ResolvedLabel => !string.IsNullOrWhiteSpace(Label) ? Label : Status.ToString();
+
+    protected override void OnParametersSet()
+    {
+        if (Id is not null)
+        {
+            ComponentIds.EnsureValid(Id, nameof(Id));
+        }
+    }
+}

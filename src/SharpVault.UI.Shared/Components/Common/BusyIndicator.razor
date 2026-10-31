@@ -1,0 +1,29 @@
+<span id="@Id" class="sv-busy" role="status">
+    <svg class="sv-busy__dial" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle class="sv-busy__ring" cx="12" cy="12" r="10" />
+        <g class="sv-busy__ticks">
+            @for (var tick = 0; tick < TickCount; tick++)
+            {
+                <line x1="12" y1="2.75" x2="12" y2="4.25" transform="rotate(@(tick * DegreesPerTick) 12 12)" />
+            }
+        </g>
+        <g class="sv-busy__pointer">
+            <line x1="12" y1="12" x2="12" y2="5.5" />
+            <circle cx="12" cy="12" r="1.75" />
+        </g>
+    </svg>
+    <span class="sv-busy__label">@Label</span>
+</span>
+
+@code {
+    private const int TickCount = 12;
+    private const int DegreesPerTick = 30;
+
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Label { get; set; } = "Working";
+
+    protected override void OnParametersSet() => ComponentIds.EnsureValid(Id, nameof(Id));
+}
