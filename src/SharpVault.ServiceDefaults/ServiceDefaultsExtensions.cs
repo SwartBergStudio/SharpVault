@@ -19,11 +19,14 @@ namespace SharpVault.ServiceDefaults;
 public static class ServiceDefaultsExtensions
 {
     private const string OtlpEndpointKey = "OTEL_EXPORTER_OTLP_ENDPOINT";
+    private const string HostingDiagnosticsCategory = "Microsoft.AspNetCore.Hosting.Diagnostics";
+    private const string HttpClientCategory = "System.Net.Http.HttpClient";
 
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder)
         where TBuilder : IHostApplicationBuilder
     {
         builder.ConfigureOpenTelemetry();
+        builder.SuppressQueryStringLogging();
         builder.AddDefaultHealthChecks();
         builder.Services.AddServiceDiscovery();
         builder.Services.ConfigureHttpClientDefaults(http =>
@@ -66,6 +69,14 @@ public static class ServiceDefaultsExtensions
             builder.Services.AddOpenTelemetry().UseOtlpExporter();
         }
 
+        return builder;
+    }
+
+    public static TBuilder SuppressQueryStringLogging<TBuilder>(this TBuilder builder)
+        where TBuilder : IHostApplicationBuilder
+    {
+        builder.Logging.AddFilter(HostingDiagnosticsCategory, LogLevel.Warning);
+        builder.Logging.AddFilter(HttpClientCategory, LogLevel.Warning);
         return builder;
     }
 
