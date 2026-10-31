@@ -198,6 +198,29 @@ public sealed class ServiceDefaultsExtensionsTests
 
     [Theory]
     [Trait("Category", "Security")]
+    [InlineData("Microsoft", "Microsoft.AspNetCore.Hosting.Diagnostics")]
+    [InlineData("System", "System.Net.Http.HttpClient.Default.LogicalHandler")]
+    public void SuppressQueryStringLogging_ProviderRulesDifferOnlyByCase_EffectiveLevelStaysWarning(string ancestor, string category)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
+        builder.Logging.AddConsole();
+        builder.Services.Configure<LoggerFilterOptions>(options =>
+        {
+            options.Rules.Add(new LoggerFilterRule("console", ancestor, LogLevel.Debug, null));
+            options.Rules.Add(new LoggerFilterRule("Console", ancestor, LogLevel.Debug, null));
+        });
+        builder.AddServiceDefaults();
+        using var app = builder.Build();
+
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(category);
+
+        Assert.False(logger.IsEnabled(LogLevel.Debug));
+        Assert.False(logger.IsEnabled(LogLevel.Information));
+        Assert.True(logger.IsEnabled(LogLevel.Warning));
+    }
+
+    [Theory]
+    [Trait("Category", "Security")]
     [InlineData("Logging:Console:LogLevel:Microsoft.AspNetCore.*", "Microsoft.AspNetCore.Hosting.Diagnostics")]
     [InlineData("Logging:Console:LogLevel:Microsoft.*", "Microsoft.AspNetCore.Hosting.Diagnostics")]
     [InlineData("Logging:Console:LogLevel:microsoft.aspnetcore", "Microsoft.AspNetCore.Hosting.Diagnostics")]
