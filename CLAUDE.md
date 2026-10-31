@@ -48,6 +48,19 @@ The project skills in `.claude/skills/` describe how we work. Use them instead o
 - `sharpvault-entra-auth`: Microsoft Entra ID, app roles, current user, managed identity
 - `sharpvault-integration-testing`: unit, API integration and Playwright E2E tests
 - `sharpvault-blazor-ui`: Blazor and MAUI Hybrid UI in the shared Razor Class Library
+- `sharpvault-security-performance-testing`: threat lists, security tests, regression tests, performance budgets and benchmarks
+
+## Definition of done
+
+Work is only done when all of these are true:
+
+- It follows the coding standards in `sharpvault-coding-standards` (no inline comments, no commented-out code, no TODOs).
+- The plan has a Threats section, and every threat has a passing test.
+- Every endpoint has the full authorization matrix test.
+- Edge cases and every failure path are tested; every bug fix has a regression test.
+- Performance budgets and storage call counts are tested; no query runs without a partition key.
+- `dotnet build` has no warnings, and all tests, coverage thresholds and the vulnerable package check pass.
+- The `reviewer` has approved.
 
 ## Tech stack
 
