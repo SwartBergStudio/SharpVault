@@ -4,13 +4,15 @@
 
 <PageTitle>Error</PageTitle>
 
-<h1 id="error-heading">Something went wrong</h1>
-<p id="error-message">An error occurred while processing your request.</p>
-
-@if (ShowRequestId)
-{
-    <p id="error-request-id">Request ID: <code>@RequestId</code></p>
-}
+<section class="sv-state sv-state--danger">
+    <div class="sv-state__visual"><Icon Name="IconName.Danger" CssClass="sv-icon--xl" /></div>
+    <h1 id="error-heading">Something went wrong</h1>
+    <p id="error-message" class="sv-state__body">An error occurred while processing your request.</p>
+    @if (ShowRequestId)
+    {
+        <p id="error-request-id" class="sv-state__body">Request ID: <code class="sv-mono">@RequestId</code></p>
+    }
+</section>
 
 @code {
     [CascadingParameter]

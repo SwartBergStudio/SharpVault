@@ -2,7 +2,10 @@
     <Found Context="routeData">
         <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)">
             <NotAuthorized>
-                <p id="not-authorized-message">You need to sign in to see this page.</p>
+                <section class="sv-state">
+                    <div class="sv-state__visual"><Icon Name="IconName.Lock" CssClass="sv-icon--xl" /></div>
+                    <p id="not-authorized-message">You need to sign in to see this page.</p>
+                </section>
             </NotAuthorized>
         </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
