@@ -41,6 +41,6 @@ public sealed partial class TableStorageTableSet
 
     public IReadOnlyList<string> Names { get; }
 
-    [GeneratedRegex("^[A-Za-z][A-Za-z0-9]{2,62}$")]
+    [GeneratedRegex("^[A-Za-z][A-Za-z0-9]{2,62}\\z")]
     private static partial Regex ValidNamePattern();
 }
