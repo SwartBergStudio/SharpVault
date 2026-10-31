@@ -54,6 +54,7 @@ public static class WebAuthenticationExtensions
         options.TokenValidationParameters.NameClaimType = EntraClaimTypes.Name;
         options.TokenValidationParameters.RoleClaimType = EntraClaimTypes.Roles;
         options.TokenValidationParameters.ValidIssuers = [entra.V2Issuer];
+        options.TokenValidationParameters.IssuerValidator = ExactIssuerValidator.For(entra.V2Issuer);
         options.ResponseType = OpenIdConnectResponseType.Code;
         options.UsePkce = true;
         options.SaveTokens = false;

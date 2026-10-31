@@ -21,6 +21,9 @@ public static class ApiAuthenticationExtensions
         builder.Services.AddSingleton(entra);
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddMicrosoftIdentityWebApi(jwt => ConfigureJwtBearer(jwt, entra), identity => section.Bind(identity));
+        builder.Services.PostConfigure<JwtBearerOptions>(
+            JwtBearerDefaults.AuthenticationScheme,
+            jwt => jwt.TokenValidationParameters.IssuerValidator = ExactIssuerValidator.For(entra.V2Issuer));
         builder.Services.AddOptions<UserAccessOptions>()
             .Bind(builder.Configuration.GetSection(UserAccessOptions.SectionName))
             .ValidateOnStart();
