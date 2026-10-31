@@ -56,7 +56,7 @@ jobs:
       - name: Coverage summary
         run: cat TestResults/coverage/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
       - name: Coverage gate
-        run: dotnet run eng/CoverageGate.cs -- TestResults/coverage/Cobertura.xml SharpVault.Application=80 SharpVault.Infrastructure=80
+        run: dotnet run eng/CoverageGate.cs -- TestResults/coverage/Cobertura.xml SharpVault.Application=80 SharpVault.Infrastructure=80 SharpVault.Domain.Encryption=95 SharpVault.Infrastructure.Encryption=95
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -76,3 +76,5 @@ jobs:
           dotnet-version: 10.0.x
       - name: Performance tests
         run: dotnet test SharpVault.slnx -c Release --filter "Category=Performance"
+      - name: Benchmarks smoke run
+        run: dotnet run -c Release --project tests/SharpVault.Benchmarks -- --filter '*' --job dry
