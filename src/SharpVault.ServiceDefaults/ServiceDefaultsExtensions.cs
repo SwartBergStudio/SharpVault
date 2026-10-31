@@ -21,6 +21,8 @@ public static class ServiceDefaultsExtensions
     private const string OtlpEndpointKey = "OTEL_EXPORTER_OTLP_ENDPOINT";
     private const string HostingDiagnosticsCategory = "Microsoft.AspNetCore.Hosting.Diagnostics";
     private const string HttpClientCategory = "System.Net.Http.HttpClient";
+    private const string UrlQueryTag = "url.query";
+    private const string UrlFullTag = "url.full";
 
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder)
         where TBuilder : IHostApplicationBuilder
@@ -36,7 +38,7 @@ public static class ServiceDefaultsExtensions
         });
         builder.Services.AddOutputCache(options => options.AddPolicy(
             HealthEndpoints.CachePolicyName,
-            policy => policy.Expire(HealthEndpoints.CacheDuration).SetVaryByQuery([])));
+            policy => policy.Expire(HealthEndpoints.CacheDuration).SetVaryByQuery([]).SetVaryByHost(false)));
         builder.Services.Configure<KestrelServerOptions>(options =>
         {
             options.AddServerHeader = false;
@@ -61,8 +63,14 @@ public static class ServiceDefaultsExtensions
                 .AddRuntimeInstrumentation())
             .WithTracing(tracing => tracing
                 .AddSource(builder.Environment.ApplicationName)
-                .AddAspNetCoreInstrumentation(options => options.Filter = IsTracedRequest)
-                .AddHttpClientInstrumentation());
+                .AddAspNetCoreInstrumentation(options =>
+                {
+                    options.Filter = IsTracedRequest;
+                    options.EnrichWithHttpRequest = (activity, _) => activity.SetTag(UrlQueryTag, null);
+                })
+                .AddHttpClientInstrumentation(options =>
+                    options.EnrichWithHttpRequestMessage = (activity, request) =>
+                        activity.SetTag(UrlFullTag, WithoutQuery(request.RequestUri))));
 
         if (!string.IsNullOrWhiteSpace(builder.Configuration[OtlpEndpointKey]))
         {
@@ -77,8 +85,44 @@ public static class ServiceDefaultsExtensions
     {
         builder.Logging.AddFilter(HostingDiagnosticsCategory, LogLevel.Warning);
         builder.Logging.AddFilter(HttpClientCategory, LogLevel.Warning);
+        builder.Services.PostConfigure<LoggerFilterOptions>(RaiseQueryLoggingRules);
         return builder;
     }
+
+    private static void RaiseQueryLoggingRules(LoggerFilterOptions options)
+    {
+        string[] categories = [HostingDiagnosticsCategory, HttpClientCategory];
+        var providerRules = options.Rules
+            .Where(rule => rule.ProviderName is not null && rule.LogLevel < LogLevel.Warning)
+            .ToList();
+
+        foreach (var category in categories)
+        {
+            for (var index = 0; index < options.Rules.Count; index++)
+            {
+                var rule = options.Rules[index];
+                if (rule.CategoryName == category && rule.LogLevel < LogLevel.Warning)
+                {
+                    options.Rules[index] = new LoggerFilterRule(rule.ProviderName, rule.CategoryName, LogLevel.Warning, rule.Filter);
+                }
+            }
+
+            foreach (var rule in providerRules.Where(rule => CoversCategory(rule.CategoryName, category)))
+            {
+                options.Rules.Add(new LoggerFilterRule(rule.ProviderName, category, LogLevel.Warning, null));
+            }
+        }
+    }
+
+    private static bool CoversCategory(string? ruleCategory, string category) =>
+        ruleCategory is null
+        || ruleCategory == category
+        || category.StartsWith(ruleCategory + ".", StringComparison.Ordinal);
+
+    private static string? WithoutQuery(Uri? uri) =>
+        uri is null || !uri.IsAbsoluteUri
+            ? null
+            : uri.GetLeftPart(UriPartial.Path);
 
     public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder)
         where TBuilder : IHostApplicationBuilder
