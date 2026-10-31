@@ -73,7 +73,9 @@ Work is only done when all of these are true:
   Each Request and its Handler live together in one file per feature.
 - Mapster for DTO mapping, FluentValidation for request validation.
 - Minimal APIs grouped by feature, with OpenAPI and Scalar.
-- UI is Blazor and Razor only. No React, Vue or JavaScript frameworks.
+- UI is Blazor and Razor only. No React, Vue or JavaScript frameworks. Blazor JS interop (`IJSRuntime.InvokeAsync`) is allowed
+  for specific browser methods that .NET cannot call directly (for example `navigator.clipboard.writeText`, or Web Crypto for one-time links),
+  wrapped behind a C# interface and kept to small, focused modules.
   All UI lives in `SharpVault.UI.Shared` so Web and MAUI share it.
   Every interactive element gets a stable `id` attribute for testing.
 - Every `.cs` file starts with the AGPL-3.0 header defined in `.editorconfig`.
@@ -111,7 +113,7 @@ Work is only done when all of these are true:
 - Transfers (left the company, dismissed, deceased, role change) need a reason and approval by a second admin.
   The target user sees nothing until the transfer is approved and completed.
 - One-time share links open once for anyone with the link. The link key lives in the URL fragment and decryption happens
-  in the browser (JS interop with Web Crypto is allowed for this one case), so the server cannot read link contents.
+  in the browser (Web Crypto through Blazor JS interop), so the server cannot read link contents.
 - Every lock, unlock, transfer step, reveal and share is written to the append-only audit log, never with secret values.
 
 ## Local development and testing
