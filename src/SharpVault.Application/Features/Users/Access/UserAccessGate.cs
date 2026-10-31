@@ -23,9 +23,17 @@ public sealed partial class UserAccessGate(
         ArgumentNullException.ThrowIfNull(user);
 
         var now = timeProvider.GetUtcNow();
-        if (cache.TryGet(user.UserId, out var cached) && !IsSignInDue(cached.LastSignInAt, now))
+        if (cache.TryGet(user.UserId, out var cached))
         {
-            return Decide(cached.Status);
+            if (cached.Status != UserStatus.Active)
+            {
+                return UserAccessDecision.Denied;
+            }
+
+            if (!IsSignInDue(cached.LastSignInAt, now))
+            {
+                return UserAccessDecision.Allowed;
+            }
         }
 
         var stored = await users.GetAsync(user.UserId, cancellationToken);
