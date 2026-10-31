@@ -1,15 +1,24 @@
-<nav id="account-menu" class="account-menu">
+<nav id="account-menu" class="sv-account" aria-label="Account">
     <AuthorizeView>
         <Authorized>
-            <span id="account-name" class="account-name">@context.User.Identity?.Name</span>
-            <a id="account-link" href="account">Account</a>
-            <form id="sign-out-form" method="post" action="@AccountRoutes.SignOut">
+            <span class="sv-account__who">
+                <Icon Name="IconName.User" />
+                <span id="account-name" class="sv-account__name">@context.User.Identity?.Name</span>
+            </span>
+            <a id="account-link" class="sv-btn sv-btn--ghost sv-btn--sm" href="account">Account</a>
+            <form id="sign-out-form" class="sv-account__form" method="post" action="@AccountRoutes.SignOut">
                 <AntiforgeryToken />
-                <button id="sign-out-button" type="submit">Sign out</button>
+                <button id="sign-out-button" class="sv-btn sv-btn--secondary sv-btn--sm" type="submit">
+                    <Icon Name="IconName.SignOut" />
+                    <span>Sign out</span>
+                </button>
             </form>
         </Authorized>
         <NotAuthorized>
-            <a id="sign-in-link" href="@AccountRoutes.SignIn">Sign in</a>
+            <a id="sign-in-link" class="sv-btn sv-btn--primary sv-btn--sm" href="@AccountRoutes.SignIn">
+                <Icon Name="IconName.Key" />
+                <span>Sign in</span>
+            </a>
         </NotAuthorized>
     </AuthorizeView>
 </nav>

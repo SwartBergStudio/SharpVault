@@ -3,6 +3,13 @@
 
 <PageTitle>Sign-in failed</PageTitle>
 
-<h1 id="sign-in-error-heading">Sign-in failed</h1>
-<p id="sign-in-error-message">We could not sign you in. Try again, and contact your administrator if the problem continues.</p>
-<a id="sign-in-error-retry-link" href="@AccountRoutes.SignIn">Try again</a>
+<section class="sv-state sv-state--danger">
+    <div class="sv-state__visual">
+        <Icon Name="IconName.Danger" CssClass="sv-icon--xl" />
+    </div>
+    <h1 id="sign-in-error-heading">Sign-in failed</h1>
+    <p id="sign-in-error-message" class="sv-state__body">We could not sign you in. Try again, and contact your administrator if the problem continues.</p>
+    <div class="sv-state__actions">
+        <a id="sign-in-error-retry-link" href="@AccountRoutes.SignIn" class="sv-btn sv-btn--primary">Try again</a>
+    </div>
+</section>

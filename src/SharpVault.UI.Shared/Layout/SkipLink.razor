@@ -1,0 +1,22 @@
+@implements IDisposable
+@inject NavigationManager Navigation
+
+<a id="skip-to-content" class="sv-skip-link" href="@Href">Skip to content</a>
+
+@code {
+    private string Href => $"{PathWithoutQueryOrFragment()}#main-content";
+
+    protected override void OnInitialized() => Navigation.LocationChanged += HandleLocationChanged;
+
+    public void Dispose() => Navigation.LocationChanged -= HandleLocationChanged;
+
+    private string PathWithoutQueryOrFragment()
+    {
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var endIndex = relative.AsSpan().IndexOfAny('?', '#');
+        return endIndex < 0 ? relative : relative[..endIndex];
+    }
+
+    private void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) =>
+        _ = InvokeAsync(StateHasChanged);
+}
