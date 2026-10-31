@@ -8,6 +8,10 @@ namespace SharpVault.UnitTests.ServiceDefaults;
 
 public sealed class SecurityHeadersPolicyTests
 {
+    private const string IdentityProviderOrigin = "https://login.microsoftonline.com";
+
+    private static readonly Uri IdentityProvider = new(IdentityProviderOrigin + "/");
+
     [Fact]
     public void ForApi_WithoutApiReferenceUi_UsesApiPolicyWithNoExemptPaths()
     {
@@ -31,7 +35,7 @@ public sealed class SecurityHeadersPolicyTests
     [Trait("Category", "Security")]
     public void ForWeb_Always_DisallowsInlineAndEvalScript()
     {
-        var policy = SecurityHeadersPolicy.ForWeb();
+        var policy = SecurityHeadersPolicy.ForWeb(IdentityProvider);
 
         Assert.DoesNotContain("unsafe-inline", policy.ContentSecurityPolicy, StringComparison.Ordinal);
         Assert.DoesNotContain("unsafe-eval", policy.ContentSecurityPolicy, StringComparison.Ordinal);
@@ -67,13 +71,70 @@ public sealed class SecurityHeadersPolicyTests
     [Trait("Category", "Security")]
     public void ForWeb_Always_HasNoWildcardOrExternalSources()
     {
-        var csp = SecurityHeadersPolicy.ForWeb().ContentSecurityPolicy;
+        var csp = SecurityHeadersPolicy.ForWeb(IdentityProvider).ContentSecurityPolicy;
+        var withoutIdentityProvider = csp.Replace(" " + IdentityProviderOrigin, string.Empty, StringComparison.Ordinal);
 
         Assert.DoesNotContain("*", csp, StringComparison.Ordinal);
-        Assert.DoesNotContain("http:", csp, StringComparison.Ordinal);
-        Assert.DoesNotContain("https:", csp, StringComparison.Ordinal);
+        Assert.DoesNotContain("http:", withoutIdentityProvider, StringComparison.Ordinal);
+        Assert.DoesNotContain("https:", withoutIdentityProvider, StringComparison.Ordinal);
         Assert.DoesNotContain("blob:", csp, StringComparison.Ordinal);
         Assert.DoesNotContain("data:", csp.Replace("img-src 'self' data:", string.Empty, StringComparison.Ordinal), StringComparison.Ordinal);
+        Assert.Equal(1, csp.Split("https://", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void ForWeb_IdentityProviderOrigin_AllowsOnlySelfAndThatOriginForFormAction()
+    {
+        var csp = SecurityHeadersPolicy.ForWeb(IdentityProvider).ContentSecurityPolicy;
+
+        var directives = csp.Split("; ");
+        var formAction = Assert.Single(directives, directive => directive.StartsWith("form-action ", StringComparison.Ordinal));
+        Assert.Equal("form-action 'self' " + IdentityProviderOrigin, formAction);
+        Assert.Equal(1, directives.Count(directive => directive.Contains("https://", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void ForWeb_InstanceWithPath_UsesOriginOnly()
+    {
+        var csp = SecurityHeadersPolicy.ForWeb(new Uri("https://login.microsoftonline.com/some/path?x=1")).ContentSecurityPolicy;
+
+        Assert.Contains("form-action 'self' https://login.microsoftonline.com;", csp, StringComparison.Ordinal);
+        Assert.DoesNotContain("/some/path", csp, StringComparison.Ordinal);
+        Assert.DoesNotContain("x=1", csp, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [Trait("Category", "Security")]
+    [InlineData("http://login.microsoftonline.com/")]
+    [InlineData("ftp://login.microsoftonline.com/")]
+    public void ForWeb_NonHttpsOrigin_Throws(string origin)
+    {
+        Assert.Throws<ArgumentException>(() => SecurityHeadersPolicy.ForWeb(new Uri(origin)));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void ForWeb_RelativeOrigin_Throws()
+    {
+        Assert.Throws<ArgumentException>(() => SecurityHeadersPolicy.ForWeb(new Uri("/relative", UriKind.Relative)));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void ForWeb_NullOrigin_Throws()
+    {
+        Assert.ThrowsAny<ArgumentException>(() => SecurityHeadersPolicy.ForWeb(null!));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void ForWeb_IdentityProvider_ProducesExactContentSecurityPolicy()
+    {
+        var csp = SecurityHeadersPolicy.ForWeb(IdentityProvider).ContentSecurityPolicy;
+
+        Assert.Equal("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://login.microsoftonline.com; upgrade-insecure-requests", csp);
     }
 
     [Theory]
@@ -84,11 +145,11 @@ public sealed class SecurityHeadersPolicyTests
     [InlineData("object-src 'none'")]
     [InlineData("frame-ancestors 'none'")]
     [InlineData("base-uri 'self'")]
-    [InlineData("form-action 'self'")]
+    [InlineData("form-action 'self' https://login.microsoftonline.com")]
     [InlineData("upgrade-insecure-requests")]
     public void ForWeb_Always_ContainsDirective(string directive)
     {
-        var csp = SecurityHeadersPolicy.ForWeb().ContentSecurityPolicy;
+        var csp = SecurityHeadersPolicy.ForWeb(IdentityProvider).ContentSecurityPolicy;
 
         Assert.Contains(directive, csp.Split("; "), StringComparer.Ordinal);
     }
@@ -98,7 +159,7 @@ public sealed class SecurityHeadersPolicyTests
     public void SecurityHeaderValues_Constants_HaveExactExpectedText()
     {
         Assert.Equal("default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'", SecurityHeaderValues.ApiContentSecurityPolicy);
-        Assert.Equal("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests", SecurityHeaderValues.WebContentSecurityPolicy);
+        Assert.Equal("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' {0}; upgrade-insecure-requests", SecurityHeaderValues.WebContentSecurityPolicyFormat);
         Assert.Equal("nosniff", SecurityHeaderValues.NoSniff);
         Assert.Equal("DENY", SecurityHeaderValues.FrameDeny);
         Assert.Equal("no-referrer", SecurityHeaderValues.NoReferrer);

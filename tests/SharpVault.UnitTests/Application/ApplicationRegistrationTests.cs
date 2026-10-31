@@ -9,7 +9,13 @@ using Mediator.Core;
 using Mediator.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using NSubstitute;
 using SharpVault.Application;
+using SharpVault.Application.Common.Behaviors;
+using SharpVault.Application.Common.Interfaces;
+using SharpVault.Application.Features.Tenancy;
+using SharpVault.Application.Features.Users.Access;
+using SharpVault.Application.Features.Users.Queries;
 
 namespace SharpVault.UnitTests.Application;
 
@@ -85,19 +91,48 @@ public sealed class ApplicationRegistrationTests
     }
 
     [Fact]
-    public void AddApplication_NoValidatorsDefined_RegistersNoValidators()
+    public void AddApplication_Registered_RegistersFeatureValidatorsAndValidationBehavior()
     {
-        using var provider = BuildProvider();
+        var services = new ServiceCollection().AddLogging().AddApplication();
 
-        var validators = provider.GetServices<IValidator>();
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IValidator<ListUsersQuery>));
+        Assert.Contains(services, descriptor =>
+            descriptor.ServiceType == typeof(IPipelineBehavior<,>)
+            && descriptor.ImplementationType == typeof(ValidationBehavior<,>));
+    }
 
-        Assert.Empty(validators);
+    [Fact]
+    public void AddApplication_Registered_ResolvesAccessGateGuestPolicyAndOptionsValidator()
+    {
+        using var provider = BuildProviderWithHostServices();
+
+        Assert.NotNull(provider.GetService<IUserAccessGate>());
+        Assert.NotNull(provider.GetService<IGuestAccessPolicy>());
+        Assert.NotNull(provider.GetService<IValidateOptions<UserAccessOptions>>());
+    }
+
+    [Fact]
+    public void AddApplication_HostServicesMissing_FailsScopeValidation()
+    {
+        var services = new ServiceCollection().AddLogging().AddApplication();
+
+        var exception = Record.Exception(() =>
+        {
+            using var provider = services.BuildServiceProvider(new ServiceProviderOptions
+            {
+                ValidateScopes = true,
+                ValidateOnBuild = true,
+            });
+        });
+
+        Assert.IsType<AggregateException>(exception);
     }
 
     [Fact]
     public void AddApplication_Registered_ResolvesEverythingWithScopeValidation()
     {
         var services = new ServiceCollection().AddLogging().AddApplication();
+        AddHostServices(services);
 
         var exception = Record.Exception(() =>
         {
@@ -113,4 +148,22 @@ public sealed class ApplicationRegistrationTests
 
     private static ServiceProvider BuildProvider() =>
         new ServiceCollection().AddLogging().AddApplication().BuildServiceProvider();
+
+    private static ServiceProvider BuildProviderWithHostServices()
+    {
+        var services = new ServiceCollection().AddLogging().AddApplication();
+        AddHostServices(services);
+        return services.BuildServiceProvider();
+    }
+
+    private static void AddHostServices(IServiceCollection services)
+    {
+        services.AddSingleton(Substitute.For<IUserStore>());
+        services.AddSingleton(Substitute.For<IAuditLog>());
+        services.AddSingleton(Substitute.For<IUserAccessCache>());
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped(_ => Substitute.For<ICurrentUser>());
+        services.AddOptions<UserAccessOptions>();
+        services.AddOptions<TenancyOptions>();
+    }
 }

@@ -18,11 +18,15 @@ public static class CallerClients
             AllowAutoRedirect = false,
         });
 
+        var user = UserFor(caller);
+        if (user is not null)
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestTokens.Create(user));
+            return client;
+        }
+
         switch (caller)
         {
-            case CallerKind.AuthenticatedWithoutRole:
-                TestAuthenticationHandler.AddHeaders(client, TestUsers.AuthenticatedWithoutRole);
-                break;
             case CallerKind.AlgNoneToken:
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ForgedTokens.AlgNone());
                 break;
@@ -37,4 +41,16 @@ public static class CallerClients
 
         return client;
     }
+
+    public static TestUser? UserFor(CallerKind caller) => caller switch
+    {
+        CallerKind.AuthenticatedWithoutRole => TestUsers.AuthenticatedWithoutRole,
+        CallerKind.OtherTenantUser => TestUsers.OtherTenantUser,
+        CallerKind.Guest => TestUsers.Guest,
+        CallerKind.User => TestUsers.User,
+        CallerKind.Admin => TestUsers.Admin,
+        CallerKind.LockedUser => TestUsers.LockedUser,
+        CallerKind.LockedAdmin => TestUsers.LockedAdmin,
+        _ => null,
+    };
 }

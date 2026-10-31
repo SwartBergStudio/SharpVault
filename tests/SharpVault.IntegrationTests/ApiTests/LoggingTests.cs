@@ -211,15 +211,19 @@ public sealed class LoggingTests(ApiTestFactory factory) : BaseIntegrationTest(f
     }
 
     [Fact]
-    public async Task UnhandledException_TestUserHeaders_AreNotLogged()
+    public async Task ApiRequest_SignedInUserNameAndEmail_AreNotLogged()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var displayName = "name-" + Fixture.Create<Guid>().ToString("N");
-        var user = TestUsers.AuthenticatedWithoutRole with { DisplayName = displayName };
-        SetAuthenticatedClient(user);
+        var unique = Fixture.Create<Guid>().ToString("N");
+        var displayName = "name-" + unique;
+        var email = $"mail-{unique}@sharpvault.test";
+        SetAuthenticatedClient(TestUsers.User with { DisplayName = displayName, Email = email });
 
-        await Client.GetAsync("/does-not-exist", cancellationToken);
+        var response = await Client.GetAsync("/api/me", cancellationToken);
 
-        AssertLogsDoNotContain(displayName);
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        Assert.NotEmpty(Logs.Entries);
+        AssertLogsDoNotContain(displayName, email, unique);
+        AssertNoQueryWithoutPartitionKey();
     }
 }

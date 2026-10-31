@@ -11,6 +11,11 @@ namespace SharpVault.UnitTests.ServiceDefaults;
 [Trait("Category", "Security")]
 public sealed class SecurityHeadersMiddlewareTests
 {
+    private const string ExpectedWebContentSecurityPolicy =
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://login.microsoftonline.com; upgrade-insecure-requests";
+
+    private static readonly Uri IdentityProvider = new("https://login.microsoftonline.com/");
+
     private static readonly string[] ConflictingFrameOptions = ["SAMEORIGIN", "ALLOWALL"];
 
     [Fact]
@@ -37,9 +42,9 @@ public sealed class SecurityHeadersMiddlewareTests
     {
         var (context, feature) = CreateContext("/");
 
-        await RunAsync(SecurityHeadersPolicy.ForWeb(), context, feature);
+        await RunAsync(SecurityHeadersPolicy.ForWeb(IdentityProvider), context, feature);
 
-        Assert.Equal(SecurityHeaderValues.WebContentSecurityPolicy, context.Response.Headers[SecurityHeaderNames.ContentSecurityPolicy]);
+        Assert.Equal(ExpectedWebContentSecurityPolicy, context.Response.Headers[SecurityHeaderNames.ContentSecurityPolicy]);
     }
 
     [Fact]
@@ -168,9 +173,9 @@ public sealed class SecurityHeadersMiddlewareTests
     {
         var (context, feature) = CreateContext("/scalar/v1");
 
-        await RunAsync(SecurityHeadersPolicy.ForWeb(), context, feature);
+        await RunAsync(SecurityHeadersPolicy.ForWeb(IdentityProvider), context, feature);
 
-        Assert.Equal(SecurityHeaderValues.WebContentSecurityPolicy, context.Response.Headers[SecurityHeaderNames.ContentSecurityPolicy]);
+        Assert.Equal(ExpectedWebContentSecurityPolicy, context.Response.Headers[SecurityHeaderNames.ContentSecurityPolicy]);
     }
 
     [Fact]

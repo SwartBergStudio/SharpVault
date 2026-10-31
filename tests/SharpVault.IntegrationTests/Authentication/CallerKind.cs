@@ -9,4 +9,10 @@ public enum CallerKind
     AuthenticatedWithoutRole,
     AlgNoneToken,
     UnknownKeyToken,
+    OtherTenantUser,
+    Guest,
+    User,
+    Admin,
+    LockedUser,
+    LockedAdmin,
 }

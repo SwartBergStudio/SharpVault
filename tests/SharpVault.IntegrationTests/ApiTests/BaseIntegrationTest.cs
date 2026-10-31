@@ -3,6 +3,7 @@
 
 using AutoFixture;
 using Azure.Data.Tables;
+using SharpVault.Infrastructure.Storage;
 using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Factories;
 using SharpVault.IntegrationTests.Logging;
@@ -38,6 +39,27 @@ public abstract class BaseIntegrationTest(ApiTestFactory factory) : IAsyncLifeti
     protected void SetAuthenticatedClient(TestUser user) => Client = Factory.CreateAuthenticatedClient(user);
 
     protected HttpClient CreateUnauthenticatedClient() => Factory.CreateUnauthenticatedClient();
+
+    protected async Task<HttpClient> ArrangeCallerAsync(CallerKind caller)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var seededAt = DateTimeOffset.UtcNow;
+        foreach (var locked in new[] { TestUsers.LockedUser, TestUsers.LockedAdmin })
+        {
+            if (await UserRows.GetAsync(GetUsersTable(), locked.ObjectId, cancellationToken) is null)
+            {
+                await Factory.SeedUserAsync(locked, UserRows.LockedStatus, seededAt, cancellationToken);
+            }
+        }
+
+        return CallerClients.CreateFor(Factory, caller);
+    }
+
+    protected TableClient GetUsersTable() => GetTableClient(TableNames.Users);
+
+    protected TableClient GetAuditTable() => GetTableClient(TableNames.AuditLog);
+
+    protected void AssertNoQueryWithoutPartitionKey() => Assert.Empty(StorageRequests.QueriesWithoutPartitionKey());
 
     protected TableClient GetTableClient(string tableName) => Factory.StorageAdminClient.GetTableClient(tableName);
 

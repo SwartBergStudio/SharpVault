@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Factories;
 using SharpVault.IntegrationTests.Support;
 using SharpVault.ServiceDefaults.Security;
@@ -50,7 +51,10 @@ public sealed partial class WebHostTests(WebTestFactory factory)
 
         var response = await client.GetAsync($"/does-not-exist?token={secret}", cancellationToken);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var location = response.Headers.Location?.ToString() ?? string.Empty;
+        Assert.DoesNotContain(secret, location, StringComparison.Ordinal);
+        Assert.DoesNotContain(secret, Uri.UnescapeDataString(location), StringComparison.Ordinal);
 
         Assert.Contains(
             factory.Logs.Entries,
@@ -146,7 +150,7 @@ public sealed partial class WebHostTests(WebTestFactory factory)
     public async Task UnknownPage_Get_Returns404WithNotFoundPage()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = factory.CreateWebClient();
+        using var client = await factory.CreateSignedInClientAsync(TestUsers.User, cancellationToken);
 
         var response = await client.GetAsync("/does-not-exist", cancellationToken);
 
@@ -160,16 +164,34 @@ public sealed partial class WebHostTests(WebTestFactory factory)
     public async Task UnknownPage_Get_HasWebSecurityHeaders()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = factory.CreateWebClient();
+        using var client = await factory.CreateSignedInClientAsync(TestUsers.User, cancellationToken);
 
         var response = await client.GetAsync("/does-not-exist", cancellationToken);
 
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         SecurityHeaderAssertions.AssertWeb(response);
     }
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task UnhandledException_Web_RendersErrorPageWithoutExceptionDetails()
+    public async Task UnknownPage_AnonymousGet_RedirectsToTenantAuthorizeEndpointWithWebSecurityHeaders()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = factory.CreateWebClient();
+
+        var response = await client.GetAsync("/does-not-exist", cancellationToken);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var location = response.Headers.Location;
+        Assert.NotNull(location);
+        Assert.Equal("login.microsoftonline.com", location.Host);
+        Assert.StartsWith($"/{TestTenant.Id:D}/oauth2/v2.0/authorize", location.AbsolutePath, StringComparison.Ordinal);
+        SecurityHeaderAssertions.AssertWeb(response);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task UnhandledException_WebAnonymous_IsChallengedWithoutReachingTheThrowingEndpoint()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var throwing = CreateThrowingFactory();
@@ -178,6 +200,21 @@ public sealed partial class WebHostTests(WebTestFactory factory)
             BaseAddress = new Uri("https://localhost"),
             AllowAutoRedirect = false,
         });
+
+        var response = await client.GetAsync(ThrowingRequestStartupFilter.Path, cancellationToken);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync(cancellationToken);
+        Assert.DoesNotContain(SensitiveMarkers.ExceptionMessage, html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task UnhandledException_Web_RendersErrorPageWithoutExceptionDetails()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var throwing = CreateThrowingFactory();
+        using var client = await WebSignIn.CreateClientAsync(throwing, TestUsers.User, cancellationToken);
 
         var response = await client.GetAsync(ThrowingRequestStartupFilter.Path, cancellationToken);
 
@@ -196,11 +233,7 @@ public sealed partial class WebHostTests(WebTestFactory factory)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var throwing = CreateThrowingFactory();
-        using var client = throwing.CreateClient(new WebApplicationFactoryClientOptions
-        {
-            BaseAddress = new Uri("https://localhost"),
-            AllowAutoRedirect = false,
-        });
+        using var client = await WebSignIn.CreateClientAsync(throwing, TestUsers.User, cancellationToken);
 
         var response = await client.GetAsync(ThrowingRequestStartupFilter.Path, cancellationToken);
 
@@ -242,9 +275,8 @@ public sealed partial class WebHostTests(WebTestFactory factory)
 
         var response = await client.PostAsync(path, new StringContent("{}"), cancellationToken);
 
-        Assert.True(
-            (int)response.StatusCode is >= 400 and < 500,
-            $"Unexpected status {(int)response.StatusCode}");
+        Assert.NotEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotEqual("Healthy", await response.Content.ReadAsStringAsync(cancellationToken));
     }
 
     [Theory]
@@ -254,11 +286,26 @@ public sealed partial class WebHostTests(WebTestFactory factory)
     public async Task WebHost_ApiDocumentationRoutes_AreNotServed(string path)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = factory.CreateWebClient();
+        using var client = await factory.CreateSignedInClientAsync(TestUsers.User, cancellationToken);
 
         var response = await client.GetAsync(path, cancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Theory]
+    [Trait("Category", "Security")]
+    [InlineData("/openapi/v1.json")]
+    [InlineData("/scalar/v1")]
+    public async Task WebHost_ApiDocumentationRoutesAnonymous_AreChallengedNotServed(string path)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = factory.CreateWebClient();
+
+        var response = await client.GetAsync(path, cancellationToken);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("login.microsoftonline.com", response.Headers.Location?.Host);
     }
 
     [Fact]

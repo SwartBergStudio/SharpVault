@@ -3,4 +3,10 @@
 
 namespace SharpVault.IntegrationTests.Authentication;
 
-public sealed record TestUser(Guid ObjectId, string DisplayName, Guid TenantId, IReadOnlyList<string> Roles);
+public sealed record TestUser(
+    Guid ObjectId,
+    string DisplayName,
+    Guid TenantId,
+    IReadOnlyList<string> Roles,
+    bool IsGuest = false,
+    string? Email = null);
