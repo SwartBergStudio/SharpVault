@@ -91,38 +91,58 @@ public static class ServiceDefaultsExtensions
 
     private static void RaiseQueryLoggingRules(LoggerFilterOptions options)
     {
-        string[] categories = [HostingDiagnosticsCategory, HttpClientCategory];
-        var providerRules = options.Rules
-            .Where(rule => rule.ProviderName is not null && rule.LogLevel < LogLevel.Warning)
-            .ToList();
-
-        foreach (var category in categories)
+        string[] families = [HostingDiagnosticsCategory, HttpClientCategory];
+        foreach (var family in families)
         {
-            for (var index = 0; index < options.Rules.Count; index++)
+            RaiseFamily(options, family);
+        }
+    }
+
+    private static void RaiseFamily(LoggerFilterOptions options, string family)
+    {
+        var appendedProviders = new HashSet<string?>(StringComparer.OrdinalIgnoreCase);
+        var originalCount = options.Rules.Count;
+        for (var index = 0; index < originalCount; index++)
+        {
+            var rule = options.Rules[index];
+            if (rule.LogLevel >= LogLevel.Warning)
             {
-                var rule = options.Rules[index];
-                if (rule.CategoryName == category && rule.LogLevel < LogLevel.Warning)
-                {
-                    options.Rules[index] = new LoggerFilterRule(rule.ProviderName, rule.CategoryName, LogLevel.Warning, rule.Filter);
-                }
+                continue;
             }
 
-            foreach (var rule in providerRules.Where(rule => CoversCategory(rule.CategoryName, category)))
+            var prefix = RulePrefix(rule.CategoryName);
+            if (!family.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && !prefix.StartsWith(family, StringComparison.OrdinalIgnoreCase))
             {
-                options.Rules.Add(new LoggerFilterRule(rule.ProviderName, category, LogLevel.Warning, null));
+                continue;
+            }
+
+            if (prefix.Length >= family.Length)
+            {
+                options.Rules[index] = new LoggerFilterRule(rule.ProviderName, rule.CategoryName, LogLevel.Warning, rule.Filter);
+            }
+            else if (appendedProviders.Add(rule.ProviderName))
+            {
+                options.Rules.Add(new LoggerFilterRule(rule.ProviderName, family, LogLevel.Warning, null));
             }
         }
     }
 
-    private static bool CoversCategory(string? ruleCategory, string category) =>
-        ruleCategory is null
-        || ruleCategory == category
-        || category.StartsWith(ruleCategory + ".", StringComparison.Ordinal);
+    private static string RulePrefix(string? categoryName)
+    {
+        if (categoryName is null)
+        {
+            return string.Empty;
+        }
+
+        var wildcardIndex = categoryName.IndexOf('*', StringComparison.Ordinal);
+        return wildcardIndex < 0 ? categoryName : categoryName[..wildcardIndex];
+    }
 
     private static string? WithoutQuery(Uri? uri) =>
         uri is null || !uri.IsAbsoluteUri
             ? null
-            : uri.GetLeftPart(UriPartial.Path);
+            : uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped);
 
     public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder)
         where TBuilder : IHostApplicationBuilder
