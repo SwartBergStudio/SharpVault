@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../SharpVault.UI.Shared/SharpVault.UI.Shared.csproj" />
+    <ProjectReference Include="../SharpVault.ServiceDefaults/SharpVault.ServiceDefaults.csproj" />
+  </ItemGroup>
+</Project>

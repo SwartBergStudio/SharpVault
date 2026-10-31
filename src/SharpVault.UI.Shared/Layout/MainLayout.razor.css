@@ -1,0 +1,14 @@
+.app-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-lg) var(--space-md);
+    background: var(--color-bg);
+    color: var(--color-text);
+}
+
+@media (min-width: 768px) {
+    .app-shell {
+        padding: var(--space-xl);
+    }
+}

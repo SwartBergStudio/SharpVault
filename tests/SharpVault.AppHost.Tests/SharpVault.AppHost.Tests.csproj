@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.Testing" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/SharpVault.AppHost/SharpVault.AppHost.csproj" />
+    <ProjectReference Include="../../src/SharpVault.Infrastructure/SharpVault.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

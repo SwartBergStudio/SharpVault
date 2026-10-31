@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="AutoFixture" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers.Azurite" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/SharpVault.Api/SharpVault.Api.csproj" />
+    <ProjectReference Include="../../src/SharpVault.Infrastructure/SharpVault.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/SharpVault.Web/SharpVault.Web.csproj" Aliases="WebApp" />
+  </ItemGroup>
+</Project>

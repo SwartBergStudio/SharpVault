@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="AutoFixture" />
+    <PackageReference Include="AutoFixture.Xunit3" />
+    <PackageReference Include="NSubstitute" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/SharpVault.Domain/SharpVault.Domain.csproj" />
+    <ProjectReference Include="../../src/SharpVault.Application/SharpVault.Application.csproj" />
+    <ProjectReference Include="../../src/SharpVault.Infrastructure/SharpVault.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/SharpVault.ServiceDefaults/SharpVault.ServiceDefaults.csproj" />
+    <ProjectReference Include="../../src/SharpVault.Api/SharpVault.Api.csproj" />
+    <ProjectReference Include="../../src/SharpVault.UI.Shared/SharpVault.UI.Shared.csproj" />
+    <ProjectReference Include="../../src/SharpVault.Web/SharpVault.Web.csproj" Aliases="WebApp" />
+  </ItemGroup>
+</Project>
