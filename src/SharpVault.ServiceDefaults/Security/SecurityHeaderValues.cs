@@ -6,7 +6,8 @@ namespace SharpVault.ServiceDefaults.Security;
 public static class SecurityHeaderValues
 {
     public const string ApiContentSecurityPolicy = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
-    public const string WebContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests";
+    public const string WebContentSecurityPolicyFormat = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' {0}; upgrade-insecure-requests";
+    public const string IdentityProviderOriginInvalid = "The identity provider origin must be an absolute https URI.";
     public const string NoSniff = "nosniff";
     public const string FrameDeny = "DENY";
     public const string NoReferrer = "no-referrer";

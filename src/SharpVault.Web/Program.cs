@@ -14,7 +14,7 @@ builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
 var app = builder.Build();
 
-app.UseSecurityHeaders(SecurityHeadersPolicy.ForWeb());
+app.UseSecurityHeaders(SecurityHeadersPolicy.ForWeb(new Uri("https://login.microsoftonline.com/")));
 app.UseExceptionHandler(WebRoutes.Error, createScopeForErrors: true);
 app.UseStatusCodePagesWithReExecute(WebRoutes.NotFound, createScopeForStatusCodePages: true);
 app.UseAntiforgery();
