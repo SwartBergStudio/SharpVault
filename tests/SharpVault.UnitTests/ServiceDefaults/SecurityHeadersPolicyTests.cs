@@ -69,6 +69,20 @@ public sealed class SecurityHeadersPolicyTests
 
     [Fact]
     [Trait("Category", "Security")]
+    public void ForWeb_Theme_KeepsStyleAndFontSourcesSelfOnly()
+    {
+        var csp = SecurityHeadersPolicy.ForWeb(IdentityProvider).ContentSecurityPolicy;
+
+        var directives = csp.Split("; ");
+        Assert.Equal("style-src 'self'", Assert.Single(directives, directive => directive.StartsWith("style-src", StringComparison.Ordinal)));
+        Assert.Equal("font-src 'self'", Assert.Single(directives, directive => directive.StartsWith("font-src", StringComparison.Ordinal)));
+        Assert.Equal("script-src 'self'", Assert.Single(directives, directive => directive.StartsWith("script-src", StringComparison.Ordinal)));
+        Assert.DoesNotContain("unsafe-inline", csp, StringComparison.Ordinal);
+        Assert.DoesNotContain("unsafe-eval", csp, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
     public void ForWeb_Always_HasNoWildcardOrExternalSources()
     {
         var csp = SecurityHeadersPolicy.ForWeb(IdentityProvider).ContentSecurityPolicy;
