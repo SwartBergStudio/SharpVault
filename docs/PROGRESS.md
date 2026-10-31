@@ -68,9 +68,17 @@ Start with item 4. The other items follow in build order.
 - Playwright E2E with system Chrome, and the `WebTestFactory` E2E support (D23). This also covers the skip link and dialog focus checks (theme D6, D14).
 - Theme: drop `data:` from `img-src` (theme D8).
 - Key rewrap maintenance job using `RewrapDataKeyAsync` (D8). Old Key Vault key versions must stay enabled until it has migrated every wrapped key.
-- `feature/vault-and-folders` or `feature/offboarding-transfers`, whichever comes first: decide the data key per field (D5) and how TRF-7 moves metadata fields between owners (D5a). `ReEncrypt` works only within one session, so it cannot move a field from the source user's metadata key to the target user's key. Record the choice in the plan. See `docs/ENCRYPTION.md`.
+- D5 and D5a are decided in `docs/plans/vault-and-folders.md` (D1, D2): one metadata key per user, a key per secret for values and notes, and a cross-session `ReEncryptTo` added by `feature/offboarding-transfers`.
 - `feature/vault-and-folders`: give every history entry its own item id (D24), so a history envelope cannot replace the current value.
 - Ask to allow learn.microsoft.com in the session to confirm Key Vault throttling limits (D27).
+- `feature/user-lock`: audit denied attempts by locked users (sign-in D30), and end web sessions on lock with Graph `revokeSignInSessions` plus a web-side check (D31, LCK-3).
+- `feature/admin-settings`: replace `ConfiguredGuestAccessPolicy` with the stored admin setting (sign-in D5, ADM-1).
+- Before scaling out the Web: add a shared distributed token cache (sign-in D24), not only shared Data Protection keys.
+- Add `AccessGateBenchmarks` and `SignedInIdentityReaderBenchmarks` to `tests/SharpVault.Benchmarks` (sign-in D27).
+- `feature/maui-app`: replace the web sign-out form with MSAL sign-out (sign-in D14).
+- Hardening: build the skip link href as an absolute path; give the account page a fallback display name and a guard against a 401 sign-in loop; make the zero value of `StoreWriteResult` fail-closed; strip lone surrogates anywhere in `UserProfileText.Clean`; keep paging in `TableUserStore.ListAsync` when a page is empty but has a continuation token.
+- Deployment: configure host filtering (`AllowedHosts` is `*`, and the OIDC redirect URI is built from the Host header).
+- Resolved: foundation follow-ups D4 (fallback policy now requires a role) and D21 (CSP `form-action` includes the Entra origin).
 
 **Local environment notes**
 

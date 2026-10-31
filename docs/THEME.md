@@ -107,7 +107,7 @@ Why layers: unlayered styles beat layered ones. A component's `.razor.css` (unla
 
 ## Components and ids
 
-Every interactive element has a stable `id`. Components take the id as a parameter and check it with `ComponentIds.EnsureValid`, which requires lowercase kebab-case (`^[a-z][a-z0-9-]*$`). It throws for anything else and does not echo the value.
+Every interactive element has a stable `id`. Components take the id as a parameter and check it with `ComponentIds.EnsureValid`, which requires lowercase kebab-case (`^[a-z][a-z0-9-]*\z`). It throws for anything else and does not echo the value.
 
 | Component | Parameters | Notes |
 |---|---|---|

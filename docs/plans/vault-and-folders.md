@@ -200,7 +200,7 @@ Chunking (`VaultTransactionPlanner`):
 
 Concurrency rules:
 
-- **Secret edits** (update, move, delete, history restore) require the client's `If-Match` ETag. It must match `^W/"datetime'[0-9A-Za-z%.:\-]+'"$` and be at most 100 characters (`ETagRules`). `*` and anything else is rejected with 400 (TH18). A stale ETag returns 409 and changes nothing.
+- **Secret edits** (update, move, delete, history restore) require the client's `If-Match` ETag. It must match `^W/"datetime'[0-9A-Za-z%.:\-]+'"\z` and be at most 100 characters (`ETagRules`). `*` and anything else is rejected with 400 (TH18). A stale ETag returns 409 and changes nothing.
 - **Folder structure** (create, move or delete a folder, restore a folder batch) puts `TouchKeyRing(keyRingETag)` first, with the ETag read at the start of the handler. Two concurrent structural changes cannot both commit, so the cycle check and the folder count limit hold (TH16, TH37).
 - **Secret into folder** (create in a folder, move into a folder, restore into the original folder) includes `TouchFolder(folderId, folderETag)`. A concurrent delete, move or rename of that folder conflicts, so no secret ever points at a deleted folder (TH20).
 - **Folder rename** uses the ETag the handler just read (last writer wins between users' tabs). Folder rows change often because of touches, so a client ETag would cause spurious conflicts (D11).
@@ -265,7 +265,7 @@ Concurrency rules:
 - **Search** (D9): names are encrypted, so the server scans. It reads storage pages of 1,000 (`VaultLimits.SearchScanBatchSize`), decrypts name, username, URL and tags, and keeps rows where any of them contains the term (`StringComparison.OrdinalIgnoreCase`). It stops at `pageSize` matches or after 5,000 scanned rows per request (`SearchMaxScannedRows`), and returns the last **examined** row id as the token. One unwrap per request. The search term never reaches storage, which rules out OData injection (TH40).
 - **Order** is storage order, which is creation order (D8). The server cannot sort by encrypted name without decrypting the whole vault, so the UI sorts the loaded items by name.
 - **Folders**: `GET /api/vault/folders` returns every active folder (at most 1,000, one storage page) sorted by decrypted name (`StringComparer.OrdinalIgnoreCase`), with `parentId`. The UI builds the tree.
-- **Recycle bin**: `GET /api/vault/recycle-bin?pageSize=&continuationToken=` reads the range from `b` to `c`, folders (`bf_`) first and then secrets (`bs_`). The token is the RowKey without the leading `b` (`f_{N}` or `s_{N}`) and is validated with `^[fs]_[0-9a-f]{32}$`.
+- **Recycle bin**: `GET /api/vault/recycle-bin?pageSize=&continuationToken=` reads the range from `b` to `c`, folders (`bf_`) first and then secrets (`bs_`). The token is the RowKey without the leading `b` (`f_{N}` or `s_{N}`) and is validated with `^[fs]_[0-9a-f]{32}\z`.
 - A damaged row (decryption failure, unknown key version or malformed tags) appears with `isDamaged = true` and null text fields. It never fails the whole page (D19).
 
 ### 4.10 API contract
@@ -775,7 +775,7 @@ Shared rule for every handler: `StoreWriteResult.Conflict` and `AlreadyExists` r
 
 `Features/Vault/RecycleBin/`:
 
-1. **`Queries/ListRecycleBin.cs`**: `ListRecycleBinQuery(int PageSize, string? ContinuationToken)`. Validator: page size 1 to 200; token matches `^[fs]_[0-9a-f]{32}$`. Handler: `OpenAsync` (null returns empty) and `ListRecycleBinAsync`; map to `RecycleBinItemDto` with `PurgeAfter = DeletedAt + RecycleBinRetention`.
+1. **`Queries/ListRecycleBin.cs`**: `ListRecycleBinQuery(int PageSize, string? ContinuationToken)`. Validator: page size 1 to 200; token matches `^[fs]_[0-9a-f]{32}\z`. Handler: `OpenAsync` (null returns empty) and `ListRecycleBinAsync`; map to `RecycleBinItemDto` with `PurgeAfter = DeletedAt + RecycleBinRetention`.
 2. **`Commands/RestoreRecycledSecret.cs`**:
    1. Read the bin row (else NotFound).
    2. If `FolderId` is set, `GetFolderAsync`: an active folder adds `TouchFolder` and keeps the folder, otherwise the secret goes to the root.
