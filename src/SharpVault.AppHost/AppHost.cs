@@ -1,4 +1,25 @@
 // SharpVault - Copyright (c) SwartBergStudio.
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
-await DistributedApplication.CreateBuilder(args).Build().RunAsync();
+using SharpVault.AppHost;
+
+var builder = DistributedApplication.CreateBuilder(args);
+
+var tables = builder.AddAzureStorage(AppHostResourceNames.Storage)
+    .RunAsEmulator(emulator => emulator
+        .WithDataVolume()
+        .WithLifetime(ContainerLifetime.Persistent))
+    .AddTables(AppHostResourceNames.Tables);
+
+var api = builder.AddProject<Projects.SharpVault_Api>(AppHostResourceNames.Api)
+    .WithReference(tables)
+    .WaitFor(tables)
+    .WithHttpHealthCheck(AppHostResourceNames.HealthPath);
+
+builder.AddProject<Projects.SharpVault_Web>(AppHostResourceNames.Web)
+    .WithExternalHttpEndpoints()
+    .WithReference(api)
+    .WaitFor(api)
+    .WithHttpHealthCheck(AppHostResourceNames.HealthPath);
+
+await builder.Build().RunAsync();
