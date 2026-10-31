@@ -73,7 +73,8 @@ Work is only done when all of these are true:
   Each Request and its Handler live together in one file per feature.
 - Mapster for DTO mapping, FluentValidation for request validation.
 - Minimal APIs grouped by feature, with OpenAPI and Scalar.
-- UI is Blazor and Razor only. No React, Vue or JavaScript frameworks.
+- UI is Blazor and Razor only. No React, Vue or JavaScript frameworks. JavaScript interop is allowed in exactly two places:
+  Web Crypto for one-time share links, and a minimal clipboard module (`navigator.clipboard.writeText` only) behind `IClipboard` for copying secrets.
   All UI lives in `SharpVault.UI.Shared` so Web and MAUI share it.
   Every interactive element gets a stable `id` attribute for testing.
 - Every `.cs` file starts with the AGPL-3.0 header defined in `.editorconfig`.
