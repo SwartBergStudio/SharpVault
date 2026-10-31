@@ -115,7 +115,7 @@ SharpVault/
 ├── eng/
 │   └── CoverageGate.cs               # Coverage threshold check used in CI
 ├── docs/                             # Requirements, progress, local development, storage, testing
-└── .github/                          # CI, CodeQL, dependency review and Dependabot
+└── .github/                          # CI and Dependabot
 ```
 
 ## 🛠️ Tech Stack

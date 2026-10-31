@@ -17,7 +17,7 @@ This file tracks what is done, what is in progress and what comes next, so each 
   - Security headers on the API and the web (strict CSP, `nosniff`, frame deny, referrer, permissions and cross-origin headers), no `Server` header, 1 MiB request body limit, ProblemDetails and exception handler in every environment.
   - Query strings kept out of request logs, HttpClient logs and trace tags, by code in ServiceDefaults rather than by package defaults.
   - Test infrastructure: Testcontainers Azurite factories and collections, test authentication handler, forged token helpers, storage request recorder (call counts and queries without a partition key), log capture, trace capture, reflection-based layering tests.
-  - CI on GitHub Actions: build with warnings as errors, tests, coverage gate (Application and Infrastructure at 80%), vulnerable package check, CodeQL, dependency review and Dependabot.
+  - CI on GitHub Actions: build with warnings as errors, tests, coverage gate (Application and Infrastructure at 80%), vulnerable package check and Dependabot version updates. CodeQL and dependency review were removed because they need paid GitHub features.
 
 ## In progress
 
