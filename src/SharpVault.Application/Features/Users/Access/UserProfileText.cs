@@ -1,6 +1,7 @@
 // SharpVault - Copyright (c) SwartBergStudio.
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
+using System.Globalization;
 using System.Net;
 
 namespace SharpVault.Application.Features.Users.Access;
@@ -38,25 +39,29 @@ public static class UserProfileText
             return string.Empty;
         }
 
-        var kept = new System.Text.StringBuilder(Math.Min(value.Length, maxLength));
-        foreach (var character in value.Trim())
+        var kept = new System.Text.StringBuilder(value.Length);
+        foreach (var character in value)
         {
-            if (!char.IsControl(character))
+            if (!IsRemovable(character))
             {
                 kept.Append(character);
             }
         }
 
-        if (kept.Length > maxLength)
+        var cleaned = kept.ToString().Trim();
+        if (cleaned.Length > maxLength)
         {
-            kept.Length = maxLength;
+            cleaned = cleaned[..maxLength];
         }
 
-        if (kept.Length > 0 && char.IsHighSurrogate(kept[^1]))
+        if (cleaned.Length > 0 && char.IsHighSurrogate(cleaned[^1]))
         {
-            kept.Length--;
+            cleaned = cleaned[..^1];
         }
 
-        return kept.ToString();
+        return cleaned.Trim();
     }
+
+    private static bool IsRemovable(char character) =>
+        char.IsControl(character) || CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.Format;
 }

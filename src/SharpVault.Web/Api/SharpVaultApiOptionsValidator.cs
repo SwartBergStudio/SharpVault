@@ -20,7 +20,7 @@ public sealed class SharpVaultApiOptionsValidator : IValidateOptions<SharpVaultA
             failures.Add(BaseAddressInvalid);
         }
 
-        if (options.Scopes is null || !options.Scopes.Any(scope => !string.IsNullOrWhiteSpace(scope)))
+        if (options.Scopes is null || options.Scopes.Length == 0 || options.Scopes.Any(string.IsNullOrWhiteSpace))
         {
             failures.Add(ScopesRequired);
         }

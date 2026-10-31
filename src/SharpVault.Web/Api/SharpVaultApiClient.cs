@@ -4,6 +4,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Web;
@@ -50,21 +51,29 @@ public sealed partial class SharpVaultApiClient(
         using var request = new HttpRequestMessage(HttpMethod.Get, CurrentUserPath);
         request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, token);
 
-        using var response = await httpClient.SendAsync(request, cancellationToken);
-        switch (response.StatusCode)
+        try
         {
-            case HttpStatusCode.OK:
-                var profile = await response.Content.ReadFromJsonAsync<CurrentUserProfile>(cancellationToken);
-                return profile is null
-                    ? ApiResponse<CurrentUserProfile>.Failed()
-                    : ApiResponse<CurrentUserProfile>.Success(profile);
-            case HttpStatusCode.Unauthorized:
-                return ApiResponse<CurrentUserProfile>.SignInRequired();
-            case HttpStatusCode.Forbidden:
-                return ApiResponse<CurrentUserProfile>.AccessDenied();
-            default:
-                LogApiCallFailed(logger, (int)response.StatusCode);
-                return ApiResponse<CurrentUserProfile>.Failed();
+            using var response = await httpClient.SendAsync(request, cancellationToken);
+            switch (response.StatusCode)
+            {
+                case HttpStatusCode.OK:
+                    var profile = await response.Content.ReadFromJsonAsync<CurrentUserProfile>(cancellationToken);
+                    return profile is null
+                        ? ApiResponse<CurrentUserProfile>.Failed()
+                        : ApiResponse<CurrentUserProfile>.Success(profile);
+                case HttpStatusCode.Unauthorized:
+                    return ApiResponse<CurrentUserProfile>.SignInRequired();
+                case HttpStatusCode.Forbidden:
+                    return ApiResponse<CurrentUserProfile>.AccessDenied();
+                default:
+                    LogApiCallFailed(logger, (int)response.StatusCode);
+                    return ApiResponse<CurrentUserProfile>.Failed();
+            }
+        }
+        catch (Exception exception) when (exception is JsonException or HttpRequestException)
+        {
+            LogApiCallThrew(logger, exception.GetType().Name);
+            return ApiResponse<CurrentUserProfile>.Failed();
         }
     }
 
@@ -73,4 +82,7 @@ public sealed partial class SharpVaultApiClient(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "API call failed with status {StatusCode}")]
     private static partial void LogApiCallFailed(ILogger logger, int statusCode);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "API call failed with {ExceptionType}")]
+    private static partial void LogApiCallThrew(ILogger logger, string exceptionType);
 }
