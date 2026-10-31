@@ -2,6 +2,7 @@
   <ItemGroup>
     <PackageReference Include="AutoFixture" />
     <PackageReference Include="AutoFixture.Xunit3" />
+    <PackageReference Include="bunit" />
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
   <ItemGroup>
