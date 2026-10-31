@@ -1,0 +1,53 @@
+@page "/account"
+@attribute [Authorize]
+@inject ISharpVaultApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Your account</PageTitle>
+
+@if (_profile is not null)
+{
+    <section id="account-section">
+        <h1 id="account-heading">Your account</h1>
+        <dl>
+            <dt>Name</dt>
+            <dd id="account-display-name">@_profile.DisplayName</dd>
+            <dt>User id</dt>
+            <dd id="account-user-id">@_profile.UserId</dd>
+        </dl>
+        @if (_profile.IsAdmin)
+        {
+            <span id="account-admin-badge">Administrator</span>
+        }
+    </section>
+}
+else if (_failed)
+{
+    <p id="account-error">Your account details could not be loaded. Try again later.</p>
+}
+
+@code {
+    private CurrentUserProfile? _profile;
+    private bool _failed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var response = await ApiClient.GetCurrentUserAsync(CancellationToken.None);
+
+        switch (response.Status)
+        {
+            case ApiCallStatus.Success when response.Value is not null:
+                _profile = response.Value;
+                break;
+            case ApiCallStatus.SignInRequired:
+                Navigation.NavigateTo($"{AccountRoutes.SignIn}?{AccountRoutes.ReturnUrlParameter}={Uri.EscapeDataString(AccountRoutes.Account)}", forceLoad: true);
+                break;
+            case ApiCallStatus.AccessDenied:
+                Navigation.NavigateTo(AccountRoutes.AccessDenied, forceLoad: true);
+                break;
+            default:
+                _failed = true;
+                break;
+        }
+    }
+}

@@ -1,0 +1,15 @@
+<nav id="account-menu" class="account-menu">
+    <AuthorizeView>
+        <Authorized>
+            <span id="account-name" class="account-name">@context.User.Identity?.Name</span>
+            <a id="account-link" href="account">Account</a>
+            <form id="sign-out-form" method="post" action="@AccountRoutes.SignOut">
+                <AntiforgeryToken />
+                <button id="sign-out-button" type="submit">Sign out</button>
+            </form>
+        </Authorized>
+        <NotAuthorized>
+            <a id="sign-in-link" href="@AccountRoutes.SignIn">Sign in</a>
+        </NotAuthorized>
+    </AuthorizeView>
+</nav>

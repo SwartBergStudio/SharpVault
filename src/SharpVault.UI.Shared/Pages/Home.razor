@@ -1,8 +1,17 @@
 @page "/"
+@attribute [AllowAnonymous]
 
 <PageTitle>SharpVault</PageTitle>
 
 <section id="home" class="home">
     <h1 id="home-heading">SharpVault</h1>
     <p id="home-tagline">Password and secrets manager for your organisation.</p>
+    <AuthorizeView>
+        <Authorized>
+            <p id="home-greeting">Signed in as @context.User.Identity?.Name</p>
+        </Authorized>
+        <NotAuthorized>
+            <a id="home-sign-in" href="@AccountRoutes.SignIn">Sign in with your work account</a>
+        </NotAuthorized>
+    </AuthorizeView>
 </section>

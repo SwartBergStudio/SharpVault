@@ -1,3 +1,15 @@
+.app-header {
+    padding: var(--space-sm) var(--space-md);
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+}
+
+@media (min-width: 768px) {
+    .app-header {
+        padding: var(--space-sm) var(--space-xl);
+    }
+}
+
 .app-shell {
     min-height: 100vh;
     display: flex;
