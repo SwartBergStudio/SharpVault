@@ -78,20 +78,49 @@ public sealed class TableStorageStartupTests(ApiTestFactory factory) : BaseInteg
     }
 
     [Fact]
-    public void Startup_DefaultTableSet_MakesNoStorageCalls()
+    public void Startup_DefaultTableSet_MakesOneStorageCallPerTable()
     {
         StorageRequests.Clear();
 
         using var derived = Factory.WithWebHostBuilder(_ => { });
         using var client = derived.CreateClient();
 
-        Assert.Equal(0, StorageRequests.Count);
+        Assert.Equal(TableNames.All.Count, StorageRequests.Count);
+        Assert.All(StorageRequests.Requests, request =>
+        {
+            Assert.Equal("POST", request.Method);
+            Assert.False(request.IsEntityQuery);
+        });
+        AssertNoQueryWithoutPartitionKey();
     }
 
     [Fact]
-    public void Startup_TableNamesAll_IsEmptyInFoundation()
+    public void Startup_TableNamesAll_ContainsUsersAndAuditLogInOrder()
     {
-        Assert.Empty(TableNames.All);
+        Assert.Equal([TableNames.Users, TableNames.AuditLog], TableNames.All);
+        Assert.Equal(["Users", "AuditLog"], TableNames.All);
+    }
+
+    [Fact]
+    public async Task Startup_DefaultTableSet_CreatesUsersAndAuditLogTables()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await foreach (var table in Factory.StorageAdminClient.QueryAsync(cancellationToken: cancellationToken))
+        {
+            await Factory.StorageAdminClient.DeleteTableAsync(table.Name, cancellationToken);
+        }
+
+        using var derived = Factory.WithWebHostBuilder(_ => { });
+        using var client = derived.CreateClient();
+
+        var names = new List<string>();
+        await foreach (var table in Factory.StorageAdminClient.QueryAsync(cancellationToken: cancellationToken))
+        {
+            names.Add(table.Name);
+        }
+
+        Assert.Contains(TableNames.Users, names);
+        Assert.Contains(TableNames.AuditLog, names);
     }
 
     private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> CreateFactoryWithProbeTables() =>

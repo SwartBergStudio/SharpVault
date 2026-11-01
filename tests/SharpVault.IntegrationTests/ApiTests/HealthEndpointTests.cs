@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using SharpVault.Infrastructure.Storage;
 using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Factories;
 using SharpVault.IntegrationTests.Support;
@@ -223,18 +224,39 @@ public sealed class HealthEndpointTests(ApiTestFactory factory) : BaseIntegratio
     [InlineData("DELETE")]
     [InlineData("PATCH")]
     [InlineData("TRACE")]
-    public async Task HealthEndpoint_UnsupportedMethodWhenAuthenticated_Returns405WithoutStorageCall(string method)
+    public async Task HealthEndpoint_UnsupportedMethodNoRoleCaller_Returns403WithoutStorageCall(string method)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var isolated = CreateIsolatedFactory();
         using var client = isolated.CreateClient();
-        TestAuthenticationHandler.AddHeaders(client, TestUsers.AuthenticatedWithoutRole);
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TestTokens.Create(TestUsers.AuthenticatedWithoutRole));
+        StorageRequests.Clear();
+
+        var response = await client.SendAsync(method, HealthEndpoints.HealthPath, cancellationToken);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(0, StorageRequests.Count);
+    }
+
+    [Theory]
+    [Trait("Category", "Security")]
+    [InlineData("POST")]
+    [InlineData("PUT")]
+    [InlineData("DELETE")]
+    [InlineData("PATCH")]
+    [InlineData("TRACE")]
+    public async Task HealthEndpoint_UnsupportedMethodUserCaller_Returns405WithoutHealthStorageCall(string method)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var isolated = CreateIsolatedFactory();
+        using var client = isolated.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TestTokens.Create(TestUsers.User));
         StorageRequests.Clear();
 
         var response = await client.SendAsync(method, HealthEndpoints.HealthPath, cancellationToken);
 
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
-        Assert.Equal(0, StorageRequests.Count);
+        StorageAssertions.AssertOnlyUserAndAuditTablesTouched(StorageRequests);
     }
 
     [Fact]
@@ -257,12 +279,31 @@ public sealed class HealthEndpointTests(ApiTestFactory factory) : BaseIntegratio
 
     [Fact]
     [Trait("Category", "Security")]
+    public void Startup_StorageUnreachable_FailsWithoutConnectionDetails()
+    {
+        const string accountKey = "c2VjcmV0LWtleS1mb3ItdGVzdA==";
+        using var broken = Factory.WithWebHostBuilder(builder => builder.UseSetting(
+            "ConnectionStrings:tables",
+            $"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey={accountKey};TableEndpoint=http://127.0.0.1:1/devstoreaccount1;"));
+
+        var exception = Record.Exception(() => broken.CreateClient());
+
+        Assert.NotNull(exception);
+        AssertLogsDoNotContain(accountKey);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
     public async Task HealthEndpoint_StorageUnreachable_Returns503WithoutConnectionDetails()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var broken = Factory.WithWebHostBuilder(builder => builder.UseSetting(
-            "ConnectionStrings:tables",
-            "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=c2VjcmV0LWtleS1mb3ItdGVzdA==;TableEndpoint=http://127.0.0.1:1/devstoreaccount1;"));
+        using var broken = Factory.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting(
+                "ConnectionStrings:tables",
+                "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=c2VjcmV0LWtleS1mb3ItdGVzdA==;TableEndpoint=http://127.0.0.1:1/devstoreaccount1;");
+            builder.ConfigureTestServices(services => services.AddSingleton(new TableStorageTableSet([])));
+        });
         using var client = broken.CreateClient();
 
         var response = await client.GetAsync(HealthEndpoints.HealthPath, cancellationToken);

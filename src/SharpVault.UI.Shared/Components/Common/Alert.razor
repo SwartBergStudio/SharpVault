@@ -1,0 +1,43 @@
+<div id="@Id" class="sv-alert sv-alert--@KindClass" role="@Role">
+    <Icon Name="@KindIcon" CssClass="sv-alert__icon" />
+    <div class="sv-alert__body">
+        <p class="sv-alert__title"><span class="sv-visually-hidden">@KindPrefix: </span>@Title</p>
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter]
+    public AlertKind Kind { get; set; }
+
+    [Parameter]
+    public string? Title { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private string KindClass => Kind.ToString().ToLowerInvariant();
+
+    private string Role => Kind is AlertKind.Warning or AlertKind.Danger ? "alert" : "status";
+
+    private IconName KindIcon => Kind switch
+    {
+        AlertKind.Success => IconName.Success,
+        AlertKind.Warning => IconName.Warning,
+        AlertKind.Danger => IconName.Danger,
+        _ => IconName.Info,
+    };
+
+    private string KindPrefix => Kind switch
+    {
+        AlertKind.Success => "Success",
+        AlertKind.Warning => "Warning",
+        AlertKind.Danger => "Error",
+        _ => "Information",
+    };
+
+    protected override void OnParametersSet() => ComponentIds.EnsureValid(Id, nameof(Id));
+}

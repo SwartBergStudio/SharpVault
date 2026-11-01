@@ -247,7 +247,7 @@ public sealed class ProductionHostingTests(ProductionApiTestFactory factory)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = factory.CreateUnauthenticatedClient();
-        TestAuthenticationHandler.AddHeaders(client, TestUsers.AuthenticatedWithoutRole with { Roles = ["SharpVault.Admin"] });
+        SpoofedTestHeaders.Add(client.DefaultRequestHeaders, TestUsers.Admin);
 
         var response = await client.GetAsync("/api/v1/secrets", cancellationToken);
 

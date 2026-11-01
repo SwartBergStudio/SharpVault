@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Net;
+using SharpVault.Infrastructure.Storage;
 using SharpVault.IntegrationTests.Factories;
 using SharpVault.ServiceDefaults;
 
@@ -112,7 +113,7 @@ public sealed class HealthPerformanceTests(ApiTestFactory factory) : BaseIntegra
     }
 
     [Fact]
-    public async Task Startup_DefaultTableSet_CompletesUnder5SecondsWithNoStorageCalls()
+    public async Task Startup_DefaultTableSet_CompletesUnder5SecondsWithOneCallPerTable()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await WarmUpPathAsync(Client, HealthEndpoints.AlivePath, HttpStatusCode.OK, cancellationToken);
@@ -124,7 +125,14 @@ public sealed class HealthPerformanceTests(ApiTestFactory factory) : BaseIntegra
         var elapsed = Stopwatch.GetElapsedTime(started);
 
         Assert.True(elapsed < TimeSpan.FromSeconds(5), $"Host start took {elapsed.TotalMilliseconds:F0} ms");
-        Assert.Equal(0, StorageRequests.Count);
+        Assert.Equal([TableNames.Users, TableNames.AuditLog], TableNames.All);
+        Assert.Equal(2, StorageRequests.Count);
+        Assert.All(StorageRequests.Requests, request =>
+        {
+            Assert.Equal("POST", request.Method);
+            Assert.False(request.IsEntityQuery);
+        });
+        AssertNoQueryWithoutPartitionKey();
     }
 
     private static async Task<TimeSpan> MeasureAsync(

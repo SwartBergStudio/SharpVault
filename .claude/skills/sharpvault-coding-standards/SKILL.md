@@ -43,6 +43,7 @@ If code feels like it needs a comment, rename or extract a method until it doesn
 - Use expression-bodied members only when they fit on one line.
 - Use pattern matching and switch expressions where they make the code clearer.
 - No magic strings or numbers. Use constants, enums or options classes.
+- Anchor validation regexes with `^` and `\z`, never `$`: in .NET `$` also matches before a trailing `\n`, so `"value\n"` would pass. Prefer `[GeneratedRegex]`.
 
 ## Async
 

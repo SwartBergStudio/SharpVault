@@ -1,9 +1,17 @@
 @inherits LayoutComponentBase
 
-<div id="app-shell" class="app-shell">@Body</div>
+<SkipLink />
+<div id="app-frame" class="sv-frame">
+    <AppHeader />
+    <SideNav />
+    <main id="main-content" class="sv-main" tabindex="-1">
+        <div id="app-shell" class="sv-content">@Body</div>
+    </main>
+</div>
 
-<div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
+<div id="blazor-error-ui" role="alert" data-nosnippet>
+    <Icon Name="IconName.Danger" />
+    <span>An unhandled error has occurred.</span>
     <a id="blazor-error-reload" href="." class="reload">Reload</a>
-    <span id="blazor-error-dismiss" class="dismiss">x</span>
+    <button id="blazor-error-dismiss" type="button" class="dismiss sv-btn sv-btn--ghost sv-btn--icon sv-btn--sm" aria-label="Dismiss"><Icon Name="IconName.Close" /></button>
 </div>

@@ -9,6 +9,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SharpVault.Infrastructure.Encryption;
 using SharpVault.Infrastructure.Storage;
+using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Logging;
 
 namespace SharpVault.IntegrationTests.Factories;
@@ -32,6 +33,7 @@ public sealed class ProductionApiTestFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment(Environments.Production);
         builder.UseSetting($"ConnectionStrings:{TableStorageConnection.Name}", ServiceUri);
+        TestIdentityProvider.ApplyApiSettings(builder);
         builder.UseSetting($"{EncryptionOptions.SectionName}:{nameof(EncryptionOptions.KeyVaultKeyId)}", KeyVaultKeyId);
         builder.UseSetting("Logging:LogLevel:Default", "Debug");
         builder.UseSetting("Logging:LogLevel:Microsoft", "Debug");
@@ -40,6 +42,7 @@ public sealed class ProductionApiTestFactory : WebApplicationFactory<Program>
         builder.ConfigureLogging(logging => logging.AddProvider(Logs));
         builder.ConfigureTestServices(services =>
         {
+            TestIdentityProvider.ConfigureApi(services);
             var initializer = services.FirstOrDefault(descriptor =>
                 descriptor.ServiceType == typeof(IHostedService)
                 && descriptor.ImplementationType == typeof(TableStorageInitializer));

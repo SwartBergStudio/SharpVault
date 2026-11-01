@@ -1,6 +1,7 @@
 // SharpVault - Copyright (c) SwartBergStudio.
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
+using SharpVault.IntegrationTests.Authentication;
 using SharpVault.ServiceDefaults.Security;
 
 namespace SharpVault.IntegrationTests.Support;
@@ -29,6 +30,8 @@ public static class SecurityHeaderAssertions
     public static void AssertWeb(HttpResponseMessage response)
     {
         AssertBaseline(response);
-        Assert.Equal(SecurityHeaderValues.WebContentSecurityPolicy, response.HeaderValue(SecurityHeaderNames.ContentSecurityPolicy));
+        var csp = response.HeaderValue(SecurityHeaderNames.ContentSecurityPolicy);
+        Assert.Equal(SecurityHeadersPolicy.ForWeb(TestIdentityProvider.InstanceUri).ContentSecurityPolicy, csp);
+        Assert.Contains("form-action 'self' https://login.microsoftonline.com;", csp, StringComparison.Ordinal);
     }
 }

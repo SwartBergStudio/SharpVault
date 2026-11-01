@@ -1,0 +1,32 @@
+<section id="@Id" class="sv-empty" aria-labelledby="@TitleId">
+    <div class="sv-empty__visual">
+        <Icon Name="@Icon" CssClass="sv-icon--xl" />
+    </div>
+    <h2 id="@TitleId" class="sv-empty__title">@Title</h2>
+    <div class="sv-empty__body">@ChildContent</div>
+    @if (Actions is not null)
+    {
+        <div class="sv-empty__actions">@Actions</div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public IconName Icon { get; set; } = IconName.Vault;
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public RenderFragment? Actions { get; set; }
+
+    private string TitleId => $"{Id}-title";
+
+    protected override void OnParametersSet() => ComponentIds.EnsureValid(Id, nameof(Id));
+}

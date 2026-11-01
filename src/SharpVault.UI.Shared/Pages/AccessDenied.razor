@@ -1,0 +1,15 @@
+@page "/account/access-denied"
+@attribute [AllowAnonymous]
+
+<PageTitle>Access denied</PageTitle>
+
+<section class="sv-state sv-state--danger">
+    <div class="sv-state__visual">
+        <Icon Name="IconName.ShieldAlert" CssClass="sv-icon--xl" />
+    </div>
+    <h1 id="access-denied-heading">You do not have access to SharpVault</h1>
+    <p id="access-denied-message" class="sv-state__body">Ask your administrator to give you access.</p>
+    <div class="sv-state__actions">
+        <a id="access-denied-home-link" href="" class="sv-btn">Home</a>
+    </div>
+</section>

@@ -5,6 +5,7 @@
 - .NET 10 SDK. `global.json` pins 10.0.100 with `rollForward` set to `latestFeature`, and pins the Aspire SDK to 13.6.4.
 - Docker, running. The AppHost runs Azurite in a container, and the integration tests start their own Azurite container.
 - Optional: the HTTPS profile needs a trusted development certificate. If it fails with a certificate error, run `dotnet dev-certs https --trust`.
+- Entra ID settings for `SharpVault.Api` and `SharpVault.Web`, set with `dotnet user-secrets`. Both projects stop at startup without `AzureAd:TenantId` and `AzureAd:ClientId`. The steps are in [ENTRA-SETUP.md](ENTRA-SETUP.md#6-local-settings-with-user-secrets).
 
 Check Docker before you start:
 
@@ -24,6 +25,8 @@ This starts the Aspire AppHost with these resources:
 - `tables`: the Table Storage endpoint on that emulator. The API references it.
 - `api`: `SharpVault.Api`, which waits for `tables` and is checked on `/health`.
 - `web`: `SharpVault.Web`, which waits for `api` and is exposed as an external endpoint.
+
+The AppHost does not set any Entra ID value. `api` and `web` read `AzureAd:TenantId` and `AzureAd:ClientId` from their own user secrets, so set them before the first run. If they are missing, `api` and `web` fail at startup with a configuration error. The keys, the Entra app registrations and the commands are in [ENTRA-SETUP.md](ENTRA-SETUP.md).
 
 The launch profiles in `src/SharpVault.AppHost/Properties/launchSettings.json` set `ASPNETCORE_ENVIRONMENT` to `Development`, so the API serves OpenAPI at `/openapi/v1.json` and Scalar at `/scalar`.
 
@@ -78,7 +81,7 @@ The next AppHost run creates a fresh container and volume.
 
 ## Run the tests
 
-The solution is `SharpVault.slnx`. Maui is not part of the Linux build (it is planned in `feature/maui-app`), so the whole solution builds and tests on Linux today.
+The solution is `SharpVault.slnx`. Maui is not part of the Linux build (it is planned in `feature/maui-app`), so the whole solution builds and tests on Linux today. No test needs an Entra tenant: the tests sign tokens with locally generated keys.
 
 ```bash
 dotnet build SharpVault.slnx

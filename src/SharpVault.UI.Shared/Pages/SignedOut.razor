@@ -1,0 +1,14 @@
+@page "/account/signed-out"
+@attribute [AllowAnonymous]
+
+<PageTitle>Signed out</PageTitle>
+
+<section class="sv-state">
+    <div class="sv-state__visual">
+        <VaultDoor Sealing="true" />
+    </div>
+    <h1 id="signed-out-heading">You have been signed out</h1>
+    <div class="sv-state__actions">
+        <a id="signed-out-sign-in-link" href="@AccountRoutes.SignIn" class="sv-btn sv-btn--primary">Sign in again</a>
+    </div>
+</section>

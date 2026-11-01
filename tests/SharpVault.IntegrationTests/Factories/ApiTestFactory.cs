@@ -3,8 +3,8 @@
 
 using System.Security.Cryptography;
 using Azure.Core.Pipeline;
+using System.Net.Http.Headers;
 using Azure.Data.Tables;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -60,10 +60,20 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>, IAsyncLifet
 
     public HttpClient CreateAuthenticatedClient(TestUser user)
     {
+        ArgumentNullException.ThrowIfNull(user);
+
+        return CreateClientWithToken(TestTokens.Create(user));
+    }
+
+    public HttpClient CreateClientWithToken(string token)
+    {
         var client = CreateUnauthenticatedClient();
-        TestAuthenticationHandler.AddHeaders(client, user);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return client;
     }
+
+    public Task SeedUserAsync(TestUser user, string status, DateTimeOffset lastSignInAt, CancellationToken cancellationToken) =>
+        UserRows.InsertAsync(StorageAdminClient.GetTableClient(TableNames.Users), user, status, lastSignInAt, cancellationToken);
 
     public async Task ResetStorageAsync(CancellationToken cancellationToken)
     {
@@ -83,6 +93,8 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>, IAsyncLifet
     {
         builder.UseEnvironment(Environments.Development);
         builder.UseSetting($"ConnectionStrings:{TableStorageConnection.Name}", _azurite.GetConnectionString());
+        TestIdentityProvider.ApplyApiSettings(builder);
+        builder.UseSetting("UserAccess:CacheTtl", "00:00:00");
         builder.UseSetting($"{EncryptionOptions.SectionName}:{nameof(EncryptionOptions.DevelopmentKeyMaterial)}", DevelopmentKeyMaterial);
         builder.UseSetting("Logging:LogLevel:Default", "Debug");
         builder.UseSetting("Logging:LogLevel:Microsoft", "Debug");
@@ -93,8 +105,7 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>, IAsyncLifet
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<HttpPipelinePolicy>(StorageRequests);
-            services.AddAuthentication(TestAuthenticationHandler.SchemeName)
-                .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.SchemeName, _ => { });
+            TestIdentityProvider.ConfigureApi(services);
         });
     }
 }

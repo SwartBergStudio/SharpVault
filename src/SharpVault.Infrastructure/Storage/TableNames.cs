@@ -5,5 +5,9 @@ namespace SharpVault.Infrastructure.Storage;
 
 public static class TableNames
 {
-    public static IReadOnlyList<string> All { get; } = [];
+    public const string Users = "Users";
+
+    public const string AuditLog = "AuditLog";
+
+    public static IReadOnlyList<string> All { get; } = [Users, AuditLog];
 }

@@ -6,9 +6,11 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using SharpVault.Api.Security;
 using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Factories;
 using SharpVault.IntegrationTests.Support;
+using SharpVault.ServiceDefaults.Identity;
 
 namespace SharpVault.IntegrationTests.ApiTests;
 
@@ -27,28 +29,36 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
         "/scalar/favicon.svg",
     ];
 
+    private const string AdminUsersPath = "/api/admin/users";
+
+    private static readonly string[] UnknownMethods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
+
+    private static readonly string[] UnknownPaths =
+    [
+        "/does-not-exist",
+        "/api/v1/secrets",
+        AdminUsersPath,
+        "/health/extra",
+        "/alive/extra",
+        "/healthz",
+        "/openapi",
+        "/openapi/v1.json/extra",
+        "/scalar-evil",
+        "/.env",
+        "/swagger/v1/swagger.json",
+        "/test/throw",
+    ];
+
     public static TheoryData<string, CallerKind> HealthPathsAndCallers() =>
         Cross(["/health", "/alive"], Enum.GetValues<CallerKind>());
 
     public static TheoryData<string, CallerKind> DocumentationPathsAndCallers() =>
         Cross(["/openapi/v1.json", "/scalar/v1"], Enum.GetValues<CallerKind>());
 
-    public static TheoryData<string, string> UnknownRoutesAndMethods() => CrossMethods(
-        ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
-        [
-            "/does-not-exist",
-            "/api/v1/secrets",
-            "/api/admin/users",
-            "/health/extra",
-            "/alive/extra",
-            "/healthz",
-            "/openapi",
-            "/openapi/v1.json/extra",
-            "/scalar-evil",
-            "/.env",
-            "/swagger/v1/swagger.json",
-            "/test/throw",
-        ]);
+    public static TheoryData<string, string> UnknownRoutesAndMethods() => CrossMethods(UnknownMethods, UnknownPaths);
+
+    public static TheoryData<string, string> UnknownRoutesWithoutExistingAdminRoute() =>
+        CrossMethods(UnknownMethods, [.. UnknownPaths.Where(path => path != AdminUsersPath)]);
 
     [Theory]
     [MemberData(nameof(HealthPathsAndCallers))]
@@ -129,11 +139,11 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
     }
 
     [Theory]
-    [MemberData(nameof(UnknownRoutesAndMethods))]
-    public async Task UnknownRoute_AuthenticatedCaller_Returns404(string method, string path)
+    [MemberData(nameof(UnknownRoutesWithoutExistingAdminRoute))]
+    public async Task UnknownRoute_UserRoleCaller_Returns404(string method, string path)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        SetAuthenticatedClient(TestUsers.AuthenticatedWithoutRole);
+        SetAuthenticatedClient(TestUsers.User);
         StorageRequests.Clear();
 
         var response = await Client.SendAsync(method, path, cancellationToken);
@@ -141,6 +151,33 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
         Assert.True(
             response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed,
             $"Unexpected status {(int)response.StatusCode} for {method} {path}");
+        StorageAssertions.AssertOnlyUserAndAuditTablesTouched(StorageRequests);
+    }
+
+    [Fact]
+    public async Task AdminUsersRoute_UserRoleCaller_Returns403()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        SetAuthenticatedClient(TestUsers.User);
+        StorageRequests.Clear();
+
+        var response = await Client.GetAsync("/api/admin/users", cancellationToken);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        StorageAssertions.AssertOnlyUserAndAuditTablesTouched(StorageRequests);
+    }
+
+    [Theory]
+    [MemberData(nameof(UnknownRoutesAndMethods))]
+    public async Task UnknownRoute_NoRoleCaller_Returns403WithoutStorageCalls(string method, string path)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        SetAuthenticatedClient(TestUsers.AuthenticatedWithoutRole);
+        StorageRequests.Clear();
+
+        var response = await Client.SendAsync(method, path, cancellationToken);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal(0, StorageRequests.Count);
     }
 
@@ -151,7 +188,7 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
     public async Task UnknownRoute_AuthenticatedCaller_Returns404Exactly(string method, string path)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        SetAuthenticatedClient(TestUsers.AuthenticatedWithoutRole);
+        SetAuthenticatedClient(TestUsers.User);
 
         var response = await Client.SendAsync(method, path, cancellationToken);
 
@@ -166,8 +203,7 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var request = new HttpRequestMessage(HttpMethod.Get, path);
-        request.Headers.Add(TestAuthenticationHandler.TenantHeader, TestTenant.Id.ToString());
-        request.Headers.Add(TestAuthenticationHandler.RolesHeader, "SharpVault.Admin");
+        SpoofedTestHeaders.Add(request.Headers, TestUsers.Admin);
 
         var response = await Client.SendAsync(request, cancellationToken);
 
@@ -203,9 +239,10 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
                 continue;
             }
 
-            var hasExplicitPolicy = endpoint.Metadata.GetMetadata<IAuthorizeData>() is not null
-                || endpoint.Metadata.GetMetadata<AuthorizationPolicy>() is not null;
-            Assert.True(hasExplicitPolicy, $"Endpoint '{pattern}' is not anonymous and has no explicit authorization policy.");
+            var policies = endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>().Select(data => data.Policy).ToList();
+            Assert.True(
+                policies.Any(policy => policy is Policies.User or Policies.Admin),
+                $"Endpoint '{pattern}' is not anonymous and has no explicit SharpVault authorization policy.");
         }
     }
 
@@ -232,6 +269,7 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
 
         Assert.NotNull(fallback);
         Assert.Contains(fallback.Requirements, requirement => requirement is DenyAnonymousAuthorizationRequirement);
+        AssertRequiresUserOrAdminRole(fallback);
     }
 
     [Fact]
@@ -242,6 +280,7 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
         var policy = await provider.GetDefaultPolicyAsync();
 
         Assert.Contains(policy.Requirements, requirement => requirement is DenyAnonymousAuthorizationRequirement);
+        AssertRequiresUserOrAdminRole(policy);
     }
 
     [Theory]
@@ -276,6 +315,12 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
         var response = await Client.SendAsync(request, cancellationToken);
 
         Assert.Null(response.HeaderValue("Access-Control-Allow-Origin"));
+    }
+
+    private static void AssertRequiresUserOrAdminRole(AuthorizationPolicy policy)
+    {
+        var access = Assert.Single(policy.Requirements.OfType<SharpVaultAccessRequirement>());
+        Assert.Equal([AppRoles.User, AppRoles.Admin], access.AcceptedRoles);
     }
 
     private static TheoryData<string, CallerKind> Cross(string[] paths, CallerKind[] callers)

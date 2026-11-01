@@ -100,7 +100,7 @@ public sealed class ErrorHandlingTests(ApiTestFactory factory) : BaseIntegration
     public async Task UnknownRoute_AuthenticatedCaller_ReturnsProblemDetailsBodyWithoutRequestedPath()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        SetAuthenticatedClient(TestUsers.AuthenticatedWithoutRole);
+        SetAuthenticatedClient(TestUsers.User);
         var path = "/secret-" + Fixture.Create<Guid>().ToString("N");
 
         var response = await Client.GetAsync(path, cancellationToken);
@@ -127,7 +127,7 @@ public sealed class ErrorHandlingTests(ApiTestFactory factory) : BaseIntegration
     public async Task UnknownRoute_AuthenticatedCaller_NotFoundResponseHasSecurityHeaders()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        SetAuthenticatedClient(TestUsers.AuthenticatedWithoutRole);
+        SetAuthenticatedClient(TestUsers.User);
 
         var response = await Client.GetAsync("/does-not-exist", cancellationToken);
 

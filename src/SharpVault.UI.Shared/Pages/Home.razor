@@ -1,8 +1,26 @@
 @page "/"
+@attribute [AllowAnonymous]
 
 <PageTitle>SharpVault</PageTitle>
 
-<section id="home" class="home">
-    <h1 id="home-heading">SharpVault</h1>
-    <p id="home-tagline">Password and secrets manager for your organisation.</p>
+<section id="home" class="sv-hero sv-card sv-card--plate">
+    <VaultDoor />
+    <div class="sv-hero__text sv-stack">
+        <p class="sv-plate">Organisation vault</p>
+        <h1 id="home-heading" class="sv-hero__title">SharpVault</h1>
+        <p id="home-tagline" class="sv-hero__tagline">Password and secrets manager for your organisation.</p>
+        <div class="sv-hero__actions">
+            <AuthorizeView>
+                <Authorized>
+                    <p id="home-greeting">Signed in as @context.User.Identity?.Name</p>
+                </Authorized>
+                <NotAuthorized>
+                    <a id="home-sign-in" href="@AccountRoutes.SignIn" class="sv-btn sv-btn--primary">
+                        <Icon Name="IconName.Key" />
+                        <span>Sign in with your work account</span>
+                    </a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+    </div>
 </section>
