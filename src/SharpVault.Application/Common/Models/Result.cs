@@ -15,11 +15,12 @@ public sealed class Result<T>
         Errors = [];
     }
 
-    private Result(IReadOnlyList<string> errors)
+    private Result(IReadOnlyList<string> errors, ResultFailureKind failureKind)
     {
         IsSuccess = false;
         Errors = errors;
         Error = errors.Count > 0 ? errors[0] : null;
+        FailureKind = failureKind;
     }
 
     public bool IsSuccess { get; }
@@ -30,9 +31,23 @@ public sealed class Result<T>
 
     public IReadOnlyList<string> Errors { get; }
 
+    public ResultFailureKind FailureKind { get; }
+
     public static Result<T> Success(T value) => new(value);
 
-    public static Result<T> Failure(string error) => new([error]);
+    public static Result<T> Failure(string error) => new([error], ResultFailureKind.Invalid);
 
-    public static Result<T> Failure(IReadOnlyList<string> errors) => new(errors);
+    public static Result<T> Failure(IReadOnlyList<string> errors) => new(errors, ResultFailureKind.Invalid);
+
+    public static Result<T> NotFound() => new([ResultMessages.NotFound], ResultFailureKind.NotFound);
+
+    public static Result<T> Conflict() => new([ResultMessages.Conflict], ResultFailureKind.Conflict);
+
+    public static Result<T> Forbidden() => new([ResultMessages.Forbidden], ResultFailureKind.Forbidden);
+
+    public static Result<T> Rejected(string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        return new([message], ResultFailureKind.Rejected);
+    }
 }

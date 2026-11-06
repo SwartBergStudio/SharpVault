@@ -8,8 +8,18 @@ namespace SharpVault.UnitTests.Support;
 internal sealed class RecordingLogger<T> : ILogger<T>
 {
     private readonly List<LogRecord> _records = [];
+    private readonly Lock _gate = new();
 
-    public IReadOnlyList<LogRecord> Records => _records;
+    public IReadOnlyList<LogRecord> Records
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _records];
+            }
+        }
+    }
 
     public IDisposable? BeginScope<TState>(TState state)
         where TState : notnull => null;
@@ -21,10 +31,16 @@ internal sealed class RecordingLogger<T> : ILogger<T>
         EventId eventId,
         TState state,
         Exception? exception,
-        Func<TState, Exception?, string> formatter) =>
-        _records.Add(new LogRecord(logLevel, formatter(state, exception), exception));
+        Func<TState, Exception?, string> formatter)
+    {
+        var record = new LogRecord(logLevel, formatter(state, exception), exception);
+        lock (_gate)
+        {
+            _records.Add(record);
+        }
+    }
 
-    public string AllText() => string.Join('\n', _records.Select(record => record.Message + record.Exception));
+    public string AllText() => string.Join('\n', Records.Select(record => record.Message + record.Exception));
 
     internal sealed record LogRecord(LogLevel Level, string Message, Exception? Exception);
 }

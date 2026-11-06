@@ -2,9 +2,9 @@
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
 using Mapster;
-using SharpVault.Application.Features.Users.Dtos;
 using SharpVault.Application.Mapping;
 using SharpVault.Domain.Users;
+using SharpVault.Dtos.Users;
 
 namespace SharpVault.UnitTests.Application.Mapping;
 
@@ -20,9 +20,9 @@ public sealed class UserMappingRegisterTests
     }
 
     [Theory]
-    [InlineData(UserStatus.Active, "Active")]
-    [InlineData(UserStatus.Locked, "Locked")]
-    public void Adapt_User_MapsToSummaryWithStatusName(UserStatus status, string expectedName)
+    [InlineData(UserStatus.Active, UserStatusDto.Active)]
+    [InlineData(UserStatus.Locked, UserStatusDto.Locked)]
+    public void Adapt_User_MapsToSummaryWithStatus(UserStatus status, UserStatusDto expected)
     {
         var user = new User
         {
@@ -39,19 +39,40 @@ public sealed class UserMappingRegisterTests
         Assert.Equal(user.Id, summary.UserId);
         Assert.Equal("Alice Example", summary.DisplayName);
         Assert.Equal("alice@example.test", summary.Email);
-        Assert.Equal(expectedName, summary.Status);
+        Assert.Equal(expected, summary.Status);
         Assert.Equal(user.LastSignInAt, summary.LastSignInAt);
     }
 
     [Fact]
-    public void Adapt_UserWithoutEmail_MapsNullEmail()
+    public void Map_EveryUserStatus_MapsToTheMatchingUserStatusDto()
     {
-        var user = new User { Id = Guid.NewGuid(), Status = UserStatus.Active };
+        var statuses = Enum.GetValues<UserStatus>();
 
-        var summary = user.Adapt<UserSummaryDto>(ScannedConfig());
+        foreach (var status in statuses)
+        {
+            var summary = new User { Id = Guid.NewGuid(), Status = status }.Adapt<UserSummaryDto>(ScannedConfig());
 
-        Assert.Null(summary.Email);
-        Assert.Equal(user.Id, summary.UserId);
+            Assert.Equal(status.ToString(), summary.Status.ToString());
+        }
+
+        Assert.Equal(Enum.GetNames<UserStatus>().Order(StringComparer.Ordinal), Enum.GetNames<UserStatusDto>().Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void Map_UnknownUserStatus_Throws()
+    {
+        var user = new User { Id = Guid.NewGuid(), Status = (UserStatus)999 };
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => user.Adapt<UserSummaryDto>(ScannedConfig()));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void UserStatusDto_DefaultValue_IsLocked()
+    {
+        Assert.Equal(UserStatusDto.Locked, default(UserStatusDto));
+        Assert.Equal(UserStatusDto.Locked, new UserSummaryDto().Status);
     }
 
     [Fact]

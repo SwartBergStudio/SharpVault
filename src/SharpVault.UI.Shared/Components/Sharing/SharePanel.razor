@@ -1,0 +1,52 @@
+@inherits LoadableComponentBase<ShareGrantListDto>
+
+<SvPaper Id="@IdFor("panel")" Class="pa-3 mt-4">
+    <SvStack Row="true" Spacing="2" Center="true" Class="justify-space-between mb-2">
+        <SvText Id="@IdFor("heading")" Kind="SvTextKind.Heading" HtmlTag="h2">Who has access</SvText>
+        @if (State is LoadState.Loaded or LoadState.Empty)
+        {
+            <SvButton Id="@IdFor("add")" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.People" Disabled="@IsCommandRunning" OnClick="@OpenAdd">Add person</SvButton>
+        }
+    </SvStack>
+    <StatusBanner Id="@IdFor("status")" Message="@_status" />
+    <DataStateView TValue="ShareGrantListDto" IdPrefix="@IdFor("grants")" EmptyTitle="Not shared with anyone" EmptyDescription="Select Add person to give a colleague access to this item." State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+        <ChildContent Context="list">
+            <SvTable Id="@IdFor("grants")" TItem="ShareGrantDto" Items="@list.Items">
+                <Columns>
+                    <SvColumn TItem="ShareGrantDto" Header="Person" Context="grant">
+                        <span id="@GrantId("name", grant)">@grant.RecipientDisplayName</span>
+                        @if (!string.IsNullOrEmpty(grant.RecipientEmail))
+                        {
+                            <SvText Secondary="true">@grant.RecipientEmail</SvText>
+                        }
+                    </SvColumn>
+                    <SvColumn TItem="ShareGrantDto" Header="Access" Context="grant">
+                        @if (grant.CanChange)
+                        {
+                            <SvSelect Id="@GrantId("permission", grant)" Label="@($"Access for {grant.RecipientDisplayName}")" Options="@PermissionLabels.OptionsFor(Value?.CanGrantManage == true)" Value="@grant.Permission.ToString()" ValueChanged="@(value => ChangeAsync(grant, value))" Disabled="@IsCommandRunning" />
+                        }
+                        else
+                        {
+                            <span id="@GrantId("permission", grant)">@PermissionLabels.Label(grant.Permission)</span>
+                        }
+                    </SvColumn>
+                    <SvColumn TItem="ShareGrantDto" Header="Granted by" Context="grant">
+                        <span id="@GrantId("by", grant)">@grant.GrantedByDisplayName</span>
+                    </SvColumn>
+                    <SvColumn TItem="ShareGrantDto" Header="Actions" Context="grant">
+                        @if (grant.CanChange)
+                        {
+                            <SvIconButton Id="@GrantId("revoke", grant)" Icon="@SvIcons.Delete" Label="@($"Remove access for {grant.RecipientDisplayName}")" Disabled="@IsCommandRunning" OnClick="@(() => OpenRevoke(grant))" />
+                        }
+                    </SvColumn>
+                </Columns>
+            </SvTable>
+        </ChildContent>
+    </DataStateView>
+</SvPaper>
+
+<ShareDialog Open="@_addOpen" Busy="@IsCommandRunning" CanGrantManage="@(Value?.CanGrantManage == true)" ErrorText="@_addError" Search="@SearchAsync" OnConfirm="@AddAsync" OnCancel="@CloseAdd" />
+
+<ConfirmDialog IdPrefix="@IdFor("revoke-prompt")" Title="Remove access?" Open="@(_revoking is not null)" Danger="true" ConfirmText="Remove access" Busy="@IsCommandRunning" OnConfirm="@RevokeAsync" OnCancel="@CloseRevoke">
+    <p id="@IdFor("revoke-prompt-text")">@RevokeText</p>
+</ConfirmDialog>

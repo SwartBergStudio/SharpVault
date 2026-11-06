@@ -1,0 +1,15 @@
+<MudItem xs="@Xs" sm="@Sm" md="@Md">@ChildContent</MudItem>
+
+@code {
+    [Parameter]
+    public int Xs { get; set; }
+
+    [Parameter]
+    public int Sm { get; set; }
+
+    [Parameter]
+    public int Md { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

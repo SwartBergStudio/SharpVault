@@ -1,0 +1,64 @@
+@using Microsoft.Extensions.Logging
+@implements IAsyncDisposable
+@inject IIdleMonitor Monitor
+@inject IOptions<IdleLockOptions> Options
+@inject AuthenticationStateProvider AuthenticationState
+@inject ISessionActions SessionActions
+@inject ILogger<IdleLock> Logger
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private bool _started;
+    private bool _disposed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _disposed)
+        {
+            return;
+        }
+
+        var state = await AuthenticationState.GetAuthenticationStateAsync();
+        if (_disposed || state.User.Identity?.IsAuthenticated != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Monitor.StartAsync(SessionActions.SignOutFormId, Options.Value.Timeout, state.User.FindFirst(SessionClaims.ExpiresAt)?.Value, _cts.Token);
+            _started = true;
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or JSDisconnectedException)
+        {
+            return;
+        }
+        catch (JSException)
+        {
+            Logger.LogWarning("The idle monitor could not start");
+            return;
+        }
+
+        if (_disposed)
+        {
+            await Monitor.StopAsync();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        await _cts.CancelAsync();
+        if (_started)
+        {
+            await Monitor.StopAsync();
+        }
+
+        _cts.Dispose();
+    }
+}

@@ -3,7 +3,7 @@
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
-using SharpVault.ServiceDefaults.Identity;
+using SharpVault.Authentication.Identity;
 using SharpVault.UI.Shared.Navigation;
 
 namespace SharpVault.Web.Security;

@@ -1,17 +1,111 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@inject AuthenticationStateProvider AuthenticationState
+@inject ICurrentUserAccessor CurrentUserAccessor
+@inject ILogger<MainLayout> Logger
+
+<MudThemeProvider @ref="_themeProvider" Theme="SharpVaultTheme.Instance" IsDarkMode="_isDark" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
 
 <SkipLink />
-<div id="app-frame" class="sv-frame">
-    <AppHeader />
-    <SideNav />
-    <main id="main-content" class="sv-main" tabindex="-1">
-        <div id="app-shell" class="sv-content">@Body</div>
-    </main>
-</div>
+<CascadingValue Name="@LayoutCascades.CurrentUser" Value="_currentUser">
+    <SvLayout Id="app-frame">
+        <AppHeader ShowMenuToggle="_showMenuToggle" OnMenuToggle="ToggleDrawer" />
+        <SideNav @bind-Open="_drawerOpen" />
+        <SvMainContent>
+            <main id="main-content" tabindex="-1">
+                <SvContainer Id="app-shell" Class="sv-content">
+                    <AppErrorBoundary @ref="_boundary" @key="_principalKey">@Body</AppErrorBoundary>
+                </SvContainer>
+            </main>
+        </SvMainContent>
+    </SvLayout>
+</CascadingValue>
+
+<IdleLock />
 
 <div id="blazor-error-ui" role="alert" data-nosnippet>
-    <Icon Name="IconName.Danger" />
+    <SvIcon Icon="@SvIcons.Danger" />
     <span>An unhandled error has occurred.</span>
     <a id="blazor-error-reload" href="." class="reload">Reload</a>
-    <button id="blazor-error-dismiss" type="button" class="dismiss sv-btn sv-btn--ghost sv-btn--icon sv-btn--sm" aria-label="Dismiss"><Icon Name="IconName.Close" /></button>
+    <button id="blazor-error-dismiss" type="button" class="dismiss" aria-label="Dismiss"><SvIcon Icon="@SvIcons.Close" /></button>
 </div>
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private MudThemeProvider? _themeProvider;
+    private AppErrorBoundary? _boundary;
+    private CurrentUserDto? _currentUser;
+    private bool _isDark = true;
+    private bool _drawerOpen = true;
+    private bool _showMenuToggle;
+    private string _principalKey = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthenticationState.AuthenticationStateChanged += HandleAuthenticationStateChanged;
+        await LoadCurrentUserAsync();
+    }
+
+    protected override void OnParametersSet() => _boundary?.Recover();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _themeProvider is null)
+        {
+            return;
+        }
+
+        _isDark = await _themeProvider.GetSystemDarkModeAsync();
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        AuthenticationState.AuthenticationStateChanged -= HandleAuthenticationStateChanged;
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    private void HandleAuthenticationStateChanged(Task<AuthenticationState> state) =>
+        _ = InvokeAsync(async () =>
+        {
+            await LoadCurrentUserAsync();
+            if (!_cts.IsCancellationRequested)
+            {
+                StateHasChanged();
+            }
+        });
+
+    private async Task LoadCurrentUserAsync()
+    {
+        var state = await AuthenticationState.GetAuthenticationStateAsync();
+        _principalKey = state.User.FindFirst(SessionClaims.ObjectId)?.Value ?? string.Empty;
+        if (state.User.Identity?.IsAuthenticated != true || !RendererInfo.IsInteractive)
+        {
+            _currentUser = null;
+            _showMenuToggle = false;
+            return;
+        }
+
+        _showMenuToggle = true;
+        try
+        {
+            var response = await CurrentUserAccessor.GetAsync(_cts.Token);
+            _currentUser = response.Status == ApiCallStatus.Success ? response.Value : null;
+        }
+        catch (OperationCanceledException)
+        {
+            _currentUser = null;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning("The current user could not be loaded: {ExceptionType}", exception.GetType().Name);
+            _currentUser = null;
+        }
+    }
+}

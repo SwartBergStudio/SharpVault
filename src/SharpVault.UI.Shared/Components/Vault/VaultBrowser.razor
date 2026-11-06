@@ -1,0 +1,50 @@
+@inject NavigationManager Navigation
+
+<SvPageTitle Id="vault-heading">Vault</SvPageTitle>
+
+<TransferNoticeBanner />
+
+<div class="d-flex flex-wrap align-center justify-space-between gap-3 mb-4">
+    <VaultSearchBox Term="@Search" OnSearch="@SearchAsync" />
+    <SvButton Id="vault-new-secret" Variant="SvButtonVariant.Primary" Icon="@SvIcons.Add" Href="@NewSecretHref">New item</SvButton>
+</div>
+
+<SvGrid>
+    <SvGridItem Xs="12" Md="4">
+        <FolderTreePanel SelectedFolderId="@FolderId" Unfiled="@Unfiled" OnChanged="@HandleFoldersChanged" />
+    </SvGridItem>
+    <SvGridItem Xs="12" Md="8">
+        <SecretListPanel @key="@ListKey" FolderId="@FolderId" Unfiled="@Unfiled" Search="@Search" />
+        @if (FolderId is { } folderId && string.IsNullOrWhiteSpace(Search))
+        {
+            <SharedFiledPanel @key="@($"{folderId:D}|{_listVersion}")" FolderId="@folderId" />
+        }
+    </SvGridItem>
+</SvGrid>
+
+@code {
+    private int _listVersion;
+
+    [Parameter]
+    public Guid? FolderId { get; set; }
+
+    [Parameter]
+    public bool Unfiled { get; set; }
+
+    [Parameter]
+    public string? Search { get; set; }
+
+    private string ListKey => $"{FolderId}|{Unfiled}|{Search}|{_listVersion}";
+
+    private string NewSecretHref => FolderId is { } id
+        ? $"{VaultRoutes.NewSecret}?{VaultRoutes.FolderIdParameter}={id:D}"
+        : VaultRoutes.NewSecret;
+
+    private Task SearchAsync(string term)
+    {
+        Navigation.NavigateTo(VaultRoutes.WithSearch(VaultRoutes.Vault, term));
+        return Task.CompletedTask;
+    }
+
+    private void HandleFoldersChanged() => _listVersion++;
+}

@@ -1,0 +1,35 @@
+<MudText id="@($"{Id}-label")" Typo="Typo.body2">@Label: @Value</MudText>
+<MudSlider T="int"
+           id="@Id"
+           Min="@Min"
+           Max="@Max"
+           Step="1"
+           Value="@Value"
+           ValueChanged="@ValueChanged"
+           aria-label="@Label" />
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public int Min { get; set; }
+
+    [Parameter, EditorRequired]
+    public int Max { get; set; }
+
+    [Parameter]
+    public int Value { get; set; }
+
+    [Parameter]
+    public EventCallback<int> ValueChanged { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        ComponentIds.EnsureValid(Id, nameof(Id));
+        ArgumentException.ThrowIfNullOrWhiteSpace(Label);
+    }
+}

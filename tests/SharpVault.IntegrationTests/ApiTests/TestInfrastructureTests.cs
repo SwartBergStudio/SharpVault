@@ -9,6 +9,7 @@ using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Factories;
 using SharpVault.IntegrationTests.Storage;
 using SharpVault.IntegrationTests.Support;
+using SharpVault.IntegrationTests.Vault;
 
 namespace SharpVault.IntegrationTests.ApiTests;
 
@@ -240,6 +241,17 @@ public sealed class TestInfrastructureTests(ApiTestFactory factory) : BaseIntegr
     }
 
     [Fact]
+    public async Task SeedUserAsync_UsersTableMissing_CreatesTheTableAndInsertsTheRow()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await Factory.StorageAdminClient.DeleteTableAsync(SharpVault.Infrastructure.Storage.TableNames.Users, cancellationToken);
+
+        await Factory.SeedUserAsync(TestUsers.User, UserRows.ActiveStatus, DateTimeOffset.UtcNow, cancellationToken);
+
+        Assert.NotNull(await UserRows.GetAsync(GetUsersTable(), TestUsers.User.ObjectId, cancellationToken));
+    }
+
+    [Fact]
     public async Task UserRows_SeededRow_IsReadByApi()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -320,6 +332,50 @@ public sealed class TestInfrastructureTests(ApiTestFactory factory) : BaseIntegr
     public void ForgedTokens_SignedWithUnknownKey_DiffersBetweenCalls()
     {
         Assert.NotEqual(ForgedTokens.SignedWithUnknownKey(), ForgedTokens.SignedWithUnknownKey());
+    }
+
+    [Fact]
+    public async Task CountingKeyWrapProvider_CountsUnwrapsThroughTheApi()
+    {
+        var api = new VaultTestApi(Factory.CreateAuthenticatedClient(TestUsers.User));
+        var created = await api.CreateSecretAsync(new SharpVault.Dtos.Vault.CreateSecretRequestDto
+        {
+            Type = SharpVault.Dtos.Vault.SecretTypeDto.Login,
+            Name = "counted",
+            Value = "counted-value",
+        });
+        Assert.NotNull(created.Body);
+        var wrapsAfterCreate = Factory.KeyWraps.Wraps;
+        Factory.KeyWraps.Clear();
+
+        var reveal = await api.RevealSecretAsync(created.Body.Id, new SharpVault.Dtos.Vault.RevealSecretRequestDto
+        {
+            Field = SharpVault.Dtos.Vault.RevealFieldDto.Value,
+            Intent = SharpVault.Dtos.Vault.RevealIntentDto.View,
+        });
+
+        Assert.True(wrapsAfterCreate >= 2, "Creating a secret wraps the metadata key and the secret key.");
+        Assert.Equal(System.Net.HttpStatusCode.OK, reveal.Response.StatusCode);
+        Assert.Equal(1, Factory.KeyWraps.Unwraps);
+        Assert.Equal(0, Factory.KeyWraps.Wraps);
+        Factory.KeyWraps.Clear();
+        Assert.Equal(0, Factory.KeyWraps.Unwraps);
+    }
+
+    [Fact]
+    public async Task VaultStorageRequests_BatchPath_IsCountedAsVaultWrite()
+    {
+        var api = new VaultTestApi(Factory.CreateAuthenticatedClient(TestUsers.User));
+        await api.ListFoldersAsync();
+        StorageRequests.Clear();
+
+        var created = await api.CreateFolderAsync(new SharpVault.Dtos.Vault.CreateFolderRequestDto { Name = "batched" });
+
+        Assert.Equal(System.Net.HttpStatusCode.Created, created.Response.StatusCode);
+        Assert.Contains(StorageRequests.VaultWrites(), request => request.Path.EndsWith("/$batch", StringComparison.Ordinal));
+        Assert.Contains(StorageRequests.VaultRequests(), request => request.Method == "GET");
+        Assert.True(VaultStorageRequests.IsVaultRequest(new RecordedStorageRequest("POST", "/devstoreaccount1/$batch", null)));
+        Assert.False(VaultStorageRequests.IsVaultRequest(new RecordedStorageRequest("GET", "/devstoreaccount1/Users()", null)));
     }
 
     private static System.Text.Json.JsonDocument DecodePayload(string token)

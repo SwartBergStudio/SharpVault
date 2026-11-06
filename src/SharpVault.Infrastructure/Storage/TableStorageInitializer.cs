@@ -14,15 +14,30 @@ public sealed partial class TableStorageInitializer(
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        foreach (var name in tableSet.Names)
+        if (tableSet.Names.Count > 0)
         {
-            await tableServiceClient.CreateTableIfNotExistsAsync(name, cancellationToken);
+            var existing = await ListExistingTablesAsync(cancellationToken);
+            foreach (var name in tableSet.Names.Where(name => !existing.Contains(name)))
+            {
+                await tableServiceClient.CreateTableIfNotExistsAsync(name, cancellationToken);
+            }
         }
 
         LogTablesInitialised(logger, tableSet.Names.Count);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private async Task<HashSet<string>> ListExistingTablesAsync(CancellationToken cancellationToken)
+    {
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await foreach (var table in tableServiceClient.QueryAsync(cancellationToken: cancellationToken))
+        {
+            existing.Add(table.Name);
+        }
+
+        return existing;
+    }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Table Storage initialised with {TableCount} tables")]
     private static partial void LogTablesInitialised(ILogger logger, int tableCount);

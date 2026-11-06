@@ -7,7 +7,19 @@ public static class TableNames
 {
     public const string Users = "Users";
 
+    public const string SessionRevocations = "SessionRevocations";
+
     public const string AuditLog = "AuditLog";
 
-    public static IReadOnlyList<string> All { get; } = [Users, AuditLog];
+    public const string Vaults = "Vaults";
+
+    public const string SecretAuditLog = "SecretAuditLog";
+
+    public const string Maintenance = "Maintenance";
+
+    public const string ShareInbox = "ShareInbox";
+
+    public const string TransferJobs = "TransferJobs";
+
+    public static IReadOnlyList<string> All { get; } = [Users, AuditLog, Vaults, SecretAuditLog, Maintenance, ShareInbox, TransferJobs, SessionRevocations];
 }

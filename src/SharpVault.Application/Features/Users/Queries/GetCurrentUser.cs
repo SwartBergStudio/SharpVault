@@ -4,7 +4,7 @@
 using Mediator;
 using SharpVault.Application.Common.Interfaces;
 using SharpVault.Application.Common.Models;
-using SharpVault.Application.Features.Users.Dtos;
+using SharpVault.Dtos.Users;
 
 namespace SharpVault.Application.Features.Users.Queries;
 
@@ -15,7 +15,12 @@ public sealed class GetCurrentUserQueryHandler(ICurrentUser currentUser)
 {
     public Task<Result<CurrentUserDto>> Handle(GetCurrentUserQuery request, CancellationToken cancellationToken)
     {
-        var dto = new CurrentUserDto(currentUser.UserId, currentUser.DisplayName, currentUser.IsAdmin);
+        var dto = new CurrentUserDto
+        {
+            UserId = currentUser.UserId,
+            DisplayName = currentUser.DisplayName,
+            IsAdmin = currentUser.IsAdmin,
+        };
         return Task.FromResult(Result<CurrentUserDto>.Success(dto));
     }
 }

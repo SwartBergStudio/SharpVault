@@ -19,6 +19,8 @@ public sealed class ProductionEntraTests(ProductionApiTestFactory factory)
 {
     private const string TenantIdInvalidMessage = "AzureAd:TenantId must be the directory (tenant) id GUID. Multi-tenant values such as common, organizations and consumers are not allowed.";
     private const string ClientIdInvalidMessage = "AzureAd:ClientId must be the application (client) id GUID.";
+    private const string TenantIdMissingMessage = "AzureAd:TenantId is required when AzureAd:ClientId is set.";
+    private const string ClientIdMissingMessage = "AzureAd:ClientId is required when AzureAd:TenantId is set.";
     private const string InstanceInvalidMessage = "AzureAd:Instance must be an absolute https URI with no path, query or user information.";
     private const string MePath = "/api/me";
     private const string AdminUsersPath = "/api/admin/users";
@@ -53,10 +55,10 @@ public sealed class ProductionEntraTests(ProductionApiTestFactory factory)
         { "AzureAd:TenantId", "00000000-0000-0000-0000-000000000000", TenantIdInvalidMessage },
         { "AzureAd:TenantId", "{5f0c1d2e-4b7a-4c3d-9e8f-00000000a001}", TenantIdInvalidMessage },
         { "AzureAd:TenantId", "5f0c1d2e4b7a4c3d9e8f00000000a001", TenantIdInvalidMessage },
-        { "AzureAd:TenantId", "", TenantIdInvalidMessage },
+        { "AzureAd:TenantId", "", TenantIdMissingMessage },
         { "AzureAd:ClientId", "client-7f3c9a", ClientIdInvalidMessage },
         { "AzureAd:ClientId", "00000000-0000-0000-0000-000000000000", ClientIdInvalidMessage },
-        { "AzureAd:ClientId", "", ClientIdInvalidMessage },
+        { "AzureAd:ClientId", "", ClientIdMissingMessage },
         { "AzureAd:Instance", "http://login.microsoftonline.com/", InstanceInvalidMessage },
         { "AzureAd:Instance", "https://login.microsoftonline.com/tenant-7f3c9a/", InstanceInvalidMessage },
         { "AzureAd:Instance", "https://user-7f3c9a:pw-7f3c9a@login.microsoftonline.com/", InstanceInvalidMessage },

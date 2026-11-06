@@ -1,0 +1,19 @@
+@inject RoutedAssemblies RoutedAssemblies
+
+<Router AppAssembly="typeof(Routes).Assembly" AdditionalAssemblies="RoutedAssemblies.Assemblies" NotFoundPage="typeof(NotFound)">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)">
+            <NotAuthorized>
+                <StatePanel Id="not-authorized" Kind="StatePanelKind.Warning" Icon="@SvIcons.Lock" Title="Sign in required">
+                    <ChildContent>
+                        <p id="not-authorized-message">You need to sign in to see this page.</p>
+                    </ChildContent>
+                    <Actions>
+                        <SignInLink Id="not-authorized-sign-in" Text="Sign in" />
+                    </Actions>
+                </StatePanel>
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>

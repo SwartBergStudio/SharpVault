@@ -1,0 +1,68 @@
+<MudDialog Visible="@Open"
+           VisibleChanged="@HandleVisibleChangedAsync"
+           Options="@_options"
+           DefaultFocus="@DefaultFocus.None"
+           AriaLabelledBy="@TitleId"
+           Class="@DialogClass"
+           id="@($"{IdPrefix}-dialog")">
+    <TitleContent>
+        <h2 id="@TitleId" class="sv-dialog__title">
+            @if (Danger)
+            {
+                <MudIcon Icon="@SvIcons.Danger" Color="Color.Error" aria-hidden="true" />
+            }
+            @Title
+        </h2>
+    </TitleContent>
+    <DialogContent><SvDialogBody OnKeyDown="HandleKeyDownAsync">@ChildContent</SvDialogBody></DialogContent>
+    <DialogActions><div class="sv-dialog__keys" @onkeydown="HandleKeyDownAsync">@Footer</div></DialogActions>
+</MudDialog>
+
+@code {
+    private const string EscapeKey = "Escape";
+
+    private static readonly DialogOptions _options = new()
+    {
+        CloseOnEscapeKey = false,
+        BackdropClick = false,
+        CloseButton = false,
+        NoHeader = false,
+    };
+
+    [Parameter, EditorRequired]
+    public string IdPrefix { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool Open { get; set; }
+
+    [Parameter]
+    public bool Danger { get; set; }
+
+    [Parameter]
+    public bool Wide { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public RenderFragment? Footer { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private string TitleId => $"{IdPrefix}-title";
+
+    private string DialogClass => $"sv-dialog{(Danger ? " sv-dialog--danger" : string.Empty)}{(Wide ? " sv-dialog--wide" : string.Empty)}";
+
+    protected override void OnParametersSet() => ComponentIds.EnsureValid(IdPrefix, nameof(IdPrefix));
+
+    private Task HandleVisibleChangedAsync(bool visible) => visible || !Open || Busy ? Task.CompletedTask : OnCancel.InvokeAsync();
+
+    private Task HandleKeyDownAsync(KeyboardEventArgs args) => Open && !Busy && args.Key == EscapeKey ? OnCancel.InvokeAsync() : Task.CompletedTask;
+}

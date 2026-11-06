@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace SharpVault.Web.Api;
 
-public sealed class SharpVaultApiOptionsValidator : IValidateOptions<SharpVaultApiOptions>
+public sealed class SharpVaultApiOptionsValidator(bool requireScopes = true) : IValidateOptions<SharpVaultApiOptions>
 {
     internal const string BaseAddressInvalid = "SharpVaultApi:BaseAddress must be an absolute URI.";
     internal const string ScopesRequired = "SharpVaultApi:Scopes must contain at least one scope.";
@@ -20,7 +20,7 @@ public sealed class SharpVaultApiOptionsValidator : IValidateOptions<SharpVaultA
             failures.Add(BaseAddressInvalid);
         }
 
-        if (options.Scopes is null || options.Scopes.Length == 0 || options.Scopes.Any(string.IsNullOrWhiteSpace))
+        if (requireScopes && (options.Scopes is null || options.Scopes.Length == 0 || options.Scopes.Any(string.IsNullOrWhiteSpace)))
         {
             failures.Add(ScopesRequired);
         }

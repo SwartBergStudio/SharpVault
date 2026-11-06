@@ -1,0 +1,28 @@
+<SvDialog IdPrefix="folder-sharing" Title="@($"Share folder: {FolderName}")" Open="@Open" Wide="true" OnCancel="@OnClose">
+    <ChildContent>
+        @if (Open)
+        {
+            <SharePanel @key="FolderId" OwnerId="@OwnerId" Kind="SharedItemKindDto.Folder" ItemId="@FolderId" />
+        }
+    </ChildContent>
+    <Footer>
+        <SvButton Id="folder-sharing-close" Variant="SvButtonVariant.Secondary" OnClick="@OnClose">Close</SvButton>
+    </Footer>
+</SvDialog>
+
+@code {
+    [Parameter]
+    public bool Open { get; set; }
+
+    [Parameter]
+    public Guid OwnerId { get; set; }
+
+    [Parameter]
+    public Guid FolderId { get; set; }
+
+    [Parameter]
+    public string FolderName { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+}

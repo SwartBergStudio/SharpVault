@@ -1,0 +1,137 @@
+@inherits LoadableComponentBase<RecycleBinPageDto>
+@inject IRecycleBinApiClient Bin
+
+<SvPageTitle Id="bin-heading">Recycle bin</SvPageTitle>
+<p class="mud-text-secondary">Deleted items stay here for @RetentionDays days and are then removed for good.</p>
+
+<StatusBanner Id="bin-status" Message="@_status" />
+
+<DataStateView TValue="RecycleBinPageDto" IdPrefix="bin" EmptyTitle="The recycle bin is empty" EmptyDescription="@EmptyDescription" State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+    <ChildContent>
+        <RecycleBinTable Items="_rows" Disabled="IsCommandRunning" OnRestore="RestoreAsync" OnPurge="AskPurge" />
+        @if (LoadMoreFailed)
+        {
+            <SvAlert Id="bin-load-more-error" Kind="AlertKind.Danger">@LoadMoreText</SvAlert>
+        }
+        @if (_continuation is not null)
+        {
+            <div class="d-flex justify-center mt-4">
+                <SvButton Id="bin-load-more" Variant="SvButtonVariant.Secondary" Busy="IsLoadingMore" Disabled="IsCommandRunning" OnClick="@HandleLoadMore">Load more</SvButton>
+            </div>
+        }
+    </ChildContent>
+</DataStateView>
+
+<RecyclePurgeDialog Item="_purgeTarget" Busy="IsCommandRunning" OnConfirm="ConfirmPurgeAsync" OnCancel="CancelPurge" />
+
+@code {
+    public const int PageSize = 50;
+    public const int RetentionDays = 30;
+    public static readonly string EmptyDescription = $"Items and folders you delete wait here for {RetentionDays} days before they are removed for good.";
+    public const string PartialText = "Part of this was done before another request changed it. Try again to finish. The list has been reloaded.";
+    public const string SecretConflictText = "This item was changed elsewhere, so nothing was done. The list has been reloaded. Try again.";
+    public const string GoneText = "That item is no longer in the recycle bin. The list has been reloaded.";
+
+    private readonly List<RecycleBinItemDto> _rows = [];
+    private string? _continuation;
+    private RecycleBinItemDto? _purgeTarget;
+    private readonly StatusMessage _status = new();
+
+    protected override async Task<ApiResponse<RecycleBinPageDto>> LoadAsync(CancellationToken cancellationToken)
+    {
+        var response = await Bin.ListAsync(PageSize, null, cancellationToken);
+        if (response.Status == ApiCallStatus.Success && response.Value is not null)
+        {
+            _rows.Clear();
+            _rows.AddRange(response.Value.Items);
+            _continuation = response.Value.ContinuationToken;
+            LoadMoreFailed = false;
+        }
+
+        return response;
+    }
+
+    protected override bool IsEmpty(RecycleBinPageDto value) => value.Items.Count == 0 && value.ContinuationToken is null;
+
+    protected override void OnAccessDenied()
+    {
+        _rows.Clear();
+        _continuation = null;
+        base.OnAccessDenied();
+    }
+
+    private Task RestoreAsync(RecycleBinItemDto item) => item.Kind == RecycleBinItemKindDto.Folder
+        ? ExecuteAsync(token => Bin.RestoreFolderAsync(item.Id, token), "Folder restored.", PartialText)
+        : ExecuteAsync(token => Bin.RestoreSecretAsync(item.Id, token), "Secret restored.", SecretConflictText);
+
+    private void AskPurge(RecycleBinItemDto item) => _purgeTarget = item;
+
+    private void CancelPurge() => _purgeTarget = null;
+
+    private Task ConfirmPurgeAsync()
+    {
+        var item = _purgeTarget;
+        if (item is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return item.Kind == RecycleBinItemKindDto.Folder
+            ? ExecuteAsync(token => Bin.PurgeFolderAsync(item.Id, token), "Folder deleted forever.", PartialText)
+            : ExecuteAsync(token => Bin.PurgeSecretAsync(item.Id, token), "Secret deleted forever.", SecretConflictText);
+    }
+
+    private Task ExecuteAsync<T>(Func<CancellationToken, Task<ApiResponse<T>>> call, string successText, string conflictText) =>
+        RunApiCommandAsync(
+            call,
+            response => ApplyResultAsync(response, successText, conflictText),
+            () =>
+            {
+                _purgeTarget = null;
+                _status.Show(VaultStatusText.FailedText, AlertKind.Danger);
+            });
+
+    private async Task ApplyResultAsync<T>(ApiResponse<T> response, string successText, string conflictText)
+    {
+        _purgeTarget = null;
+        ShowResult(response, successText, conflictText);
+        if (response.Status is ApiCallStatus.Success or ApiCallStatus.Conflict or ApiCallStatus.NotFound)
+        {
+            await ReloadAsync();
+        }
+    }
+
+    private void ShowResult<T>(ApiResponse<T> response, string successText, string conflictText)
+    {
+        switch (response.Status)
+        {
+            case ApiCallStatus.Success:
+                _status.Show(successText, AlertKind.Success);
+                break;
+            case ApiCallStatus.Conflict:
+                _status.Show(conflictText, AlertKind.Warning);
+                break;
+            case ApiCallStatus.NotFound:
+                _status.Show(GoneText, AlertKind.Warning);
+                break;
+            default:
+                _status.Show(VaultStatusText.For(response), AlertKind.Danger);
+                break;
+        }
+    }
+
+    private Task HandleLoadMore(Microsoft.AspNetCore.Components.Web.MouseEventArgs args) =>
+        _continuation is null
+            ? Task.CompletedTask
+            : RunLoadMoreAsync(
+                token => Bin.ListAsync(PageSize, _continuation, token),
+                AppendPage,
+                VaultStatusText.For,
+                VaultStatusText.FailedText);
+
+    private void AppendPage(RecycleBinPageDto page)
+    {
+        _rows.AddRange(page.Items);
+        _continuation = page.ContinuationToken;
+    }
+}

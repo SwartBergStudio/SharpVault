@@ -195,7 +195,7 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
         var cookie = Assert.Single(WebTestSupport.SetCookies(response), value => value.StartsWith($"{SessionCookieName}=", StringComparison.Ordinal));
         Assert.DoesNotContain(TestUsers.User.ObjectId.ToString("D"), cookie, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(TestUsers.User.DisplayName, cookie, StringComparison.Ordinal);
-        Assert.DoesNotContain("eyJ", cookie, StringComparison.Ordinal);
+        Assert.False(WebTestSupport.ContainsJwt(cookie), "The cookie contains a JWT-shaped string.");
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await factory.CreateSignedInClientAsync(TestUsers.User, cancellationToken);
 
-        var response = await client.GetAsync("/", cancellationToken);
+        var response = await client.GetAsync("/vault", cancellationToken);
 
         Assert.DoesNotContain(WebTestSupport.SetCookies(response), cookie => cookie.StartsWith(SessionCookieName, StringComparison.Ordinal));
     }
@@ -324,7 +324,7 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
         Assert.DoesNotContain("id=\"account-display-name\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("id=\"account-user-id\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("id=\"sign-out-form\"", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("eyJ", html, StringComparison.Ordinal);
+        Assert.False(WebTestSupport.ContainsJwt(html), "The page contains a JWT-shaped string.");
     }
 
     [Fact]
@@ -371,39 +371,6 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
         Assert.DoesNotContain("id=\"sign-out-button\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("id=\"account-link\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("id=\"home-greeting\"", html, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task HomePage_SignedIn_ShowsGreetingAndSignOutForm()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await factory.CreateSignedInClientAsync(TestUsers.User, cancellationToken);
-
-        var html = await client.GetStringAsync("/", cancellationToken);
-
-        Assert.Contains("id=\"home-greeting\"", html, StringComparison.Ordinal);
-        Assert.Contains(TestUsers.User.DisplayName, html, StringComparison.Ordinal);
-        Assert.Contains("id=\"account-name\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"account-link\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"sign-out-form\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"sign-out-button\"", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("id=\"home-sign-in\"", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("id=\"sign-in-link\"", html, StringComparison.Ordinal);
-        Assert.False(string.IsNullOrEmpty(WebTestSupport.ExtractSignOutAntiforgeryToken(html)));
-        Assert.Contains("method=\"post\"", html, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("action=\"/account/sign-out\"", html, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task HomePage_SignedIn_ContainsNoInlineScriptOrStyle()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await factory.CreateSignedInClientAsync(TestUsers.User, cancellationToken);
-
-        var html = await client.GetStringAsync("/", cancellationToken);
-
-        Assert.False(WebTestSupport.HasInlineScriptHandlerOrStyle(html));
-        Assert.DoesNotContain("javascript:", html, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -519,8 +486,10 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
         var csp = response.HeaderValue(SecurityHeaderNames.ContentSecurityPolicy)!;
         var formAction = csp.Split(';', StringSplitOptions.TrimEntries).Single(directive => directive.StartsWith("form-action ", StringComparison.Ordinal));
         Assert.Equal(["form-action", "'self'", "https://login.microsoftonline.com"], formAction.Split(' '));
-        Assert.DoesNotContain("unsafe-inline", csp, StringComparison.Ordinal);
+        var scriptSrc = csp.Split(';', StringSplitOptions.TrimEntries).Single(directive => directive.StartsWith("script-src ", StringComparison.Ordinal));
+        Assert.Equal("script-src 'self'", scriptSrc);
         Assert.DoesNotContain("unsafe-eval", csp, StringComparison.Ordinal);
+        Assert.Equal(1, csp.Split("unsafe-inline", StringSplitOptions.None).Length - 1);
         Assert.Contains("frame-ancestors 'none'", csp, StringComparison.Ordinal);
         Assert.Contains("object-src 'none'", csp, StringComparison.Ordinal);
     }
@@ -547,9 +516,9 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await factory.CreateSignedInClientAsync(TestUsers.User, cancellationToken);
 
-        var home = await client.GetAsync("/", cancellationToken);
+        var vault = await client.GetAsync("/vault", cancellationToken);
 
-        Assert.Contains(SecurityHeaderValues.NoStore, home.HeaderValue(SecurityHeaderNames.CacheControl), StringComparison.Ordinal);
+        Assert.Contains(SecurityHeaderValues.NoStore, vault.HeaderValue(SecurityHeaderNames.CacheControl), StringComparison.Ordinal);
     }
 
     [Fact]

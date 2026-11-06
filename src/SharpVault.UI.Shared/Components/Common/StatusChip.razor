@@ -1,0 +1,45 @@
+<MudChip T="string" id="@Id" Color="@ChipColor" Variant="Variant.Outlined" Size="Size.Small" Icon="@ResolvedIcon" Class="@ChipClass">@ResolvedLabel</MudChip>
+
+@code {
+    [Parameter]
+    public SecurityStatus Status { get; set; }
+
+    [Parameter]
+    public string? Label { get; set; }
+
+    [Parameter]
+    public string? Icon { get; set; }
+
+    [Parameter]
+    public string? Id { get; set; }
+
+    private string ChipClass => $"sv-status sv-status--{Status.ToString().ToLowerInvariant()}";
+
+    private Color ChipColor => Status switch
+    {
+        SecurityStatus.Active => Color.Success,
+        SecurityStatus.Locked => Color.Info,
+        SecurityStatus.Warning => Color.Warning,
+        SecurityStatus.Danger => Color.Error,
+        _ => Color.Default,
+    };
+
+    private string ResolvedIcon => Icon ?? Status switch
+    {
+        SecurityStatus.Active => SvIcons.Shield,
+        SecurityStatus.Locked => SvIcons.Lock,
+        SecurityStatus.Warning => SvIcons.Warning,
+        SecurityStatus.Danger => SvIcons.Danger,
+        _ => SvIcons.Info,
+    };
+
+    private string ResolvedLabel => !string.IsNullOrWhiteSpace(Label) ? Label : Status.ToString();
+
+    protected override void OnParametersSet()
+    {
+        if (Id is not null)
+        {
+            ComponentIds.EnsureValid(Id, nameof(Id));
+        }
+    }
+}

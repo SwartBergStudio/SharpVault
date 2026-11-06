@@ -5,16 +5,24 @@ description: SharpVault testing conventions. Use when writing, updating or debug
 
 # SharpVault adaptations (these override the general guide below)
 
-The general testing guide below is how we work. In SharpVault, these differences apply:
+The general testing guide below is the pattern. The SharpVault facts in this block take precedence over it. Where the guide names SQL Server, Respawn, `DatabaseContext`, `BaseCrudControllerTests`, a login endpoint or Playwright page objects, SharpVault does not use them. The examples in the guide are not repository code.
 
-- **Azurite instead of SQL Server.** `ApiTestFactory` starts an Azurite container with `Testcontainers.Azurite` and points the API's Table Storage configuration at its connection string. There is no `DbContext` in tests.
-- **No Respawn.** Reset state after each test by deleting and recreating the tables (or deleting all entities) in `DisposeAsync`. Expose this as `factory.ResetStorage()` and keep the same lifecycle rule: reset after every test.
-- **Data helpers use `TableClient`.** `Insert<T>`, `InsertMany<T>` and `FindById<T>` in `BaseIntegrationTest` go through the store interfaces or `TableClient`, not EF Core.
-- **No login endpoint.** Authentication is Microsoft Entra ID, which tests cannot call. Register a test authentication handler in `ApiTestFactory` that issues claims for `oid`, `name` and the `SharpVault.Admin` or `SharpVault.User` role. Provide helpers `SetAdminAuthenticatedClient()`, `SetUserAuthenticatedClient(Guid oid)` and `CreateUnauthenticatedClient()`.
-- **Development key provider.** Tests use the development `IKeyWrapProvider`, never Azure Key Vault.
-- **Security tests are required.** For every endpoint, cover: a user cannot read or change another user's secrets, a user cannot reach admin endpoints, and unauthenticated calls return 401.
-- **Admin transfer tests** must cover a full transfer, a transfer that is interrupted and resumed (no lost or duplicated secrets), and the audit entries it writes.
-- **Unit tests** live in `SharpVault.UnitTests` with the same conventions (xUnit, AutoFixture). Crypto unit tests must cover round-trip, tampering with ciphertext, nonce or associated data, and nonce uniqueness.
+- **Azurite instead of SQL Server.** `ApiTestFactory` and `LocalApiTestFactory` start an Azurite container with `Testcontainers.Azurite` (image in `TestContainerImages`) and point the Table Storage connection at it. There is no `DbContext`, no EF Core and no SQL in tests.
+- **Storage reset, no Respawn.** `BaseIntegrationTest.DisposeAsync` calls `Factory.ResetStorageAsync`, which deletes and recreates the tables, after every test. `InitializeAsync` clears the storage recorder and the log capture.
+- **Storage call counts.** `StorageRequestRecorder` is an `HttpPipelinePolicy` on the table client. Use `Count`, `Requests`, `Clear()` and `QueriesWithoutPartitionKey()`. Tests assert call counts, and no query may run without a partition key.
+- **No login endpoint and no custom auth handler.** Integration tests run the real JwtBearer pipeline with a test signing key (`TestIdentityProvider`, `TestSigningKeys`). Callers come from `TestUsers`, and tokens from `TestTokens`. The helpers are `ApiTestFactory.CreateAuthenticatedClient(TestUser)`, `CreateUnauthenticatedClient()` and `CreateClientWithToken(string)`. Local mode uses `LocalApiTestFactory.CreateClientForAccount(LocalAccount)`. The Web uses `WebTestFactory.CreateSignedInClientAsync(TestUser)`.
+- **Factories** (`tests/SharpVault.IntegrationTests/Factories`):
+  - `ApiTestFactory`: Entra mode with the test identity, Azurite. Most API tests.
+  - `WebTestFactory`: the Web host in Entra mode, no Azurite.
+  - `LocalApiTestFactory`: local mode, Azurite, the shared local key file and development key material.
+  - `LocalWebTestFactory`: the Web host in local mode, no Azurite.
+  - `ProductionApiTestFactory`: the Production environment in Entra mode, with a Table Storage service URI and a Key Vault key id set as settings. No Azurite, and the table initializer is removed.
+- **Mode settings go through `UseSetting`.** `AzureAd:TenantId` and `AzureAd:ClientId` are set with `builder.UseSetting`, not `ConfigureAppConfiguration`. The host chooses the mode while it builds, before the `ConfigureAppConfiguration` callbacks run. Settings applied that way arrived too late, and 764 of 1,387 integration tests (not counting performance tests) ran in local mode before the fix (foundation defect 1 in `docs/PROGRESS.md`). Each factory's `CreateHost` runs `EntraModeAssertion.Assert` or `AssertLocal`, so a host in the wrong mode fails at startup.
+- **Collections.** Test classes join one of the `*TestGroup` collection fixtures in `Factories/` (for example `StorageTestGroup`, `WebApiTestGroup` or `LocalModeTestGroup`), so each factory is started once per group.
+- **Security tests are required.** For every endpoint, cover: a user cannot read or change another user's data, a user cannot reach admin endpoints, and unauthenticated calls return 401. The matrix is in `sharpvault-security-performance-testing`.
+- **Unit tests** live in `SharpVault.UnitTests` (xUnit). Crypto unit tests cover round-trip, tampering with ciphertext, nonce or associated data, and nonce uniqueness. Key Vault code is tested with fakes.
+- **UI tests.** Component and page tests use bUnit with `MudTestContext`, which calls `Services.AddMudServices()` and sets `JSInterop.Mode = Loose`. `ShellTestContext` extends it for the shell and pages. Each wrapper has its own test class in `UnitTests/UiShared/Components`. Source rules are tests too: `ComponentSourceRulesTests`, `ThemeSourceScanTests`, `UiBoundaryTests` and `LayeringTests`.
+- **Mutation proof.** A test that covers a guard, a threat or a fixed defect counts only if it fails when the guard is removed or the fix is undone. Record the mutation and the result in the PR or in `docs/PROGRESS.md`.
 - **Test naming:** `MethodOrScenario_Condition_ExpectedResult`.
 - **Code style:** follow the `sharpvault-coding-standards` skill. The comments in the examples below explain the guide only. Do not write them in real code. Use descriptive test names instead of comments, and an XML doc comment only when overriding a base test to opt out.
 
@@ -75,6 +83,8 @@ Tests/
 ---
 
 ## Test Infrastructure — Factories
+
+The factory sketches below show the general pattern. The real factories and helpers are listed in the adaptation block at the top of this file.
 
 ### ApiTestFactory
 
@@ -459,6 +469,8 @@ public override Task ImportData_ShouldReturnSuccess()
 ---
 
 ## UI End-to-End Tests
+
+**Status: not built.** There is no `tests/SharpVault.E2ETests` project yet (plan item T3.13). The planned harness is: xunit v3 like the other test projects; `Microsoft.Playwright` 1.63.0 with the system Chrome (`Channel = "chrome"`, no browser download); an Azurite container; the API and the Web hosted in-process on Kestrel, with a fallback to the built assemblies as processes if in-process hosting does not work; local mode; `Category=E2E`; and page objects that use `#id` selectors only. The planned tests include the sign-in and admin journeys, a picker test with JavaScript disabled, `EveryVisitedPage_ProducesZeroCspViolationsAndNoPageErrors` and an idle timeout test. The examples below show the general Playwright pattern. They are not repository code.
 
 ### Test Class Hierarchy
 
@@ -990,15 +1002,15 @@ Set `Headless: false` and `SlowMo: 200` during development to watch tests execut
 ### General
 1. **xUnit only** — no NUnit, no MSTest.
 2. **Every test class has `[Collection(...)]`** — prevents factory conflicts.
-3. **Respawn resets DB after each test** via `IAsyncLifetime.DisposeAsync()`.
-4. **Testcontainers provides real SQL Server** — no in-memory database, no SQLite.
+3. **Storage resets after each test** via `BaseIntegrationTest.DisposeAsync()` (`ResetStorageAsync`). No Respawn.
+4. **Azurite (Testcontainers) is the storage emulator** — no SQL Server, no EF Core, no SQLite.
 
 ### API Integration Tests
-5. **`BaseCrudControllerTests<TEntity, TDto>`** provides standard CRUD tests as virtual methods.
+5. **`BaseCrudControllerTests<TEntity, TDto>`** is not used in SharpVault. Its pattern is the general guide only.
 6. **Override with `Assert.True(true)` + doc comment** to opt out of base tests.
 7. **AutoFixture for all test data** — customize with `.Without()` for nav properties, `.With()` for required fields.
 8. **Generate unique field values** with embedded `Guid` fragments.
-9. **Always authenticate before calling endpoints** — `SetAuthenticationForClient()` is required.
+9. **Authenticate with a test caller** (`CreateAuthenticatedClient(TestUser)` or the local account helpers) for every call that needs a caller, and test the unauthenticated case too.
 
 ### UI E2E Tests
 10. **Page Object Model is mandatory** — every page gets a class in `Pages/`.

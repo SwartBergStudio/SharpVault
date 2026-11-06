@@ -1,0 +1,15 @@
+@page "/vault"
+@page "/vault/folders/{FolderId:guid}"
+@attribute [Authorize]
+
+<PageTitle>Vault</PageTitle>
+
+<VaultBrowser FolderId="@FolderId" Search="@Search" />
+
+@code {
+    [Parameter]
+    public Guid? FolderId { get; set; }
+
+    [SupplyParameterFromQuery(Name = VaultRoutes.SearchParameter)]
+    private string? Search { get; set; }
+}

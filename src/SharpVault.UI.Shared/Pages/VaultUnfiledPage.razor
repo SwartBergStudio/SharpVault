@@ -1,0 +1,11 @@
+@page "/vault/unfiled"
+@attribute [Authorize]
+
+<PageTitle>Unfiled items</PageTitle>
+
+<VaultBrowser Unfiled="true" Search="@Search" />
+
+@code {
+    [SupplyParameterFromQuery(Name = VaultRoutes.SearchParameter)]
+    private string? Search { get; set; }
+}

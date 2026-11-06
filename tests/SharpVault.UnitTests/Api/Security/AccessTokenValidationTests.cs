@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SharpVault.Api.Security;
-using SharpVault.ServiceDefaults.Identity;
+using SharpVault.Authentication.Identity;
 using SharpVault.UnitTests.Support;
 
 namespace SharpVault.UnitTests.Api.Security;

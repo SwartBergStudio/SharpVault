@@ -1,0 +1,9 @@
+<MudIcon Icon="@Icon" Size="@(Small ? Size.Small : Size.Medium)" aria-hidden="true" />
+
+@code {
+    [Parameter, EditorRequired]
+    public string Icon { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool Small { get; set; }
+}

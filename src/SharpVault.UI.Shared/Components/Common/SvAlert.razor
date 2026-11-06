@@ -1,0 +1,50 @@
+<MudAlert id="@Id" Severity="@Severity" Variant="Variant.Outlined" Icon="@Icon" role="@Role">
+    <span class="sv-visually-hidden">@KindPrefix: </span>
+    @if (!string.IsNullOrWhiteSpace(Title))
+    {
+        <strong class="sv-alert__title">@Title</strong>
+    }
+    @ChildContent
+</MudAlert>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter]
+    public AlertKind Kind { get; set; }
+
+    [Parameter]
+    public string? Title { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private string Role => Kind is AlertKind.Warning or AlertKind.Danger ? "alert" : "status";
+
+    private Severity Severity => Kind switch
+    {
+        AlertKind.Success => Severity.Success,
+        AlertKind.Warning => Severity.Warning,
+        AlertKind.Danger => Severity.Error,
+        _ => Severity.Info,
+    };
+
+    private string Icon => Kind switch
+    {
+        AlertKind.Success => SvIcons.Success,
+        AlertKind.Warning => SvIcons.Warning,
+        AlertKind.Danger => SvIcons.Danger,
+        _ => SvIcons.Info,
+    };
+
+    private string KindPrefix => Kind switch
+    {
+        AlertKind.Success => "Success",
+        AlertKind.Warning => "Warning",
+        AlertKind.Danger => "Error",
+        _ => "Information",
+    };
+
+    protected override void OnParametersSet() => ComponentIds.EnsureValid(Id, nameof(Id));
+}

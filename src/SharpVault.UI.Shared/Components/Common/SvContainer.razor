@@ -1,0 +1,14 @@
+<MudContainer id="@Id" MaxWidth="MaxWidth.Large" Class="@Class">@ChildContent</MudContainer>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    protected override void OnParametersSet() => ComponentIds.EnsureValid(Id, nameof(Id));
+}

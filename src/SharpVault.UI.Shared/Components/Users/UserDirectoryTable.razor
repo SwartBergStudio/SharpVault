@@ -1,0 +1,79 @@
+@inherits LoadableComponentBase<UserPageDto>
+@inject ICurrentUserAccessor CurrentUserAccessor
+@inject IAdminUsersApiClient UsersClient
+
+@if (_forbidden)
+{
+    <StatePanel Id="admin-users-forbidden" Kind="StatePanelKind.Warning" Icon="@SvIcons.Lock" Title="Administrators only">
+        <ChildContent>
+            <p>Only administrators can see the user directory.</p>
+        </ChildContent>
+    </StatePanel>
+}
+else
+{
+    <div class="d-flex justify-end mb-3">
+        <SvButton Id="admin-users-refresh" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Refresh" Busy="@(State == LoadState.Loading)" Disabled="IsCommandRunning" OnClick="@HandleRefresh">Refresh</SvButton>
+    </div>
+    <StatusBanner Id="admin-users-status" Message="@_status" />
+    <DataStateView TValue="UserPageDto" IdPrefix="admin-users" EmptyTitle="No users yet" State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+        <ChildContent>
+            <SvTable Id="admin-users-table" TItem="UserSummaryDto" Items="_rows">
+                <Columns>
+                    <SvColumn TItem="UserSummaryDto" Header="Name" Value="@(user => user.DisplayName)" />
+                    <SvColumn TItem="UserSummaryDto" Header="Email" Value="@(user => user.Email)" />
+                    <SvColumn TItem="UserSummaryDto" Header="Status" Context="user">
+                        <StatusChip Status="@StatusOf(user)" Label="@StatusLabel(user)" />
+                    </SvColumn>
+                    <SvColumn TItem="UserSummaryDto" Header="Last sign-in" Value="@LastSignIn" />
+                    <SvColumn TItem="UserSummaryDto" Header="User id" Context="user">
+                        <span class="sv-mono">@user.UserId</span>
+                    </SvColumn>
+                    <SvColumn TItem="UserSummaryDto" Header="Actions" Context="user">
+                        <div class="d-flex flex-wrap gap-2">
+                            <SvButton Id="@($"user-counts-{user.UserId:D}")" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Vault" Disabled="IsCommandRunning" OnClick="@(_ => ShowCounts(user))">Counts</SvButton>
+                            @if (user.UserId != _callerId)
+                            {
+                                @if (user.Status == UserStatusDto.Active)
+                                {
+                                    <SvButton Id="@($"user-lock-{user.UserId:D}")" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Lock" Disabled="IsCommandRunning" OnClick="@(_ => AskLock(user, unlock: false))">Lock</SvButton>
+                                }
+                                else
+                                {
+                                    <SvButton Id="@($"user-unlock-{user.UserId:D}")" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Unlock" Disabled="IsCommandRunning" OnClick="@(_ => AskLock(user, unlock: true))">Unlock</SvButton>
+                                }
+                                <SvButton Id="@($"user-transfer-{user.UserId:D}")" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Transfer" Href="@TransferRoutes.NewTransferFrom(user.UserId)">Transfer</SvButton>
+                            }
+                        </div>
+                    </SvColumn>
+                </Columns>
+            </SvTable>
+            @if (LoadMoreFailed)
+            {
+                <SvAlert Id="admin-users-load-more-error" Kind="AlertKind.Danger">@LoadMoreText</SvAlert>
+            }
+            @if (_rows.Count >= MaxRowsLoaded)
+            {
+                <p id="admin-users-limit" class="d-flex justify-center mt-4 mud-text-secondary">Showing the first @MaxRowsLoaded users.</p>
+            }
+            else if (_continuation is not null)
+            {
+                <div class="d-flex justify-center mt-4">
+                    <SvButton Id="admin-users-load-more" Variant="SvButtonVariant.Secondary" Busy="IsLoadingMore" Disabled="IsCommandRunning" OnClick="@HandleLoadMore">Load more</SvButton>
+                </div>
+            }
+        </ChildContent>
+    </DataStateView>
+    <LockUserDialog Open="@(_target is not null)" Unlock="_unlocking" Busy="IsCommandRunning" OnConfirm="ConfirmLockAsync" OnCancel="CancelLock" />
+    <SvDialog IdPrefix="user-counts-dialog" Title="@CountsTitle" Open="@(_countsUser is not null)" OnCancel="CloseCounts">
+        <ChildContent>
+            @if (_countsUser is { } counted)
+            {
+                <UserCountsPanel @key="counted.UserId" UserId="@counted.UserId" />
+            }
+        </ChildContent>
+        <Footer>
+            <SvButton Id="user-counts-close" Variant="SvButtonVariant.Secondary" OnClick="@(_ => CloseCounts())">Close</SvButton>
+        </Footer>
+    </SvDialog>
+}

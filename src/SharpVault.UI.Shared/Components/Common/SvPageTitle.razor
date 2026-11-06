@@ -1,0 +1,11 @@
+<MudText id="@Id" Typo="Typo.h4" HtmlTag="h1" Class="sv-page-title">@ChildContent</MudText>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    protected override void OnParametersSet() => ComponentIds.EnsureValid(Id, nameof(Id));
+}

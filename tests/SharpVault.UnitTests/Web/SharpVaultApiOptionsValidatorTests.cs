@@ -101,6 +101,83 @@ public sealed class SharpVaultApiOptionsValidatorTests
     }
 
     [Fact]
+    public void Validate_NoScopesAndRequireScopesFalse_Succeeds()
+    {
+        var options = Valid();
+        options.Scopes = [];
+
+        var result = new SharpVaultApiOptionsValidator(requireScopes: false).Validate(null, options);
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public void Validate_NullScopesAndRequireScopesFalse_Succeeds()
+    {
+        var options = Valid();
+        options.Scopes = null!;
+
+        var result = new SharpVaultApiOptionsValidator(requireScopes: false).Validate(null, options);
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public void Validate_NoBaseAddressAndRequireScopesFalse_StillFails()
+    {
+        var options = Valid();
+        options.BaseAddress = null;
+        options.Scopes = [];
+
+        var result = new SharpVaultApiOptionsValidator(requireScopes: false).Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains("BaseAddress", Assert.Single(result.Failures!), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Validate_RelativeBaseAddressAndRequireScopesFalse_StillFails()
+    {
+        var options = Valid();
+        options.BaseAddress = new Uri("/api/", UriKind.Relative);
+
+        var result = new SharpVaultApiOptionsValidator(requireScopes: false).Validate(null, options);
+
+        Assert.True(result.Failed);
+    }
+
+    [Fact]
+    public void Validate_NoScopesDefaultConstructor_Fails()
+    {
+        var options = Valid();
+        options.Scopes = [];
+
+        var result = new SharpVaultApiOptionsValidator().Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains("Scopes", Assert.Single(result.Failures!), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Validate_NoScopesAndRequireScopesTrue_Fails()
+    {
+        var options = Valid();
+        options.Scopes = [];
+
+        var result = new SharpVaultApiOptionsValidator(requireScopes: true).Validate(null, options);
+
+        Assert.True(result.Failed);
+    }
+
+    [Fact]
+    public void Validate_ValidOptionsAndRequireScopesFalse_Succeeds()
+    {
+        var result = new SharpVaultApiOptionsValidator(requireScopes: false).Validate(null, Valid());
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
     public void Validate_NullOptions_Throws()
     {
         Assert.Throws<ArgumentNullException>(() => _validator.Validate(null, null!));

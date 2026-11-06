@@ -6,6 +6,7 @@ using SharpVault.Application.Common.Interfaces;
 using SharpVault.Application.Common.Models;
 using SharpVault.Application.Features.Users.Queries;
 using SharpVault.Domain.Users;
+using SharpVault.Dtos.Users;
 using SharpVault.UnitTests.Support;
 
 namespace SharpVault.UnitTests.Application.Users;
@@ -47,6 +48,21 @@ public sealed class ListUsersTests
         var error = Assert.Single(result.Errors);
         Assert.Equal(nameof(ListUsersQuery.PageSize), error.PropertyName);
         Assert.Equal("PageSize must be between 1 and 100.", error.ErrorMessage);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void Validate_UnparsedPageSize_FailsWithTheSameMessageAsZero()
+    {
+        var unparsed = _validator.Validate(new ListUsersQuery(ListUsersQuery.UnparsedPageSize, null));
+        var zero = _validator.Validate(new ListUsersQuery(0, null));
+
+        Assert.False(unparsed.IsValid);
+        var error = Assert.Single(unparsed.Errors);
+        Assert.Equal(nameof(ListUsersQuery.PageSize), error.PropertyName);
+        Assert.Equal("PageSize must be between 1 and 100.", error.ErrorMessage);
+        Assert.Equal(Assert.Single(zero.Errors).ErrorMessage, error.ErrorMessage);
+        Assert.Equal(0, ListUsersQuery.UnparsedPageSize);
     }
 
     [Fact]
@@ -135,7 +151,7 @@ public sealed class ListUsersTests
         Assert.Equal(user.Id, summary.UserId);
         Assert.Equal(user.DisplayName, summary.DisplayName);
         Assert.Equal(user.Email, summary.Email);
-        Assert.Equal("Active", summary.Status);
+        Assert.Equal(UserStatusDto.Active, summary.Status);
         Assert.Equal(user.LastSignInAt, summary.LastSignInAt);
         await _store.Received(1).ListAsync(25, null, Arg.Any<CancellationToken>());
     }
@@ -148,7 +164,7 @@ public sealed class ListUsersTests
 
         var result = await Handler().Handle(new ListUsersQuery(10, null), TestContext.Current.CancellationToken);
 
-        Assert.Equal("Locked", Assert.Single(result.Value!.Users).Status);
+        Assert.Equal(UserStatusDto.Locked, Assert.Single(result.Value!.Users).Status);
     }
 
     [Fact]

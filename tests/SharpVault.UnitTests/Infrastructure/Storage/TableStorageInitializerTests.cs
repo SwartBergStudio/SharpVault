@@ -2,6 +2,7 @@
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
 using Azure;
+using Azure.Core;
 using Azure.Data.Tables.Models;
 using Azure.Data.Tables;
 using Microsoft.Extensions.Logging;
@@ -17,6 +18,11 @@ public sealed class TableStorageInitializerTests
     private readonly TableServiceClient _client = Substitute.For<TableServiceClient>();
     private readonly CollectingLogger<TableStorageInitializer> _logger = new();
 
+    public TableStorageInitializerTests()
+    {
+        TablesExist();
+    }
+
     [Fact]
     public async Task StartAsync_TableSetWithTwoNames_CreatesEachTableOnce()
     {
@@ -26,7 +32,7 @@ public sealed class TableStorageInitializerTests
 
         await _client.Received(1).CreateTableIfNotExistsAsync("Secrets", Arg.Any<CancellationToken>());
         await _client.Received(1).CreateTableIfNotExistsAsync("Audit", Arg.Any<CancellationToken>());
-        Assert.Equal(2, _client.ReceivedCalls().Count());
+        Assert.Equal(2, _client.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(TableServiceClient.CreateTableIfNotExistsAsync)));
     }
 
     [Fact]
@@ -47,7 +53,17 @@ public sealed class TableStorageInitializerTests
     }
 
     [Fact]
-    public async Task StartAsync_EmptyTableSet_MakesNoStorageCalls()
+    public async Task StartAsync_EmptyTableSet_CreatesNothing()
+    {
+        var sut = CreateInitializer();
+
+        await sut.StartAsync(TestContext.Current.CancellationToken);
+
+        await _client.DidNotReceive().CreateTableIfNotExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StartAsync_NoTablesConfigured_MakesNoStorageCall()
     {
         var sut = CreateInitializer();
 
@@ -128,6 +144,21 @@ public sealed class TableStorageInitializerTests
         Assert.Empty(_client.ReceivedCalls());
         Assert.Empty(_logger.Entries);
     }
+
+    [Fact]
+    public async Task StartAsync_EveryTableExists_CreatesNothing()
+    {
+        TablesExist("Secrets", "Audit");
+        var sut = CreateInitializer("Secrets", "Audit");
+
+        await sut.StartAsync(TestContext.Current.CancellationToken);
+
+        await _client.DidNotReceive().CreateTableIfNotExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    private void TablesExist(params string[] names) =>
+        _client.QueryAsync(Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<CancellationToken>()).Returns(
+            AsyncPageable<TableItem>.FromPages([Page<TableItem>.FromValues(names.Select(name => new TableItem(name)).ToList(), null, Substitute.For<Response>())]));
 
     private TableStorageInitializer CreateInitializer(params string[] names) =>
         new(_client, new TableStorageTableSet(names), _logger);

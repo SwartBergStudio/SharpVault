@@ -1,0 +1,66 @@
+<SvDialog IdPrefix="share-dialog" Title="Share with a colleague" Open="@Open" Busy="@Busy" OnCancel="@HandleCancelAsync">
+    <ChildContent>
+        <SvStack Spacing="3">
+            <RecipientPicker @key="_session" Search="@Search" Selected="@_selected" SelectedChanged="@SetSelected" Disabled="@Busy" />
+            <SvSelect Id="share-dialog-permission" Label="Access" Options="@PermissionLabels.OptionsFor(CanGrantManage)" Value="@_permission.ToString()" ValueChanged="@SetPermission" Disabled="@Busy" />
+            @if (ErrorText is not null)
+            {
+                <SvAlert Id="share-dialog-error" Kind="AlertKind.Danger">@ErrorText</SvAlert>
+            }
+        </SvStack>
+    </ChildContent>
+    <Footer>
+        <SvButton Id="share-dialog-cancel" Variant="SvButtonVariant.Secondary" Disabled="@Busy" OnClick="@HandleCancelAsync">Cancel</SvButton>
+        <SvButton Id="share-dialog-confirm" Variant="SvButtonVariant.Primary" Busy="@Busy" Disabled="@(_selected is null)" OnClick="@HandleConfirmAsync">Share</SvButton>
+    </Footer>
+</SvDialog>
+
+@code {
+    private DirectoryUserDto? _selected;
+    private SharePermissionDto _permission = SharePermissionDto.View;
+    private bool _wasOpen;
+    private int _session;
+
+    [Parameter]
+    public bool Open { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public bool CanGrantManage { get; set; }
+
+    [Parameter]
+    public string? ErrorText { get; set; }
+
+    [Parameter, EditorRequired]
+    public Func<string, CancellationToken, Task<ApiResponse<DirectoryUserListDto>>> Search { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<ShareDialogInput> OnConfirm { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        ArgumentNullException.ThrowIfNull(Search);
+        if (Open && !_wasOpen)
+        {
+            _selected = null;
+            _permission = SharePermissionDto.View;
+            _session++;
+        }
+
+        _wasOpen = Open;
+    }
+
+    private void SetSelected(DirectoryUserDto? user) => _selected = user;
+
+    private void SetPermission(string value) => _permission = PermissionLabels.Parse(value, _permission);
+
+    private Task HandleConfirmAsync() =>
+        _selected is { } recipient && !Busy ? OnConfirm.InvokeAsync(new ShareDialogInput(recipient, _permission)) : Task.CompletedTask;
+
+    private Task HandleCancelAsync() => Busy ? Task.CompletedTask : OnCancel.InvokeAsync();
+}

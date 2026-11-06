@@ -2,6 +2,7 @@
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
 using Azure.Data.Tables;
+using SharpVault.Authentication.Identity;
 using SharpVault.IntegrationTests.Authentication;
 
 namespace SharpVault.IntegrationTests.Storage;
@@ -19,7 +20,7 @@ public static class UserRows
         ArgumentNullException.ThrowIfNull(table);
         ArgumentNullException.ThrowIfNull(user);
 
-        return table.AddEntityAsync(Build(user.ObjectId, user.DisplayName, user.Email, status, lastSignInAt), cancellationToken);
+        return table.AddEntityAsync(Build(user.ObjectId, user.DisplayName, user.Email, status, lastSignInAt, user.Roles.Contains(AppRoles.Admin)), cancellationToken);
     }
 
     public static async Task InsertManyAsync(TableClient table, int count, CancellationToken cancellationToken)
@@ -28,7 +29,7 @@ public static class UserRows
 
         var now = DateTimeOffset.UtcNow;
         var entities = Enumerable.Range(0, count)
-            .Select(index => Build(Guid.NewGuid(), $"Seeded user {index}", $"seeded{index}@sharpvault.test", ActiveStatus, now))
+            .Select(index => Build(Guid.NewGuid(), $"Seeded user {index}", $"seeded{index}@sharpvault.test", ActiveStatus, now, false))
             .ToList();
 
         foreach (var batch in entities.Chunk(TransactionBatchSize))
@@ -60,7 +61,7 @@ public static class UserRows
         return count;
     }
 
-    private static TableEntity Build(Guid oid, string displayName, string? email, string status, DateTimeOffset lastSignInAt)
+    private static TableEntity Build(Guid oid, string displayName, string? email, string status, DateTimeOffset lastSignInAt, bool isAdmin)
     {
         var entity = new TableEntity(PartitionKey, oid.ToString("D"))
         {
@@ -68,6 +69,8 @@ public static class UserRows
             [UserColumns.Status] = status,
             [UserColumns.CreatedAt] = lastSignInAt,
             [UserColumns.LastSignInAt] = lastSignInAt,
+            [UserColumns.IsAdmin] = isAdmin,
+            [UserColumns.RoleObservedAt] = DateTimeOffset.UnixEpoch,
         };
         if (email is not null)
         {

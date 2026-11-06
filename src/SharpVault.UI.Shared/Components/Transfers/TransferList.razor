@@ -1,0 +1,51 @@
+@inherits LoadableComponentBase<TransferPageDto>
+@inject ICurrentUserAccessor CurrentUserAccessor
+@inject IAdminTransfersApiClient Transfers
+
+<SvPageTitle Id="transfers-heading">Transfers</SvPageTitle>
+
+<TransferNoticeBanner />
+
+@if (_forbidden)
+{
+    <StatePanel Id="transfers-forbidden" Kind="StatePanelKind.Warning" Icon="@SvIcons.Lock" Title="Administrators only">
+        <ChildContent>
+            <p>Only administrators can see transfers.</p>
+        </ChildContent>
+    </StatePanel>
+}
+else
+{
+    <div class="d-flex justify-end gap-2 mb-3">
+        <SvButton Id="transfers-refresh" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Refresh" Busy="@(State == LoadState.Loading)" Disabled="IsCommandRunning" OnClick="@HandleRefresh">Refresh</SvButton>
+        <SvButton Id="transfers-new" Variant="SvButtonVariant.Primary" Icon="@SvIcons.Add" Href="@TransferRoutes.NewTransfer">New transfer</SvButton>
+    </div>
+    <DataStateView TValue="TransferPageDto" IdPrefix="transfers" EmptyTitle="No transfers yet" EmptyDescription="Start one from a user's row on the Users page." State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+        <ChildContent>
+            <SvTable Id="transfers-table" TItem="TransferSummaryDto" Items="_rows">
+                <Columns>
+                    <SvColumn TItem="TransferSummaryDto" Header="From" Value="@(transfer => transfer.SourceDisplayName)" />
+                    <SvColumn TItem="TransferSummaryDto" Header="To" Value="@(transfer => transfer.TargetDisplayName)" />
+                    <SvColumn TItem="TransferSummaryDto" Header="Reason" Value="@(transfer => ReasonCategoryLabels.Label(transfer.Category))" />
+                    <SvColumn TItem="TransferSummaryDto" Header="State" Context="transfer">
+                        <span id="@($"transfer-state-{transfer.Id:D}")">@TransferStatusText.State(transfer.State)</span>
+                    </SvColumn>
+                    <SvColumn TItem="TransferSummaryDto" Header="Requested" Value="@RequestedText" />
+                    <SvColumn TItem="TransferSummaryDto" Header="Open" Context="transfer">
+                        <SvLink Id="@($"transfer-link-{transfer.Id:D}")" Href="@TransferRoutes.Transfer(transfer.Id)">Open</SvLink>
+                    </SvColumn>
+                </Columns>
+            </SvTable>
+            @if (LoadMoreFailed)
+            {
+                <SvAlert Id="transfers-load-more-error" Kind="AlertKind.Danger">@LoadMoreText</SvAlert>
+            }
+            @if (_continuation is not null)
+            {
+                <div class="d-flex justify-center mt-4">
+                    <SvButton Id="transfers-load-more" Variant="SvButtonVariant.Secondary" Busy="IsLoadingMore" Disabled="IsCommandRunning" OnClick="@HandleLoadMore">Load more</SvButton>
+                </div>
+            }
+        </ChildContent>
+    </DataStateView>
+}

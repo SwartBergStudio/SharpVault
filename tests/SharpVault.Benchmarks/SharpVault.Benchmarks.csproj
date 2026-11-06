@@ -7,5 +7,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/SharpVault.Infrastructure/SharpVault.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/SharpVault.PasswordGeneration/SharpVault.PasswordGeneration.csproj" />
   </ItemGroup>
 </Project>

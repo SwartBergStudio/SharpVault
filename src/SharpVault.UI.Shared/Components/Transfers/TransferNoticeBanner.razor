@@ -1,0 +1,29 @@
+@inherits LoadableComponentBase<TransferNoticeListDto>
+@inject ITransferNoticesApiClient Notices
+
+<DataStateView TValue="TransferNoticeListDto" IdPrefix="transfer-notice-list" State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+    <Loading></Loading>
+    <Empty></Empty>
+    <Error></Error>
+    <ChildContent>
+        <SvStack Spacing="2">
+            <StatusBanner Id="transfer-notice-status" Message="@_status" />
+            @foreach (var notice in _rows)
+            {
+                <SvAlert Id="@($"transfer-notice-{notice.TransferId:D}")" Kind="AlertKind.Info">
+                    <SvStack Spacing="2">
+                        <span>@NoticeText(notice)</span>
+                        <div class="d-flex flex-wrap gap-2">
+                            <SvButton Id="@($"transfer-notice-open-{notice.TransferId:D}")" Variant="SvButtonVariant.Secondary" Href="@OpenHref(notice)" Disabled="IsCommandRunning">Open</SvButton>
+                            @if (notice.Kind == TransferNoticeKindDto.Received)
+                            {
+                                <SvButton Id="@($"transfer-notice-shares-{notice.TransferId:D}")" Variant="SvButtonVariant.Secondary" Href="@TransferRoutes.Shares" Disabled="IsCommandRunning">Review shares</SvButton>
+                            }
+                            <SvButton Id="@($"transfer-notice-dismiss-{notice.TransferId:D}")" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Close" Disabled="IsCommandRunning" OnClick="@(_ => DismissAsync(notice))">Dismiss</SvButton>
+                        </div>
+                    </SvStack>
+                </SvAlert>
+            }
+        </SvStack>
+    </ChildContent>
+</DataStateView>

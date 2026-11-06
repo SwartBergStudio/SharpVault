@@ -1,0 +1,55 @@
+@inherits LoadableComponentBase<TransferDto>
+@inject ICurrentUserAccessor CurrentUserAccessor
+@inject IAdminTransfersApiClient Transfers
+@inject TimeProvider Time
+
+<SvPageTitle Id="transfer-heading">Transfer</SvPageTitle>
+
+@if (_forbidden)
+{
+    <StatePanel Id="transfer-detail-forbidden" Kind="StatePanelKind.Warning" Icon="@SvIcons.Lock" Title="Administrators only">
+        <ChildContent>
+            <p>Only administrators can see transfers.</p>
+        </ChildContent>
+    </StatePanel>
+}
+else
+{
+    <div class="d-flex justify-end mb-3">
+        <SvButton Id="transfer-refresh" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Refresh" Busy="@(State == LoadState.Loading)" Disabled="IsCommandRunning" OnClick="@HandleRefresh">Refresh</SvButton>
+    </div>
+    <StatusBanner Id="transfer-status" Message="@_status" />
+    <DataStateView TValue="TransferDto" IdPrefix="transfer-detail" State="State" Value="@_transfer" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+        <ChildContent Context="transfer">
+            <SvStack Spacing="3">
+                <p id="transfer-state"><strong>@TransferStatusText.State(transfer.State)</strong></p>
+                @if (transfer.State == TransferStateDto.PendingApproval && transfer.RequestedBy == _callerId)
+                {
+                    <SvAlert Id="transfer-self-note" Kind="AlertKind.Info">@TransferStatusText.SelfRequestNote</SvAlert>
+                }
+                <TransferFacts Transfer="transfer" />
+                @if (ShowProgress(transfer))
+                {
+                    <TransferProgress Transfer="transfer" />
+                }
+                <div class="d-flex flex-wrap justify-end gap-2">
+                    @if (transfer.CanReject)
+                    {
+                        <SvButton Id="transfer-reject" Variant="SvButtonVariant.Secondary" Disabled="IsCommandRunning" OnClick="@OpenReject">@RejectLabelText</SvButton>
+                    }
+                    @if (transfer.CanAbort)
+                    {
+                        <SvButton Id="transfer-abort" Variant="SvButtonVariant.Danger" Disabled="IsCommandRunning" OnClick="@OpenAbort">Abort</SvButton>
+                    }
+                    @if (transfer.CanApprove)
+                    {
+                        <SvButton Id="transfer-approve" Variant="SvButtonVariant.Primary" Icon="@SvIcons.Success" Disabled="IsCommandRunning" OnClick="@OpenApprove">Approve</SvButton>
+                    }
+                </div>
+            </SvStack>
+        </ChildContent>
+    </DataStateView>
+    <TransferApproveDialog Open="_approveOpen" Busy="IsCommandRunning" Summary="@ApproveSummary" OnConfirm="ConfirmApproveAsync" OnCancel="CloseDialogs" />
+    <TransferReasonDialog IdPrefix="transfer-reject-dialog" Title="@RejectTitle" ConfirmText="@RejectLabelText" Open="_rejectOpen" Busy="IsCommandRunning" OnConfirm="ConfirmRejectAsync" OnCancel="CloseDialogs" />
+    <TransferReasonDialog IdPrefix="transfer-abort-dialog" Title="Abort this transfer?" ConfirmText="Abort" Danger="true" Open="_abortOpen" Busy="IsCommandRunning" OnConfirm="ConfirmAbortAsync" OnCancel="CloseDialogs" />
+}

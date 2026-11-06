@@ -1,0 +1,50 @@
+<section id="transfer-preview" aria-label="What the source user holds">
+    <SvStack Spacing="2">
+        <p id="transfer-preview-items">Active items: @Preview.ItemCount</p>
+        <p id="transfer-preview-recycled">In the recycle bin: @Preview.RecycledItemCount</p>
+        <p id="transfer-preview-folders">Folders: @Preview.FolderCount</p>
+        <p id="transfer-preview-versions">Earlier versions: @Preview.VersionCount</p>
+        @if (Preview.CountsAreCapped)
+        {
+            <p id="transfer-preview-capped">The counts stopped early, so the real numbers are higher.</p>
+        }
+        @if (ShowFolders)
+        {
+            @if (Preview.TopLevelFolders.Count == 0)
+            {
+                <p id="transfer-preview-no-folders">This user has no top-level folders to select.</p>
+            }
+            @foreach (var folder in Preview.TopLevelFolders)
+            {
+                <div class="d-flex flex-wrap align-center gap-2">
+                    <SvCheckbox Id="@($"transfer-folder-{folder.FolderId:D}")" Label="@FolderLabel(folder)" Value="@SelectedFolderIds.Contains(folder.FolderId)" ValueChanged="@(_ => FolderToggled.InvokeAsync(folder.FolderId))" Disabled="Disabled" />
+                    <span id="@($"transfer-folder-ref-{folder.FolderId:D}")">Folder @folder.Reference, created @CreatedText(folder), @folder.ItemCount items</span>
+                </div>
+            }
+        }
+    </SvStack>
+</section>
+
+@code {
+    private const string CreatedFormat = "yyyy-MM-dd";
+
+    [Parameter, EditorRequired]
+    public TransferPreviewDto Preview { get; set; } = default!;
+
+    [Parameter]
+    public bool ShowFolders { get; set; }
+
+    [Parameter]
+    public IReadOnlyCollection<Guid> SelectedFolderIds { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<Guid> FolderToggled { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    private static string FolderLabel(TransferPreviewFolderDto folder) => $"Include folder {folder.Reference}";
+
+    private static string CreatedText(TransferPreviewFolderDto folder) =>
+        folder.CreatedAt.UtcDateTime.ToString(CreatedFormat, System.Globalization.CultureInfo.InvariantCulture);
+}

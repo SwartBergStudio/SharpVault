@@ -8,5 +8,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../SharpVault.Domain/SharpVault.Domain.csproj" />
+    <ProjectReference Include="../SharpVault.Dtos/SharpVault.Dtos.csproj" />
   </ItemGroup>
 </Project>

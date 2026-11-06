@@ -1,0 +1,49 @@
+<EditForm id="vault-search-form" Model="@_model" OnSubmit="@SubmitAsync" class="d-flex flex-wrap align-center gap-2">
+    <SvTextField Id="vault-search-input" Label="Search" Value="@_model.Term" ValueChanged="@SetTerm" MaxLength="@SearchMaxLength" />
+    <SvButton Id="vault-search-submit" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Search" ButtonType="ButtonType.Submit">Search</SvButton>
+    @if (HasTerm)
+    {
+        <SvButton Id="vault-search-clear" Variant="SvButtonVariant.Ghost" Icon="@SvIcons.Close" OnClick="@ClearAsync">Clear</SvButton>
+    }
+</EditForm>
+
+@code {
+    public const int SearchMaxLength = 100;
+
+    private readonly SearchModel _model = new();
+    private string? _appliedTerm;
+
+    [Parameter]
+    public string? Term { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnSearch { get; set; }
+
+    private bool HasTerm => !string.IsNullOrWhiteSpace(_model.Term) || !string.IsNullOrWhiteSpace(Term);
+
+    protected override void OnParametersSet()
+    {
+        if (_appliedTerm == Term)
+        {
+            return;
+        }
+
+        _appliedTerm = Term;
+        _model.Term = Term ?? string.Empty;
+    }
+
+    private void SetTerm(string value) => _model.Term = value;
+
+    private Task SubmitAsync() => OnSearch.InvokeAsync(_model.Term.Trim());
+
+    private Task ClearAsync()
+    {
+        _model.Term = string.Empty;
+        return OnSearch.InvokeAsync(string.Empty);
+    }
+
+    private sealed class SearchModel
+    {
+        public string Term { get; set; } = string.Empty;
+    }
+}

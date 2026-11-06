@@ -1,0 +1,40 @@
+@inherits LoadableComponentBase<OwnedSharePageDto>
+@inject ICurrentUserAccessor CurrentUserAccessor
+@inject IShareGrantsApiClient Grants
+
+<SvPageTitle Id="transfer-shares-heading">Shares you gave</SvPageTitle>
+<p>Shares you gave stay in place when an item moves to another user. Revoke any you no longer want.</p>
+
+<StatusBanner Id="transfer-shares-status" Message="@_status" />
+<DataStateView TValue="OwnedSharePageDto" IdPrefix="transfer-shares" EmptyTitle="You have not shared anything" EmptyDescription="Items you share with colleagues are listed here." State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+    <ChildContent>
+        <SvTable Id="transfer-shares-table" TItem="OwnedShareDto" Items="_rows">
+            <Columns>
+                <SvColumn TItem="OwnedShareDto" Header="Item" Value="@ItemName" />
+                <SvColumn TItem="OwnedShareDto" Header="Kind" Value="@KindText" />
+                <SvColumn TItem="OwnedShareDto" Header="Shared with" Value="@(share => share.RecipientDisplayName)" />
+                <SvColumn TItem="OwnedShareDto" Header="Access" Value="@(share => PermissionLabels.Label(share.Permission))" />
+                <SvColumn TItem="OwnedShareDto" Header="Since" Value="@GrantedText" />
+                <SvColumn TItem="OwnedShareDto" Header="Revoke" Context="share">
+                    <SvButton Id="@($"transfer-share-revoke-{share.ItemId:D}-{share.RecipientId:D}")" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Delete" Disabled="IsCommandRunning" OnClick="@(_ => AskRevoke(share))">Revoke</SvButton>
+                </SvColumn>
+            </Columns>
+        </SvTable>
+        @if (LoadMoreFailed)
+        {
+            <SvAlert Id="transfer-shares-load-more-error" Kind="AlertKind.Danger">@LoadMoreText</SvAlert>
+        }
+        @if (_continuation is not null)
+        {
+            <div class="d-flex justify-center mt-4">
+                <SvButton Id="transfer-shares-load-more" Variant="SvButtonVariant.Secondary" Busy="IsLoadingMore" Disabled="IsCommandRunning" OnClick="@HandleLoadMore">Load more</SvButton>
+            </div>
+        }
+    </ChildContent>
+</DataStateView>
+
+<ConfirmDialog IdPrefix="transfer-share-revoke-dialog" Title="Revoke this share?" Open="@(_revoking is not null)" Danger="true" ConfirmText="Revoke" Busy="IsCommandRunning" OnConfirm="ConfirmRevokeAsync" OnCancel="CancelRevoke">
+    <ChildContent>
+        <p id="transfer-share-revoke-dialog-message">@RevokeMessage</p>
+    </ChildContent>
+</ConfirmDialog>

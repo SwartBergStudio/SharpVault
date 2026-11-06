@@ -16,6 +16,7 @@ public sealed class TableUserStore(TableServiceClient tableServiceClient) : IUse
     private const int ConflictStatus = 409;
     private const int PreconditionFailedStatus = 412;
     private const int NotFoundStatus = 404;
+    private const int MaxAdminLimit = 100;
 
     private readonly TableClient _table = tableServiceClient.GetTableClient(TableNames.Users);
 
@@ -73,6 +74,29 @@ public sealed class TableUserStore(TableServiceClient tableServiceClient) : IUse
         }
     }
 
+    public async Task<IReadOnlyList<User>> ListAdminsAsync(int limit, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(limit, MaxAdminLimit);
+
+        var filter = TableClient.CreateQueryFilter($"PartitionKey eq {UserKeys.PartitionKey} and IsAdmin eq {true}");
+
+        await foreach (var page in _table
+            .QueryAsync<UserTableEntity>(filter, maxPerPage: limit, cancellationToken: cancellationToken)
+            .AsPages()
+            .WithCancellation(cancellationToken))
+        {
+            if (page.Values.Count == 0 && page.ContinuationToken is not null)
+            {
+                continue;
+            }
+
+            return page.Values.Take(limit).Select(entity => entity.Adapt<User>()).ToList();
+        }
+
+        return [];
+    }
+
     public async Task<UserListPage> ListAsync(int pageSize, Guid? afterUserId, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
@@ -86,20 +110,18 @@ public sealed class TableUserStore(TableServiceClient tableServiceClient) : IUse
             .AsPages()
             .WithCancellation(cancellationToken))
         {
+            if (page.Values.Count == 0 && page.ContinuationToken is not null)
+            {
+                continue;
+            }
+
             var users = page.Values.Select(entity => entity.Adapt<User>()).ToList();
-            return new UserListPage(users, NextAfter(page.ContinuationToken, users, afterUserId));
+            return new UserListPage(users, NextAfter(page.ContinuationToken, users));
         }
 
         return new UserListPage([], null);
     }
 
-    private static Guid? NextAfter(string? continuationToken, List<User> users, Guid? afterUserId)
-    {
-        if (continuationToken is null)
-        {
-            return null;
-        }
-
-        return users.Count > 0 ? users[^1].Id : afterUserId;
-    }
+    private static Guid? NextAfter(string? continuationToken, List<User> users) =>
+        continuationToken is null || users.Count == 0 ? null : users[^1].Id;
 }

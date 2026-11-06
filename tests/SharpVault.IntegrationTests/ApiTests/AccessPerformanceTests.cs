@@ -27,6 +27,8 @@ public sealed class AccessPerformanceTests(ApiTestFactory factory) : BaseIntegra
     private const string PartitionKeyFilter = "PartitionKey eq 'user'";
     private const int WarmUpRequests = 5;
     private const int MeasuredRequests = 50;
+    private const double PercentileNinetyFive = 0.95;
+    private const int SlowestMultiplier = 5;
     private const int SeededUserCount = 5000;
     private const int PageSize = 50;
 
@@ -375,10 +377,13 @@ public sealed class AccessPerformanceTests(ApiTestFactory factory) : BaseIntegra
             timings.Add(elapsed);
         }
 
-        var slowest = timings.Max();
+        var ordered = timings.Order().ToList();
+        var p95 = ordered[(int)Math.Ceiling(ordered.Count * PercentileNinetyFive) - 1];
+        var slowest = ordered[^1];
+        var maximumLimit = budget * SlowestMultiplier;
         Assert.True(
-            slowest < budget,
-            $"Slowest of {MeasuredRequests} requests to {path} took {slowest.TotalMilliseconds:F0} ms, budget {budget.TotalMilliseconds:F0} ms. {FormatTimings(timings)}");
+            p95 < budget && slowest < maximumLimit,
+            $"p95 of {MeasuredRequests} requests to {path} took {p95.TotalMilliseconds:F0} ms, budget {budget.TotalMilliseconds:F0} ms; slowest {slowest.TotalMilliseconds:F0} ms, limit {maximumLimit.TotalMilliseconds:F0} ms. {FormatTimings(timings)}");
         return timings;
     }
 

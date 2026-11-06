@@ -1,9 +1,20 @@
-<header id="app-header" class="sv-header">
-    <a id="brand-home-link" class="sv-brand" href="">
+<SvAppBar Id="app-header">
+    @if (ShowMenuToggle)
+    {
+        <SvIconButton Id="nav-toggle" Icon="@SvIcons.Menu" Label="Toggle navigation" OnClick="@OnMenuToggle" />
+    }
+    <a id="brand-home-link" class="sv-brand" href="@AccountRoutes.Home">
         <VaultDoor Variant="VaultDoorVariant.Mark" />
         <span class="sv-brand__name">SharpVault</span>
     </a>
-    <div class="sv-header__actions">
-        <AccountMenu />
-    </div>
-</header>
+    <SvSpacer />
+    <AccountMenu />
+</SvAppBar>
+
+@code {
+    [Parameter]
+    public bool ShowMenuToggle { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> OnMenuToggle { get; set; }
+}

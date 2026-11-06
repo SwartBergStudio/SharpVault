@@ -1,0 +1,11 @@
+@page "/admin/transfers/new"
+@attribute [Authorize]
+
+<PageTitle>New transfer</PageTitle>
+
+<TransferRequestForm @key="SourceUserId" SourceUserId="@SourceUserId" />
+
+@code {
+    [SupplyParameterFromQuery(Name = TransferRoutes.SourceUserParameter)]
+    public Guid? SourceUserId { get; set; }
+}

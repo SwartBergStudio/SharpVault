@@ -1,0 +1,40 @@
+<SvDialog IdPrefix="@IdPrefix" Title="@Title" Open="@Open" Danger="@Danger" Busy="@Busy" OnCancel="@OnCancel">
+    <ChildContent>@ChildContent</ChildContent>
+    <Footer>
+        <SvButton Id="@($"{IdPrefix}-cancel")" Variant="SvButtonVariant.Secondary" Disabled="@Busy" OnClick="@HandleCancelAsync">Cancel</SvButton>
+        <SvButton Id="@($"{IdPrefix}-confirm")" Variant="@(Danger ? SvButtonVariant.Danger : SvButtonVariant.Primary)" Busy="@Busy" OnClick="@HandleConfirmAsync">@ConfirmText</SvButton>
+    </Footer>
+</SvDialog>
+
+@code {
+    [Parameter, EditorRequired]
+    public string IdPrefix { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool Open { get; set; }
+
+    [Parameter]
+    public bool Danger { get; set; }
+
+    [Parameter]
+    public string ConfirmText { get; set; } = "Confirm";
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public EventCallback OnConfirm { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private Task HandleConfirmAsync() => OnConfirm.InvokeAsync();
+
+    private Task HandleCancelAsync() => OnCancel.InvokeAsync();
+}

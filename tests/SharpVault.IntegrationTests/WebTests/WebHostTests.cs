@@ -25,9 +25,6 @@ public sealed partial class WebHostTests(WebTestFactory factory)
     [GeneratedRegex(@"<[^>]+\son[a-z]+\s*=", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex InlineEventHandlerPattern();
 
-    [GeneratedRegex(@"<[^>]+\sstyle\s*=", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex InlineStylePattern();
-
     [Fact]
     public async Task HomePage_AnonymousGet_Returns200WithHeading()
     {
@@ -105,7 +102,7 @@ public sealed partial class WebHostTests(WebTestFactory factory)
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task HomePage_Rendered_ContainsNoInlineEventHandlersOrStyles()
+    public async Task HomePage_Rendered_ContainsNoInlineEventHandlers()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = factory.CreateWebClient();
@@ -114,7 +111,6 @@ public sealed partial class WebHostTests(WebTestFactory factory)
 
         var html = await response.Content.ReadAsStringAsync(cancellationToken);
         Assert.Empty(InlineEventHandlerPattern().Matches(html));
-        Assert.Empty(InlineStylePattern().Matches(html));
         Assert.DoesNotContain("importmap", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("javascript:", html, StringComparison.OrdinalIgnoreCase);
     }

@@ -216,15 +216,40 @@ public sealed class TableUserStoreTests
     }
 
     [Fact]
-    public async Task ListAsync_EmptyPageWithContinuation_ReturnsIncomingCursor()
+    public async Task ListAsync_EmptyFirstPageWithContinuation_KeepsReadingUntilAPageHasUsers()
+    {
+        var first = UserEntity();
+        var last = UserEntity();
+        var fake = new FakeUsersTableClient { Pages = () => [Page([], "t1"), Page([], "t2"), Page([first, last], "t3")] };
+
+        var page = await StoreOver(fake).ListAsync(2, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, page.Users.Count);
+        Assert.Equal(Guid.ParseExact(last.RowKey, "D"), page.NextAfterUserId);
+    }
+
+    [Fact]
+    public async Task ListAsync_EmptyPageWithContinuationAfterACursor_KeepsReadingAndReturnsTheNextUsers()
     {
         var after = Guid.NewGuid();
-        var fake = new FakeUsersTableClient { Pages = () => [Page([], "next")] };
+        var user = UserEntity();
+        var fake = new FakeUsersTableClient { Pages = () => [Page([], "t1"), Page([user], null)] };
 
         var page = await StoreOver(fake).ListAsync(2, after, TestContext.Current.CancellationToken);
 
+        Assert.Single(page.Users);
+        Assert.Null(page.NextAfterUserId);
+    }
+
+    [Fact]
+    public async Task ListAsync_OnlyEmptyPages_ReturnsAnEmptyFinishedPage()
+    {
+        var fake = new FakeUsersTableClient { Pages = () => [Page([], "t1"), Page([], null)] };
+
+        var page = await StoreOver(fake).ListAsync(2, null, TestContext.Current.CancellationToken);
+
         Assert.Empty(page.Users);
-        Assert.Equal(after, page.NextAfterUserId);
+        Assert.Null(page.NextAfterUserId);
     }
 
     [Fact]
@@ -266,6 +291,47 @@ public sealed class TableUserStoreTests
     {
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
             () => _store.ListAsync(pageSize, null, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task ListAdminsAsync_FiltersByPartitionKeyAndTheFlag()
+    {
+        var fake = new FakeUsersTableClient { Pages = () => [Page([], null)] };
+
+        await StoreOver(fake).ListAdminsAsync(100, TestContext.Current.CancellationToken);
+
+        Assert.Equal([("PartitionKey eq 'user' and IsAdmin eq true", (int?)100)], fake.Queries);
+    }
+
+    [Fact]
+    public async Task ListAdminsAsync_ReturnsTheFirstNonEmptyPageAsUsers()
+    {
+        var first = UserEntity();
+        first.IsAdmin = true;
+        var fake = new FakeUsersTableClient { Pages = () => [Page([], "t1"), Page([first], "t2"), Page([UserEntity()], null)] };
+
+        var admins = await StoreOver(fake).ListAdminsAsync(10, TestContext.Current.CancellationToken);
+
+        var admin = Assert.Single(admins);
+        Assert.Equal(Guid.ParseExact(first.RowKey, "D"), admin.Id);
+        Assert.True(admin.IsAdmin);
+    }
+
+    [Fact]
+    public async Task ListAdminsAsync_NoPages_ReturnsEmpty()
+    {
+        Assert.Empty(await StoreOver(new FakeUsersTableClient()).ListAdminsAsync(5, TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(101)]
+    public async Task ListAdminsAsync_LimitOutsideOneToOneHundred_Throws(int limit)
+    {
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => _store.ListAdminsAsync(limit, TestContext.Current.CancellationToken));
     }
 
     private static User NewUser() =>

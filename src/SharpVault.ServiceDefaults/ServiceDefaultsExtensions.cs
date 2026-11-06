@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
@@ -21,6 +22,9 @@ public static class ServiceDefaultsExtensions
     private const string OtlpEndpointKey = "OTEL_EXPORTER_OTLP_ENDPOINT";
     private const string HostingDiagnosticsCategory = "Microsoft.AspNetCore.Hosting.Diagnostics";
     private const string HttpClientCategory = "System.Net.Http.HttpClient";
+    private const string AzureCoreCategory = "Azure.Core";
+    private const string PollyCategory = "Polly";
+    private const string RouteMatchingCategory = "Microsoft.AspNetCore.Routing.Matching";
     private const string UrlQueryTag = "url.query";
     private const string UrlFullTag = "url.full";
 
@@ -33,7 +37,7 @@ public static class ServiceDefaultsExtensions
         builder.Services.AddServiceDiscovery();
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
-            http.AddStandardResilienceHandler();
+            http.AddStandardResilienceHandler(options => options.Retry.DisableForUnsafeHttpMethods());
             http.AddServiceDiscovery();
         });
         builder.Services.AddOutputCache(options => options.AddPolicy(
@@ -53,7 +57,7 @@ public static class ServiceDefaultsExtensions
         builder.Logging.AddOpenTelemetry(logging =>
         {
             logging.IncludeFormattedMessage = true;
-            logging.IncludeScopes = true;
+            logging.IncludeScopes = false;
         });
 
         builder.Services.AddOpenTelemetry()
@@ -85,13 +89,16 @@ public static class ServiceDefaultsExtensions
     {
         builder.Logging.AddFilter(HostingDiagnosticsCategory, LogLevel.Warning);
         builder.Logging.AddFilter(HttpClientCategory, LogLevel.Warning);
+        builder.Logging.AddFilter(AzureCoreCategory, LogLevel.Warning);
+        builder.Logging.AddFilter(PollyCategory, LogLevel.Warning);
+        builder.Logging.AddFilter(RouteMatchingCategory, LogLevel.Warning);
         builder.Services.PostConfigure<LoggerFilterOptions>(RaiseQueryLoggingRules);
         return builder;
     }
 
     private static void RaiseQueryLoggingRules(LoggerFilterOptions options)
     {
-        string[] families = [HostingDiagnosticsCategory, HttpClientCategory];
+        string[] families = [HostingDiagnosticsCategory, HttpClientCategory, AzureCoreCategory, PollyCategory, RouteMatchingCategory];
         foreach (var family in families)
         {
             RaiseFamily(options, family);

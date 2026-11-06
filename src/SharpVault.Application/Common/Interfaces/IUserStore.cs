@@ -15,4 +15,6 @@ public interface IUserStore
     Task<StoreWriteResult> ReplaceAsync(User user, string etag, CancellationToken cancellationToken);
 
     Task<UserListPage> ListAsync(int pageSize, Guid? afterUserId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<User>> ListAdminsAsync(int limit, CancellationToken cancellationToken);
 }

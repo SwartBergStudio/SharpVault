@@ -11,11 +11,18 @@ using Microsoft.Extensions.Azure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using SharpVault.Application.Common.Interfaces;
+using SharpVault.Application.Features.Transfers.Common;
+using SharpVault.Application.Features.Vault.RecycleBin;
 using SharpVault.Infrastructure.Audit;
 using SharpVault.Infrastructure.Encryption;
+using SharpVault.Infrastructure.Maintenance;
+using SharpVault.Infrastructure.Sharing;
 using SharpVault.Infrastructure.Storage;
+using SharpVault.Infrastructure.Transfers;
 using SharpVault.Infrastructure.Users;
+using SharpVault.Infrastructure.Vaults;
 
 namespace SharpVault.Infrastructure;
 
@@ -36,6 +43,25 @@ public static class DependencyInjection
         builder.Services.AddSingleton<IUserStore, TableUserStore>();
         builder.Services.AddSingleton<IAuditLog, TableAuditLog>();
         builder.Services.AddSingleton<IUserAccessCache, UserAccessCache>();
+        builder.Services.AddSingleton<IVaultStore, TableVaultStore>();
+        builder.Services.AddSingleton<IShareInboxStore, TableShareInboxStore>();
+        builder.Services.AddSingleton<IMaintenanceLeaseStore, TableMaintenanceLeaseStore>();
+        builder.Services.AddSingleton<ITransferJobStore, TableTransferJobStore>();
+        builder.Services.AddSingleton<ITransferStagingStore, TableTransferStagingStore>();
+        builder.Services.AddSingleton<ISessionRevocationLedger, TableSessionRevocationLedger>();
+        builder.Services.AddHostedService<SessionRevocationPurgeService>();
+        builder.Services.AddOptions<RecycleBinPurgeOptions>()
+            .Bind(builder.Configuration.GetSection(RecycleBinPurgeOptions.SectionName))
+            .ValidateOnStart();
+        builder.Services.AddSingleton<IValidateOptions<RecycleBinPurgeOptions>, RecycleBinPurgeOptionsValidator>();
+        builder.Services.AddOptions<RecycleBinPurgerOptions>()
+            .Configure<IOptions<RecycleBinPurgeOptions>>((target, source) => target.LeaseDuration = source.Value.LeaseDuration);
+        builder.Services.AddHostedService<RecycleBinPurgeService>();
+        builder.Services.AddOptions<TransferOptions>()
+            .Bind(builder.Configuration.GetSection(TransferOptions.SectionName))
+            .ValidateOnStart();
+        builder.Services.AddSingleton<IValidateOptions<TransferOptions>, TransferOptionsValidator>();
+        builder.Services.AddHostedService<TransferJobService>();
         builder.AddEncryption();
 
         return builder;

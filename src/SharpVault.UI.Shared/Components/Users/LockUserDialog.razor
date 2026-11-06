@@ -1,0 +1,76 @@
+<SvDialog IdPrefix="@IdPrefix" Title="@Title" Open="@Open" Busy="@Busy" OnCancel="@OnCancel">
+    <ChildContent>
+        <SvStack Spacing="3">
+            <SvSelect Id="@($"{IdPrefix}-category")" Label="Reason category" Options="@ReasonCategoryLabels.Options" Value="@_category.ToString()" ValueChanged="@SetCategory" Disabled="@Busy" />
+            <SvTextField Id="@($"{IdPrefix}-reason")" Label="Reason" Value="@_reason" ValueChanged="@SetReason" Lines="3" MaxLength="@AdminReasonRules.MaxLength" Required="true" Disabled="@Busy" HelperText="@ReasonHelp" />
+        </SvStack>
+    </ChildContent>
+    <Footer>
+        <SvButton Id="@($"{IdPrefix}-cancel")" Variant="SvButtonVariant.Secondary" Disabled="@Busy" OnClick="@HandleCancelAsync">Cancel</SvButton>
+        <SvButton Id="@($"{IdPrefix}-confirm")" Variant="@ConfirmVariant" Busy="@Busy" Disabled="@(!CanSubmit)" OnClick="@HandleConfirmAsync">@ConfirmText</SvButton>
+    </Footer>
+</SvDialog>
+
+@code {
+    private const string LockPrefix = "user-lock-dialog";
+    private const string UnlockPrefix = "user-unlock-dialog";
+    private const string ReasonHelp = "Say why, in at least 20 characters. The reason is kept in the audit log.";
+
+    private ReasonCategoryDto _category = ReasonCategoryDto.Other;
+    private string _reason = string.Empty;
+    private bool _wasOpen;
+
+    [Parameter]
+    public bool Open { get; set; }
+
+    [Parameter]
+    public bool Unlock { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public ReasonCategoryDto? InitialCategory { get; set; }
+
+    [Parameter]
+    public EventCallback<LockUserRequestDto> OnConfirm { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private string IdPrefix => Unlock ? UnlockPrefix : LockPrefix;
+
+    private string Title => Unlock ? "Unlock user" : "Lock user";
+
+    private string ConfirmText => Unlock ? "Unlock" : "Lock";
+
+    private SvButtonVariant ConfirmVariant => Unlock ? SvButtonVariant.Primary : SvButtonVariant.Danger;
+
+    private bool CanSubmit => AdminReasonRules.IsValid(_reason) && Enum.IsDefined(_category) && !Busy;
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen)
+        {
+            _category = InitialCategory ?? ReasonCategoryDto.Other;
+            _reason = string.Empty;
+        }
+
+        _wasOpen = Open;
+    }
+
+    private void SetCategory(string value)
+    {
+        if (ReasonCategoryLabels.TryParse(value, out var category))
+        {
+            _category = category;
+        }
+    }
+
+    private void SetReason(string value) => _reason = value;
+
+    private Task HandleConfirmAsync() =>
+        CanSubmit ? OnConfirm.InvokeAsync(new LockUserRequestDto { Category = _category, Reason = _reason.Trim() }) : Task.CompletedTask;
+
+    private Task HandleCancelAsync() => OnCancel.InvokeAsync();
+}

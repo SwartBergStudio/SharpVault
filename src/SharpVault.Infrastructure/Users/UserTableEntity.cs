@@ -25,4 +25,8 @@ internal sealed class UserTableEntity : ITableEntity
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset LastSignInAt { get; set; }
+
+    public bool IsAdmin { get; set; }
+
+    public DateTimeOffset? RoleObservedAt { get; set; }
 }

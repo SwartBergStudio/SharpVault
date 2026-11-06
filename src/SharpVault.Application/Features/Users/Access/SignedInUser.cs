@@ -3,4 +3,10 @@
 
 namespace SharpVault.Application.Features.Users.Access;
 
-public sealed record SignedInUser(Guid UserId, string? DisplayName, string? Email, string? IpAddress);
+public sealed record SignedInUser(
+    Guid UserId,
+    string? DisplayName,
+    string? Email,
+    string? IpAddress,
+    bool IsAdmin = false,
+    DateTimeOffset? TokenIssuedAt = null);

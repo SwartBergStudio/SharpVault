@@ -1,0 +1,14 @@
+@inject ISessionActions SessionActions
+
+<SvButton Id="@Id" Href="@SessionActions.SignInUrl(ReturnUrl)" Icon="@SvIcons.Key" Variant="SvButtonVariant.Primary">@Text</SvButton>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? ReturnUrl { get; set; }
+
+    [Parameter]
+    public string Text { get; set; } = "Sign in";
+}

@@ -11,6 +11,7 @@ using SharpVault.Infrastructure.Encryption;
 using SharpVault.Infrastructure.Storage;
 using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Logging;
+using SharpVault.IntegrationTests.Support;
 
 namespace SharpVault.IntegrationTests.Factories;
 
@@ -35,6 +36,13 @@ public sealed class ProductionApiTestFactory : WebApplicationFactory<Program>
         builder.UseSetting($"ConnectionStrings:{TableStorageConnection.Name}", ServiceUri);
         TestIdentityProvider.ApplyApiSettings(builder);
         builder.UseSetting($"{EncryptionOptions.SectionName}:{nameof(EncryptionOptions.KeyVaultKeyId)}", KeyVaultKeyId);
+        builder.UseSetting("RecycleBinPurge:Enabled", "false");
+        builder.UseSetting("Transfers:Enabled", "false");
+        builder.UseSetting("VaultRateLimits:RequestsPerMinute", "100000");
+        builder.UseSetting("VaultRateLimits:RevealsPerMinute", "100000");
+        builder.UseSetting("VaultRateLimits:ShareWritesPerMinute", "100000");
+        builder.UseSetting("VaultRateLimits:DirectorySearchesPerMinute", "100000");
+        builder.UseSetting("VaultRateLimits:AdminActionsPerMinute", "100000");
         builder.UseSetting("Logging:LogLevel:Default", "Debug");
         builder.UseSetting("Logging:LogLevel:Microsoft", "Debug");
         builder.UseSetting("Logging:LogLevel:Microsoft.AspNetCore", "Debug");
@@ -51,5 +59,12 @@ public sealed class ProductionApiTestFactory : WebApplicationFactory<Program>
                 services.Remove(initializer);
             }
         });
+    }
+
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        var host = base.CreateHost(builder);
+        EntraModeAssertion.Assert(host.Services);
+        return host;
     }
 }

@@ -9,6 +9,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="SharpVault.UnitTests" />
+    <InternalsVisibleTo Include="SharpVault.Benchmarks" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../SharpVault.Application/SharpVault.Application.csproj" />

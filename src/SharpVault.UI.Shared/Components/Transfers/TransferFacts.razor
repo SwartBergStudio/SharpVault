@@ -1,0 +1,23 @@
+<section aria-label="Transfer details">
+    <SvStack Spacing="2">
+        <p>From <strong id="transfer-source-name">@Transfer.SourceDisplayName</strong> to <strong id="transfer-target-name">@Transfer.TargetDisplayName</strong></p>
+        <p>Reason: <span id="transfer-category-text">@ReasonCategoryLabels.Label(Transfer.Category)</span></p>
+        <p>What moves: <span id="transfer-scope-text">@TransferStatusText.Scope(Transfer.Scope)</span></p>
+        <p>Reason given: <span id="transfer-reason-text">@Transfer.Reason</span></p>
+        <p>Requested by <span id="transfer-requested-by">@Transfer.RequestedByName</span> on <span id="transfer-requested-at">@TransferStatusText.Stamp(Transfer.RequestedAt)</span></p>
+        <p>Expires <span id="transfer-expires-at">@TransferStatusText.Stamp(Transfer.ExpiresAt)</span></p>
+        @if (Transfer.DecidedByName is not null && Transfer.DecidedAt is { } decidedAt)
+        {
+            <p>Decided by <span id="transfer-decided-by">@Transfer.DecidedByName</span> on <span id="transfer-decided-at">@TransferStatusText.Stamp(decidedAt)</span></p>
+        }
+        @if (Transfer.DecisionReason is not null)
+        {
+            <p>Decision reason: <span id="transfer-decision-reason">@Transfer.DecisionReason</span></p>
+        }
+    </SvStack>
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public TransferDto Transfer { get; set; } = default!;
+}

@@ -1,0 +1,68 @@
+<MudTextField T="string"
+              id="@Id"
+              Label="@Label"
+              Variant="Variant.Outlined"
+              Value="@Value"
+              ValueChanged="@ValueChanged"
+              Disabled="@Disabled"
+              Required="@Required"
+              MaxLength="@(MaxLength ?? DefaultMaxLength)"
+              Lines="@Lines"
+              Immediate="true"
+              InputType="@(Secret && !Revealed ? InputType.Password : InputType.Text)"
+              HelperText="@HelperText"
+              @attributes="@InputAttributes" />
+
+@code {
+    private const int DefaultMaxLength = 524288;
+
+    private static readonly Dictionary<string, object> SecretAttributes = new()
+    {
+        ["autocomplete"] = "new-password",
+        ["spellcheck"] = "false",
+        ["autocapitalize"] = "off",
+        ["autocorrect"] = "off",
+        ["data-sv-sensitive"] = "true",
+    };
+
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Value { get; set; }
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public bool Required { get; set; }
+
+    [Parameter]
+    public int? MaxLength { get; set; }
+
+    [Parameter]
+    public int Lines { get; set; } = 1;
+
+    [Parameter]
+    public bool Secret { get; set; }
+
+    [Parameter]
+    public bool Revealed { get; set; }
+
+    [Parameter]
+    public string? HelperText { get; set; }
+
+    private IReadOnlyDictionary<string, object>? InputAttributes => Secret ? SecretAttributes : null;
+
+    protected override void OnParametersSet()
+    {
+        ComponentIds.EnsureValid(Id, nameof(Id));
+        ArgumentException.ThrowIfNullOrWhiteSpace(Label);
+    }
+}

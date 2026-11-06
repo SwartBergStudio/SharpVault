@@ -21,14 +21,14 @@ For each request:
 
 1. Read `CLAUDE.md`, `docs/PROGRESS.md` and the code that the work touches.
 2. Decide the approach that best fits the preloaded SharpVault skills. Call out security implications (encryption, authorization, audit, logging of secrets) explicitly.
-3. Write the plan to `docs/plans/{feature-name}.md`. This is the only file you may create or change.
+3. Write the plan to `.github/spec/{feature-name}.md`. This is the only file you may create or change.
 4. Return a short summary and the plan's path.
 
 The plan must contain:
 
 - **Branch**: `feature/{feature-name}` (or `fix/{name}`), lowercase kebab-case describing the work.
 - **Goal** and what is out of scope.
-- **Tasks**: small, ordered steps sized for one implementer each. For every task list the files to create or change, the types and members involved, and its acceptance criteria. Mark tasks that can run in parallel.
+- **Tasks**: small, ordered steps that one implementer completes in sequence. For every task list the files to create or change, the types and members involved, and its acceptance criteria. Mark tasks that can run in parallel.
 - **Requirements**: the ids from `docs/REQUIREMENTS.md` this work delivers.
 - **Threats**: for every endpoint, handler or page touched, how it could be abused and the test that proves it can't (see `sharpvault-security-performance-testing`). Assume a vulnerability exists until a test rules it out.
 - **Tests**: the unit, integration, security and performance tests the test-writer must add, by name (`Scenario_Condition_ExpectedResult`), including the full authorization matrix for every endpoint.

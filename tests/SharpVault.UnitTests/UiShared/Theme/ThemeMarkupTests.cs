@@ -6,32 +6,41 @@ using Bunit;
 using SharpVault.UI.Shared.Components.Brand;
 using SharpVault.UI.Shared.Components.Common;
 using SharpVault.UI.Shared.Components.Icons;
+using SharpVault.UnitTests.Support.Theme;
 
 namespace SharpVault.UnitTests.UiShared.Theme;
 
-public sealed partial class ThemeMarkupTests : BunitContext
+public sealed partial class ThemeMarkupTests : MudTestContext
 {
-    public ThemeMarkupTests()
-    {
-        JSInterop.Mode = JSRuntimeMode.Loose;
-    }
+    private static readonly string[] MudRendered =
+    [
+        "StatusChip",
+        "StatusChipCustom",
+        "SvAlert",
+        "EmptyState",
+        "SecretField",
+        "SecretFieldRevealed",
+        "BusyIndicator",
+        "StatePanel",
+        "SvButton",
+        "SvIconButton",
+    ];
 
     public static TheoryData<string> ComponentNames() =>
     [
-        "Icon",
-        "LabelledIcon",
         "VaultDoorHero",
         "VaultDoorSealing",
         "VaultDoorMark",
-        "StatusBadge",
-        "StatusBadgeCustom",
-        "Alert",
+        "StatusChip",
+        "StatusChipCustom",
+        "SvAlert",
         "EmptyState",
-        "DialogShell",
-        "DialogShellDanger",
-        "SecretFrameHidden",
-        "SecretFrameRevealed",
+        "SecretField",
+        "SecretFieldRevealed",
         "BusyIndicator",
+        "StatePanel",
+        "SvButton",
+        "SvIconButton",
     ];
 
     [Theory]
@@ -42,7 +51,11 @@ public sealed partial class ThemeMarkupTests : BunitContext
         var markup = RenderRepresentative(component);
 
         Assert.False(string.IsNullOrWhiteSpace(markup), $"{component} rendered nothing.");
-        Assert.DoesNotMatch(StyleAttribute(), markup);
+        if (!MudRendered.Contains(component))
+        {
+            Assert.DoesNotMatch(StyleAttribute(), markup);
+        }
+
         Assert.DoesNotContain("<style", markup, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("<script", markup, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotMatch(HandlerAttribute(), markup);
@@ -52,18 +65,16 @@ public sealed partial class ThemeMarkupTests : BunitContext
 
     private string RenderRepresentative(string component) => component switch
     {
-        "Icon" => Render<Icon>(p => p.Add(c => c.Name, IconName.Vault)).Markup,
-        "LabelledIcon" => Render<Icon>(p => p.Add(c => c.Name, IconName.Key).Add(c => c.Label, "Key")).Markup,
         "VaultDoorHero" => Render<VaultDoor>().Markup,
         "VaultDoorSealing" => Render<VaultDoor>(p => p.Add(c => c.Sealing, true)).Markup,
         "VaultDoorMark" => Render<VaultDoor>(p => p.Add(c => c.Variant, VaultDoorVariant.Mark).Add(c => c.Id, "brand-mark")).Markup,
-        "StatusBadge" => Render<StatusBadge>(p => p.Add(c => c.Status, SecurityStatus.Locked)).Markup,
-        "StatusBadgeCustom" => Render<StatusBadge>(p => p
+        "StatusChip" => Render<StatusChip>(p => p.Add(c => c.Status, SecurityStatus.Locked)).Markup,
+        "StatusChipCustom" => Render<StatusChip>(p => p
             .Add(c => c.Status, SecurityStatus.Warning)
             .Add(c => c.Label, "Lock scheduled")
-            .Add(c => c.Icon, IconName.ScheduledLock)
+            .Add(c => c.Icon, SvIcons.Lock)
             .Add(c => c.Id, "lock-status")).Markup,
-        "Alert" => Render<Alert>(p => p
+        "SvAlert" => Render<SvAlert>(p => p
             .Add(c => c.Id, "alert-one")
             .Add(c => c.Kind, AlertKind.Danger)
             .Add(c => c.Title, "Title")
@@ -72,23 +83,16 @@ public sealed partial class ThemeMarkupTests : BunitContext
             .Add(c => c.Id, "empty-one")
             .Add(c => c.Title, "Nothing")
             .Add(c => c.Actions, "<a id=\"go\" href=\"\">Go</a>")).Markup,
-        "DialogShell" => Render<DialogShell>(p => p
-            .Add(c => c.IdPrefix, "confirm")
-            .Add(c => c.Title, "Confirm")
-            .Add(c => c.Open, true)
-            .Add(c => c.Footer, "<button id=\"confirm-ok\" type=\"button\">OK</button>")).Markup,
-        "DialogShellDanger" => Render<DialogShell>(p => p
-            .Add(c => c.IdPrefix, "confirm")
-            .Add(c => c.Title, "Confirm")
-            .Add(c => c.Open, true)
-            .Add(c => c.Danger, true)).Markup,
-        "SecretFrameHidden" => Render<SecretFrame>(p => p.Add(c => c.IdPrefix, "secret-value")).Markup,
-        "SecretFrameRevealed" => Render<SecretFrame>(p => p
+        "SecretField" => Render<SecretField>(p => p.Add(c => c.IdPrefix, "secret-value")).Markup,
+        "SecretFieldRevealed" => Render<SecretField>(p => p
             .Add(c => c.IdPrefix, "secret-value")
             .Add(c => c.Revealed, true)
             .AddChildContent("value")
             .Add(c => c.Actions, "<button id=\"copy\" type=\"button\">Copy</button>")).Markup,
         "BusyIndicator" => Render<BusyIndicator>(p => p.Add(c => c.Id, "busy-one")).Markup,
+        "StatePanel" => Render<StatePanel>(p => p.Add(c => c.Id, "panel-one").Add(c => c.Title, "Title").AddChildContent("Body")).Markup,
+        "SvButton" => Render<SvButton>(p => p.Add(c => c.Id, "button-one").AddChildContent("Go")).Markup,
+        "SvIconButton" => Render<SvIconButton>(p => p.Add(c => c.Id, "icon-one").Add(c => c.Icon, SvIcons.Menu).Add(c => c.Label, "Menu")).Markup,
         _ => throw new ArgumentOutOfRangeException(nameof(component), component, "Unknown component."),
     };
 

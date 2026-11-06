@@ -1,0 +1,56 @@
+@inherits LoadableComponentBase<SharedFolderContentsDto>
+
+<DataStateView TValue="SharedFolderContentsDto" IdPrefix="shared-folder" State="State" Value="Value" ErrorText="@SharedLoadErrors.ForLoad(ErrorText)" OnRetry="ReloadAsync">
+    <ChildContent Context="folder">
+        <SvPageTitle Id="shared-folder-heading">@FolderName(folder.Name, folder.IsDamaged)</SvPageTitle>
+        <SvStack Row="true" Spacing="2" Class="mb-2">
+            <SvText Id="shared-folder-owner" Secondary="true">Shared by @folder.OwnerDisplayName</SvText>
+            <SvText Id="shared-folder-permission" Secondary="true">@PermissionLabels.Label(folder.Permission)</SvText>
+        </SvStack>
+        @if (folder.Path.Count > 0)
+        {
+            <nav id="shared-folder-path" aria-label="Folder path">
+                @foreach (var crumb in folder.Path)
+                {
+                    <SvLink Id="@($"shared-folder-crumb-{crumb.FolderId:D}")" Href="@SharingRoutes.Folder(OwnerId, crumb.FolderId)">@FolderName(crumb.Name, crumb.IsDamaged)</SvLink>
+                }
+            </nav>
+        }
+        @foreach (var sub in folder.SubFolders)
+        {
+            <div>
+                <SvLink Id="@($"shared-subfolder-link-{sub.FolderId:D}")" Href="@SharingRoutes.Folder(OwnerId, sub.FolderId)">@FolderName(sub.Name, sub.IsDamaged)</SvLink>
+            </div>
+        }
+        @if (_items.Count == 0 && folder.SubFolders.Count == 0)
+        {
+            <EmptyState Id="shared-folder-empty" Title="Nothing here" Description="This shared folder has no items." />
+        }
+        else if (_items.Count > 0)
+        {
+            <SvTable Id="shared-folder-table" TItem="SecretDto" Items="_items">
+                <Columns>
+                    <SvColumn TItem="SecretDto" Header="Name" Context="secret">
+                        <SvLink Id="@($"shared-folder-secret-link-{secret.Id:D}")" Href="@SharingRoutes.Secret(OwnerId, secret.Id)">@SecretDisplayName.For(secret)</SvLink>
+                    </SvColumn>
+                    <SvColumn TItem="SecretDto" Header="Type" Value="@(secret => SecretTypeLabels.Label(secret.Type))" />
+                    <SvColumn TItem="SecretDto" Header="Username" Value="@(secret => secret.Username)" />
+                </Columns>
+            </SvTable>
+        }
+        @if (LoadMoreFailed)
+        {
+            <SvAlert Id="shared-folder-load-more-error" Kind="AlertKind.Danger">@LoadMoreText</SvAlert>
+        }
+        @if (_continuation is not null)
+        {
+            <div class="d-flex justify-center mt-4">
+                <SvButton Id="shared-folder-load-more" Variant="SvButtonVariant.Secondary" Busy="IsLoadingMore" Disabled="IsCommandRunning" OnClick="@LoadMoreAsync">Load more</SvButton>
+            </div>
+        }
+        @if (folder.Permission == SharePermissionDto.Manage)
+        {
+            <SharePanel @key="folder.FolderId" OwnerId="@OwnerId" Kind="SharedItemKindDto.Folder" ItemId="@folder.FolderId" />
+        }
+    </ChildContent>
+</DataStateView>

@@ -27,4 +27,16 @@ internal sealed class AuditLogTableEntity : ITableEntity
     public string? IpAddress { get; set; }
 
     public string? Reason { get; set; }
+
+    public string? OwnerId { get; set; }
+
+    public string? SecretId { get; set; }
+
+    public string? RecipientId { get; set; }
+
+    public string? SharePermission { get; set; }
+
+    public string? TransferId { get; set; }
+
+    public string? ReasonCategory { get; set; }
 }

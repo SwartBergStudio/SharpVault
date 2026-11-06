@@ -7,7 +7,32 @@ internal static class RepositoryRoot
 {
     private const string SolutionFileName = "SharpVault.slnx";
 
+    private static readonly string[] SkippedDirectories = [".git", ".claude", "bin", "obj", "node_modules"];
+
     public static string Path { get; } = Locate();
+
+    public static IReadOnlyList<string> EnumerateFiles(string searchPattern) => EnumerateFiles(Path, searchPattern);
+
+    public static IReadOnlyList<string> EnumerateFiles(string root, string searchPattern)
+    {
+        var found = new List<string>();
+        var pending = new Stack<string>();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            var directory = pending.Pop();
+            found.AddRange(Directory.EnumerateFiles(directory, searchPattern));
+            foreach (var child in Directory.EnumerateDirectories(directory))
+            {
+                if (!SkippedDirectories.Contains(System.IO.Path.GetFileName(child), StringComparer.Ordinal))
+                {
+                    pending.Push(child);
+                }
+            }
+        }
+
+        return found.Order(StringComparer.Ordinal).ToList();
+    }
 
     private static string Locate()
     {

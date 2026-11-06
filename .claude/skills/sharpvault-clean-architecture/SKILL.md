@@ -11,6 +11,7 @@ The general Clean Architecture guide below is how we work. In SharpVault, these 
 - **No EF Core and no `IApplicationDbContext`.** Persistence is Azure Table Storage. Follow the `sharpvault-table-storage` skill for everything in the Infrastructure Layer section below.
 - **Store interfaces replace `DbSet<T>`.** Handlers depend on store interfaces declared in `SharpVault.Application/Common/Interfaces` (for example `ISecretStore`, `IAuditLog`, `ITransferJobStore`). This replaces rule 13: in SharpVault a store abstraction per aggregate is the default because Table Storage has no LINQ provider for projections.
 - **Mapping:** there is no `ProjectToType<T>()`. Load entities from the store and map with `.Adapt<T>()`.
+- **DTOs:** every DTO lives in the `SharpVault.Dtos` project (namespace `SharpVault.Dtos.{Folder}`; the examples below write `Dtos.{Folder}`). A DTO is a `sealed` class with public `{ get; set; }` properties and no logic: no methods, no records, no fields, no framework types such as `IFormFile`. Property types are primitives, enums, other DTOs and collections of those, never Application or Domain types. DTO names end in `Dto`. Handlers return `Result<SomeDto>`. Mapster maps entities to DTOs inside Application. Input DTOs never carry server-controlled fields (roles, lock status, audit stamps, owner ids). Requests (commands and queries) stay records in their feature file. One exception: `SharpVault.Dtos.Serialization.StrictEnumJsonConverter<TEnum>` is the only type in `SharpVault.Dtos` allowed to hold logic. It makes enum JSON read and write by exact name only, so a numeric value or a comma list can never be accepted. `DtoContractTests` exempts it by full name.
 - **Current user** comes from `ICurrentUser`, populated from the Entra `oid` claim. See the `sharpvault-entra-auth` skill.
 - **Secrets are never mapped into DTOs in plain text** except by the explicit reveal request, which also writes an audit entry.
 - **Code style:** follow the `sharpvault-coding-standards` skill. The `// File/Path.cs` lines and explanatory comments in the examples below are there to explain the guide only. Do not write them in real code.
@@ -35,26 +36,21 @@ src/
 │   ├── Interfaces/                   # Repository interfaces, domain service interfaces
 │   └── Common/                       # Base classes (BaseEntity, AuditableEntity, etc.)
 │
-├── Application/                      # CQRS features, DTOs, Mapster config, Validators, Behaviors
+├── Application/                      # CQRS features, Mapster config, Validators, Behaviors (DTOs live in SharpVault.Dtos)
 │   ├── Features/                     # Organized by aggregate/domain concept
 │   │   ├── Categories/
 │   │   │   ├── Commands/
 │   │   │   │   ├── CreateCategory.cs         # Request + Handler + Validator in ONE file
 │   │   │   │   ├── UpdateCategory.cs
 │   │   │   │   └── UploadCategoryMedia.cs
-│   │   │   ├── Queries/
-│   │   │   │   ├── GetCategoryById.cs
-│   │   │   │   ├── GetActiveCategories.cs
-│   │   │   │   ├── GetCategoryBySlug.cs
-│   │   │   │   └── GetCategoryLookup.cs
-│   │   │   └── Dtos/
-│   │   │       ├── CategoryDto.cs
-│   │   │       ├── CategoryViewModelDto.cs
-│   │   │       └── CategoryLookupDto.cs
+│   │   │   └── Queries/
+│   │   │       ├── GetCategoryById.cs
+│   │   │       ├── GetActiveCategories.cs
+│   │   │       ├── GetCategoryBySlug.cs
+│   │   │       └── GetCategoryLookup.cs
 │   │   └── [OtherFeatures]/
 │   │       ├── Commands/
-│   │       ├── Queries/
-│   │       └── Dtos/
+│   │       └── Queries/
 │   ├── Abstractions/                 # Shared abstractions (permissions, roles, etc.)
 │   ├── Common/
 │   │   ├── Behaviors/                # Pipeline behaviors (validation, logging, caching, etc.)
@@ -73,13 +69,12 @@ src/
 │   ├── Services/                     # Email, file storage, etc.
 │   └── DependencyInjection.cs        # Infrastructure layer DI registration
 │
-├── Dtos/                             # Shared DTO project (referenced by Application + Api)
+├── Dtos/                             # SharpVault.Dtos: every DTO (referenced by Application, Api and UI.Shared)
 │   ├── Categories/
 │   │   ├── CategoryDto.cs
 │   │   ├── CategoryViewModelDto.cs
 │   │   └── CategoryLookupDto.cs
 │   └── Common/
-│       ├── FileUploadDto.cs
 │       └── PageRequestDto.cs
 │
 └── Api/                              # Minimal API host
@@ -94,7 +89,7 @@ src/
 - **Each layer has its own `DependencyInjection.cs`** — the Api's `Program.cs` calls `AddApplication()` and `AddInfrastructure()`.
 - **No controllers** — use minimal APIs exclusively.
 - **Scalar for API docs** — never Swagger/Swashbuckle.
-- **DTOs may live in a separate shared project** (e.g., `Dtos/`) when they are referenced by multiple layers or by a Blazor frontend. Otherwise they live in `Application/Features/{Feature}/Dtos/`.
+- **All DTOs live in the `SharpVault.Dtos` project**, whether one layer or many uses them. No DTO is declared in Application, Domain, Infrastructure or a feature folder.
 
 ---
 
@@ -434,50 +429,49 @@ public class GetCategoriesQueryHandler
 
 ## DTOs
 
-DTOs are simple records. They can live in `Application/Features/{Feature}/Dtos/` or in a separate shared `Dtos/` project when referenced by multiple layers (e.g., Blazor frontend and API):
+Every DTO is a `sealed` class in the `SharpVault.Dtos` project, with public `{ get; set; }` properties and no logic. Records are for requests only. File uploads are not DTOs: the endpoint binds `IFormFile` directly, so no upload type is declared in `SharpVault.Dtos`.
 
 ```csharp
 // Dtos/Categories/CategoryDto.cs
 namespace Dtos.Categories;
 
-public record CategoryDto(
-    Guid Id,
-    string Name,
-    string? Description,
-    string Slug,
-    bool IsActive,
-    DateTime CreatedAt
-);
+public sealed class CategoryDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string Slug { get; set; } = string.Empty;
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
 
-public record CategoryViewModelDto(
-    Guid Id,
-    string Name,
-    string? Description,
-    string Slug,
-    string? ImageUrl
-);
+public sealed class CategoryViewModelDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string Slug { get; set; } = string.Empty;
+    public string? ImageUrl { get; set; }
+}
 
-public record CategoryLookupDto(
-    Guid Id,
-    string Name
-);
+public sealed class CategoryLookupDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
 ```
 
 ```csharp
 // Dtos/Common/PageRequestDto.cs
 namespace Dtos.Common;
 
-public record CategoryPageRequestDto(
-    string? Search = null,
-    bool? IsActive = null,
-    int Page = 1,
-    int PageSize = 20
-);
-
-public record FileUploadDto(
-    IFormFile File,
-    string? Folder = null
-);
+public sealed class CategoryPageRequestDto
+{
+    public string? Search { get; set; }
+    public bool? IsActive { get; set; }
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+}
 ```
 
 ---
@@ -1038,9 +1032,9 @@ public static class CategoryEndpoints
     }
 
     private static async Task<Result<string>> UploadCategoryMedia(
-        FileUploadDto request, IMediator mediator, CancellationToken token = default)
+        IFormFile file, IMediator mediator, CancellationToken token = default)
     {
-        var command = new CategoryUploadMediaCommand(request);
+        var command = new CategoryUploadMediaCommand(file);
         return await mediator.Send(command, token);
     }
 }
@@ -1187,7 +1181,7 @@ public class PaginatedList<T>
 4. **Mapster for all mapping** — use `.Adapt<T>()` for commands, `ProjectToType<T>()` for queries. Configure via `IRegister` classes scanned at startup.
 5. **SwartBerg.Mediator** — namespace is `Mediator`, register via `services.AddMediator(assemblies)`, interfaces are `IRequest<T>` / `IRequestHandler<TRequest, TResponse>`.
 6. **Pipeline behaviors** for cross-cutting concerns — validation, performance logging, caching, cache invalidation, exception handling. Order matters.
-7. **DTOs are records** — immutable, simple data carriers.
+7. **DTOs are sealed classes** in `SharpVault.Dtos`: public `{ get; set; }` properties, no logic. Requests are records.
 8. **IApplicationDbContext** — the application layer depends on this interface, not EF Core directly.
 9. **Minimal APIs only** — no controllers. Endpoint classes are static with `Map{Feature}Endpoints` extension methods. Handler delegates are private static methods.
 10. **Scalar for API docs** — never Swagger/Swashbuckle. Use `MapScalarApiReference()`.

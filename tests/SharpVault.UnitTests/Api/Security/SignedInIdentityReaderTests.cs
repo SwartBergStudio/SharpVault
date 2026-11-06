@@ -3,7 +3,7 @@
 
 using System.Security.Claims;
 using SharpVault.Api.Security;
-using SharpVault.ServiceDefaults.Identity;
+using SharpVault.Authentication.Identity;
 using SharpVault.UnitTests.Support;
 
 namespace SharpVault.UnitTests.Api.Security;
@@ -31,6 +31,64 @@ public sealed class SignedInIdentityReaderTests
         Assert.Equal("alice@example.test", identity.Email);
         Assert.Equal(AccountKind.Member, identity.AccountKind);
         Assert.True(identity.IsAdmin);
+    }
+
+    [Fact]
+    public void TryRead_IatClaim_ReadsTokenIssuedAt()
+    {
+        var claims = TestIdentities.MemberClaims(Guid.NewGuid(), AppRoles.User).With("iat", "1772355600");
+
+        SignedInIdentityReader.TryRead(TestIdentities.Authenticated(claims), Settings, out var identity);
+
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1772355600), identity!.TokenIssuedAt);
+    }
+
+    [Fact]
+    public void TryRead_MissingIat_IsNull()
+    {
+        SignedInIdentityReader.TryRead(TestIdentities.Authenticated(TestIdentities.MemberClaims(Guid.NewGuid())), Settings, out var identity);
+
+        Assert.Null(identity!.TokenIssuedAt);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("abc")]
+    [InlineData("-5")]
+    [InlineData("+5")]
+    [InlineData("1.5")]
+    [InlineData(" 5")]
+    [InlineData("1e9")]
+    public void TryRead_MalformedIat_IsNull(string value)
+    {
+        var claims = TestIdentities.MemberClaims(Guid.NewGuid()).With("iat", value);
+
+        SignedInIdentityReader.TryRead(TestIdentities.Authenticated(claims), Settings, out var identity);
+
+        Assert.Null(identity!.TokenIssuedAt);
+    }
+
+    [Theory]
+    [InlineData("99999999999999999999")]
+    [InlineData("9223372036854775807")]
+    [InlineData("300000000000")]
+    public void TryRead_OutOfRangeIat_IsNull(string value)
+    {
+        var claims = TestIdentities.MemberClaims(Guid.NewGuid()).With("iat", value);
+
+        SignedInIdentityReader.TryRead(TestIdentities.Authenticated(claims), Settings, out var identity);
+
+        Assert.Null(identity!.TokenIssuedAt);
+    }
+
+    [Fact]
+    public void TryRead_RepeatedIat_IsNull()
+    {
+        var claims = TestIdentities.MemberClaims(Guid.NewGuid()).With("iat", "1772355600").With("iat", "1772355700");
+
+        SignedInIdentityReader.TryRead(TestIdentities.Authenticated(claims), Settings, out var identity);
+
+        Assert.Null(identity!.TokenIssuedAt);
     }
 
     [Fact]

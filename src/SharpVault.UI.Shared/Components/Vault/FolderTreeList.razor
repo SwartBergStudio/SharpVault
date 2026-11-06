@@ -1,0 +1,23 @@
+<ul class="vault-tree-list">
+    @foreach (var node in Nodes)
+    {
+        <FolderTreeNode @key="@node.Folder.Id" Node="@node" SelectedFolderId="@SelectedFolderId" Expanded="@Expanded" OnToggle="@OnToggle" OnAction="@OnAction" />
+    }
+</ul>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<FolderNode> Nodes { get; set; } = [];
+
+    [Parameter]
+    public Guid? SelectedFolderId { get; set; }
+
+    [Parameter, EditorRequired]
+    public IReadOnlySet<Guid> Expanded { get; set; } = new HashSet<Guid>();
+
+    [Parameter]
+    public EventCallback<Guid> OnToggle { get; set; }
+
+    [Parameter]
+    public EventCallback<FolderActionRequest> OnAction { get; set; }
+}

@@ -1,0 +1,22 @@
+.sv-picker {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    margin-block: 1rem 2rem;
+    text-align: center;
+}
+
+.sv-account-list ::deep .sv-account-card.mud-paper { padding: 1.25rem 1.5rem; }
+
+.sv-account-list ::deep .sv-account-card form {
+    display: grid;
+    gap: 0.5rem;
+    justify-items: start;
+    margin: 0;
+}
+
+.sv-account-card__roles {
+    color: var(--mud-palette-text-secondary);
+    font-size: 0.8125rem;
+}

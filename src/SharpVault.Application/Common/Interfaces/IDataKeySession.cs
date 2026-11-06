@@ -21,7 +21,12 @@ public interface IDataKeySession : IDisposable
     string Decrypt(EncryptionContext context, byte[] envelope);
 
     /// <summary>
-    /// Decrypts with the source context and encrypts with the target context under the same data key, without creating a string. Used by approved transfers (TRF-7).
+    /// Decrypts with the source context and encrypts with the target context under the same data key, without creating a string. Works only inside one session; use ReEncryptTo to move an envelope to another session.
     /// </summary>
     byte[] ReEncrypt(EncryptionContext source, EncryptionContext target, byte[] envelope);
+
+    /// <summary>
+    /// Decrypts with the source context under this session's data key and encrypts with the target context under the target session's data key, without creating a string. Used by approved transfers (TRF-7).
+    /// </summary>
+    byte[] ReEncryptTo(EncryptionContext source, IDataKeySession target, EncryptionContext targetContext, byte[] envelope);
 }

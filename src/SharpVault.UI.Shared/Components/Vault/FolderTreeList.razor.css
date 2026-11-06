@@ -1,0 +1,9 @@
+.vault-tree-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.vault-tree-list .vault-tree-list {
+    padding-inline-start: 1rem;
+}

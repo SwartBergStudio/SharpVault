@@ -1,0 +1,14 @@
+@page "/shared/{OwnerId:guid}/folders/{FolderId:guid}"
+@attribute [Authorize]
+
+<PageTitle>Shared folder</PageTitle>
+
+<SharedFolderView @key="@($"{OwnerId}/{FolderId}")" OwnerId="OwnerId" FolderId="FolderId" />
+
+@code {
+    [Parameter]
+    public Guid OwnerId { get; set; }
+
+    [Parameter]
+    public Guid FolderId { get; set; }
+}

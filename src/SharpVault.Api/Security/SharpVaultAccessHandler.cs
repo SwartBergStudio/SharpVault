@@ -4,7 +4,7 @@
 using Microsoft.AspNetCore.Authorization;
 using SharpVault.Application.Common.Interfaces;
 using SharpVault.Application.Features.Users.Access;
-using SharpVault.ServiceDefaults.Identity;
+using SharpVault.Authentication.Identity;
 
 namespace SharpVault.Api.Security;
 
@@ -61,7 +61,13 @@ public sealed partial class SharpVaultAccessHandler(
             return memoized;
         }
 
-        var user = new SignedInUser(identity.UserId, identity.DisplayName, identity.Email, httpContext?.Connection.RemoteIpAddress?.ToString());
+        var user = new SignedInUser(
+            identity.UserId,
+            identity.DisplayName,
+            identity.Email,
+            httpContext?.Connection.RemoteIpAddress?.ToString(),
+            identity.IsAdmin,
+            identity.TokenIssuedAt);
         var decision = await gate.CheckAsync(user, cancellationToken);
         if (httpContext is not null)
         {

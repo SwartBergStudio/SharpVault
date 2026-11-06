@@ -1,0 +1,32 @@
+<section id="transfer-progress" aria-label="Progress">
+    <SvStack Spacing="2">
+        <p id="transfer-progress-items">Items: @Transfer.ItemCount, folders: @Transfer.FolderCount, earlier versions: @Transfer.VersionCount, in the recycle bin: @Transfer.RecycledItemCount</p>
+        <p id="transfer-progress-published">Added for the receiving user so far: @Transfer.PublishedItemCount</p>
+        @if (Transfer.SkippedItemCount > 0)
+        {
+            <p id="transfer-progress-skipped">Damaged items left with the leaving user: @Transfer.SkippedItemCount</p>
+        }
+        @if (Transfer.BlockReason is { } reason)
+        {
+            <SvAlert Id="transfer-block-reason" Kind="AlertKind.Warning">@TransferStatusText.BlockReason(reason) The transfer waits and retries on its own. Abort it if it cannot continue.</SvAlert>
+        }
+        @if (Transfer.RenamedItemCount > 0)
+        {
+            <p id="transfer-progress-renamed">@Transfer.RenamedItemCount secret(s) were already at the receiving user and were added under new ids. Their existing copies were left unchanged.</p>
+        }
+        @if (Transfer.IsRetrying)
+        {
+            <p id="transfer-retrying">A step failed and will be retried automatically.</p>
+            <p id="transfer-failure-kind">Last failure: @Transfer.LastFailureKind</p>
+            @if (Transfer.FailingSince is { } failingSince)
+            {
+                <p id="transfer-failing-since">Failing since @TransferStatusText.Stamp(failingSince)</p>
+            }
+        }
+    </SvStack>
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public TransferDto Transfer { get; set; } = default!;
+}

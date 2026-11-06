@@ -5,7 +5,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using NSubstitute;
 using SharpVault.Api.Security;
-using SharpVault.ServiceDefaults.Identity;
+using SharpVault.Authentication.Identity;
 using SharpVault.UnitTests.Support;
 
 namespace SharpVault.UnitTests.Api.Security;

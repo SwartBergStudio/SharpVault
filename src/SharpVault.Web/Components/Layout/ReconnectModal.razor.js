@@ -7,14 +7,59 @@ retryButton.addEventListener("click", retry);
 const resumeButton = document.getElementById("components-resume-button");
 resumeButton.addEventListener("click", resume);
 
+const disconnectedAttribute = "data-sv-disconnected";
+const sensitiveSelector = "[data-sv-sensitive]";
+const wipeAfterMs = 30000;
+let sensitiveWiped = false;
+let wipeTimer = null;
+
+function hideSensitiveValues() {
+    document.documentElement.setAttribute(disconnectedAttribute, "");
+}
+
+function wipeSensitiveValues() {
+    hideSensitiveValues();
+    for (const element of document.querySelectorAll(sensitiveSelector)) {
+        if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+            element.value = "";
+        } else {
+            element.textContent = "";
+        }
+        sensitiveWiped = true;
+    }
+}
+
+function scheduleWipe() {
+    clearTimeout(wipeTimer);
+    wipeTimer = setTimeout(wipeSensitiveValues, wipeAfterMs);
+}
+
+function restoreSensitiveValues() {
+    clearTimeout(wipeTimer);
+    if (sensitiveWiped) {
+        location.reload();
+        return;
+    }
+    document.documentElement.removeAttribute(disconnectedAttribute);
+}
+
 function handleReconnectStateChanged(event) {
-    if (event.detail.state === "show") {
+    const state = event.detail.state;
+    if (state === "show" || state === "paused") {
+        hideSensitiveValues();
+        scheduleWipe();
+    } else if (state === "failed" || state === "resume-failed" || state === "rejected") {
+        wipeSensitiveValues();
+    }
+
+    if (state === "show") {
         reconnectModal.showModal();
-    } else if (event.detail.state === "hide") {
+    } else if (state === "hide") {
         reconnectModal.close();
-    } else if (event.detail.state === "failed") {
+        restoreSensitiveValues();
+    } else if (state === "failed") {
         document.addEventListener("visibilitychange", retryWhenDocumentBecomesVisible);
-    } else if (event.detail.state === "rejected") {
+    } else if (state === "rejected") {
         location.reload();
     }
 }
@@ -30,6 +75,7 @@ async function retry() {
                 location.reload();
             } else {
                 reconnectModal.close();
+                restoreSensitiveValues();
             }
         }
     } catch (err) {

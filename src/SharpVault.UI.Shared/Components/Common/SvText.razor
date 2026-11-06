@@ -1,0 +1,41 @@
+<MudText id="@Id" Typo="@Typo" HtmlTag="@HtmlTag" Color="@(Secondary ? Color.Secondary : Color.Default)" Class="@Class">@ChildContent</MudText>
+
+@code {
+    [Parameter]
+    public string? Id { get; set; }
+
+    [Parameter]
+    public SvTextKind Kind { get; set; }
+
+    [Parameter]
+    public string? HtmlTag { get; set; }
+
+    [Parameter]
+    public bool Secondary { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private Typo Typo => Kind switch
+    {
+        SvTextKind.Small => Typo.body2,
+        SvTextKind.Label => Typo.subtitle2,
+        SvTextKind.Heading => Typo.h6,
+        SvTextKind.Subtitle => Typo.subtitle1,
+        SvTextKind.Display => Typo.h2,
+        SvTextKind.Overline => Typo.overline,
+        SvTextKind.Title => Typo.h4,
+        _ => Typo.body1,
+    };
+
+    protected override void OnParametersSet()
+    {
+        if (Id is not null)
+        {
+            ComponentIds.EnsureValid(Id, nameof(Id));
+        }
+    }
+}

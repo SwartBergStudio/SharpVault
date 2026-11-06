@@ -16,9 +16,6 @@ internal static class UiSourceFiles
     public static IReadOnlyList<SourceFile> WithExtension(string extension) =>
         Enumerate(ProjectRoots, extension);
 
-    public static IReadOnlyList<SourceFile> UiSharedWithExtension(string extension) =>
-        Enumerate([UiSharedProject], extension);
-
     public static IReadOnlyList<string> AllUiSharedWebRootFiles()
     {
         var webRoot = Path.Combine(RepositoryRoot.Path, UiSharedProject, "wwwroot");

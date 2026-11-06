@@ -9,5 +9,6 @@
   <ItemGroup>
     <ProjectReference Include="../SharpVault.UI.Shared/SharpVault.UI.Shared.csproj" />
     <ProjectReference Include="../SharpVault.ServiceDefaults/SharpVault.ServiceDefaults.csproj" />
+    <ProjectReference Include="../SharpVault.Authentication/SharpVault.Authentication.csproj" />
   </ItemGroup>
 </Project>

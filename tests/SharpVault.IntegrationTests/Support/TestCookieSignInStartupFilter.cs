@@ -1,7 +1,6 @@
 // SharpVault - Copyright (c) SwartBergStudio.
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -17,9 +16,6 @@ public sealed class TestCookieSignInStartupFilter : IStartupFilter
     public const string Path = "/test/sign-in";
 
     private const string IssuingSchemeKey = ".AuthScheme";
-    private const string AuthenticationType = "TestCookie";
-    private const string NameClaimType = "name";
-    private const string RoleClaimType = "roles";
 
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)
     {
@@ -44,19 +40,9 @@ public sealed class TestCookieSignInStartupFilter : IStartupFilter
             return;
         }
 
-        var claims = new List<Claim>
-        {
-            new("oid", user.ObjectId.ToString("D")),
-            new("tid", user.TenantId.ToString("D")),
-            new(NameClaimType, user.DisplayName),
-            new("preferred_username", user.Email ?? user.ObjectId.ToString("D")),
-        };
-        claims.AddRange(user.Roles.Select(role => new Claim(RoleClaimType, role)));
-
-        var identity = new ClaimsIdentity(claims, AuthenticationType, NameClaimType, RoleClaimType);
         var properties = new AuthenticationProperties();
         properties.Items[IssuingSchemeKey] = OpenIdConnectDefaults.AuthenticationScheme;
-        await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity), properties);
+        await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, TestCookiePrincipal.Create(user), properties);
         context.Response.StatusCode = StatusCodes.Status204NoContent;
     }
 }

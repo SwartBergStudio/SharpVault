@@ -24,7 +24,7 @@ If code feels like it needs a comment, rename or extract a method until it doesn
 - File-scoped namespaces. Namespace matches the folder path.
 - `using` directives outside the namespace, `System` first. Prefer global usings in a `GlobalUsings.cs` per project for namespaces used everywhere.
 - Classes are `sealed` unless they are designed for inheritance.
-- DTOs, requests and responses are `record`s.
+- Requests are `record`s. DTOs are `sealed` classes with public `{ get; set; }` properties and no logic, all in `SharpVault.Dtos` (see `sharpvault-clean-architecture`).
 - Prefer primary constructors for dependency injection.
 
 ## Naming

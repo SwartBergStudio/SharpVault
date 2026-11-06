@@ -347,7 +347,7 @@ public sealed class AccountEndpointTests(WebTestFactory factory)
 
         var html = await client.GetStringAsync(ErrorPath, cancellationToken);
 
-        Assert.Contains("id=\"sign-in-error-retry-link\" href=\"/account/sign-in\"", html, StringComparison.Ordinal);
+        Assert.Matches("<a[^>]*id=\"sign-in-error-retry-link\"[^>]*href=\"/account/sign-in\"", html);
     }
 
     [Fact]
@@ -559,7 +559,7 @@ public sealed class AccountEndpointTests(WebTestFactory factory)
 
     private static async Task<string> ReadSignOutTokenAsync(HttpClient client, CancellationToken cancellationToken)
     {
-        var html = await client.GetStringAsync("/", cancellationToken);
+        var html = await client.GetStringAsync(WebTestSupport.SignedInStaticPage, cancellationToken);
         var token = WebTestSupport.ExtractSignOutAntiforgeryToken(html);
         Assert.False(string.IsNullOrEmpty(token), "The sign-out form did not contain an antiforgery token.");
         return token;
@@ -586,8 +586,8 @@ public sealed class AccountEndpointTests(WebTestFactory factory)
         Assert.DoesNotContain(
             WebTestSupport.SetCookies(failed),
             cookie => cookie.StartsWith($"{SessionCookieName}=;", StringComparison.Ordinal));
-        var home = await client.GetStringAsync("/", cancellationToken);
-        Assert.Contains("id=\"home-greeting\"", home, StringComparison.Ordinal);
+        var page = await client.GetStringAsync(WebTestSupport.SignedInStaticPage, cancellationToken);
+        Assert.Contains("id=\"account-name\"", page, StringComparison.Ordinal);
     }
 
     private static async Task<HttpResponseMessage> PostIdTokenAsync(

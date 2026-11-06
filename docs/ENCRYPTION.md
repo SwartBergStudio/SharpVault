@@ -9,16 +9,17 @@ This document describes the server-side encryption core in `SharpVault.Infrastru
 Built and tested in `feature/encryption-core`:
 
 - AES-256-GCM envelope encryption, version 1, with purpose, item id and owner id bound as associated data.
-- The session API (`IEnvelopeEncryptor`, `IDataKeySession`), including `ReEncrypt` and `RewrapDataKeyAsync`.
+- The session API (`IEnvelopeEncryptor`, `IDataKeySession`), including `ReEncrypt`, `ReEncryptTo` and `RewrapDataKeyAsync`.
 - Two key wrap providers behind `IKeyWrapProvider`: Azure Key Vault and a development provider that only runs in the Development environment.
 - Startup guards, configuration validation and the AppHost parameter for development key material.
 
+Used by the vault (Stage 4), sharing (Stage 5) and transfers (Stage 6, which uses `ReEncryptTo`). Secrets are stored encrypted in the `Vaults` table, following the field table and the key decision below. The vault's own behaviour is in [VAULT.md](VAULT.md).
+
 Not built yet:
 
-- No entity stores a secret. The first store is `feature/vault-and-folders`.
 - No rewrap maintenance job. `RewrapDataKeyAsync` exists, but nothing calls it yet.
 - No Key Vault or key provisioning. The Key Vault provider is code only and is tested with fakes.
-- No one-time link encryption. That happens in the browser (see [One-time links](#one-time-links)).
+- No one-time link encryption on the server. That happens in the browser (see [One-time links](#one-time-links)).
 
 ## Key hierarchy
 
@@ -80,7 +81,7 @@ The handler-facing interfaces are:
 - `IEnvelopeEncryptor.RewrapDataKeyAsync(wrappedKey, ct)`: unwraps, wraps again with the current key version and returns the new `WrappedDataKey`. The data key is zeroed.
 - `IDataKeySession.Encrypt(context, plaintext)`: returns an envelope.
 - `IDataKeySession.Decrypt(context, envelope)`: returns the plaintext string. It is the only way to decrypt.
-- `IDataKeySession.ReEncrypt(source, target, envelope)`: decrypts with the source context and encrypts with the target context, under the same data key. It never creates a string. It is used by approved transfers (TRF-7).
+- `IDataKeySession.ReEncrypt(source, target, envelope)`: decrypts with the source context and encrypts with the target context, under the same data key. It never creates a string. The vault uses it when a secret value is replaced (the old value becomes a history row) and when a history version is restored. `ReEncryptTo(source, target session, target context, envelope)` is the cross-session form that transfers use, described under [Data keys per field](#data-keys-per-field-decided-in-the-vault-d1-and-d2).
 - `IDataKeySession.WrappedKey`: the wrapped key to store next to the envelopes.
 
 Rules:
@@ -110,7 +111,12 @@ A `WrappedDataKey` has three parts. Later entities store them as three propertie
 | `Algorithm` | `DataKeyAlgorithm` (string) | `RSA-OAEP-256` or `development-A256GCM`. |
 | `Value` | `WrappedDataKey` (binary, at most 512 bytes) | Key Vault: 256, 384 or 512 bytes (RSA 2048, 3072 or 4096). Development: exactly 60 bytes. |
 
-Each envelope is one binary property. No table exists for secrets yet, so nothing is stored by this feature.
+The vault stores the wrapped keys in its `Vaults` table (see [STORAGE.md](STORAGE.md#vaults-table)):
+
+- The key ring row holds the per-owner metadata key (`DataKeyId`, `DataKeyAlgorithm`, `WrappedDataKey`).
+- Each secret row holds its own per-secret key in the same three properties (`DataKeyId`, `DataKeyAlgorithm`, `WrappedDataKey`), and each folder row uses the metadata key.
+
+Each envelope is one binary property.
 
 ## Key wrap providers
 
@@ -215,7 +221,7 @@ Your Azure identity needs the Key Vault Crypto User role on that key. This is a 
 
 ## One-time links
 
-One-time link contents are encrypted in the browser with a key that lives in the URL fragment. The browser uses Web Crypto AES-GCM, with a 12-byte IV and the ciphertext followed by the tag, which has the same shape as section 4.3 of the plan. The server stores that blob as opaque bytes and checks only its size.
+One-time link contents are encrypted in the browser with a key that lives in the URL fragment. The browser uses Web Crypto AES-GCM, with a 12-byte IV and the ciphertext followed by the tag, which has the same shape as the envelope format above. The server stores that blob as opaque bytes and checks only its size.
 
 The server core never receives a link key and never decrypts link payloads. It rejects version bytes `0x80` to `0xFF`. JavaScript interop with Web Crypto is limited to this one case (OTL-3).
 
@@ -226,16 +232,60 @@ The server core never receives a link key and never decrypts link payloads. It r
 - **Key material in the AppHost user secrets is plain text on the developer's machine.** It is development only, and the provider refuses to run outside Development.
 - **The server can decrypt everything it can unwrap.** That is the design (not zero-knowledge). Access to the Key Vault key is access to all data under it.
 
-## Open decision: data key per field (D5 and D5a)
+## Data keys per field (decided in the vault, D1 and D2)
 
-This branch does not decide which fields share a data key. The recommendation for `feature/vault-and-folders`:
+Decided for the vault on this branch:
 
-- Names, tags and folder names under one per-user metadata data key, so listing a page of secrets needs one unwrap per request.
-- Username, value, notes and URL under a per-secret data key, so each reveal needs one unwrap.
+- **D1.** Names, usernames, URLs, tags and folder names are encrypted under one **per-user metadata data key**. It is wrapped once in the key ring row. Listing a page of secrets needs one unwrap per request, whatever the page size. Values and notes are encrypted under a **per-secret data key**, so each reveal needs one unwrap. The history values use the secret's per-secret key, with the version id as item id.
+- **D2.** A transfer moves metadata fields between two users' metadata keys. `ReEncrypt` cannot do that, because it works only inside one session. The planned contract is a cross-session method, `IDataKeySession.ReEncryptTo(source context, target session, target context, envelope)`, which decrypts with the source session and encrypts with the target session without creating a string. **It is built** (`DataKeySession.ReEncryptTo`, Stage 6, TRF-7). The target must be a `DataKeySession` (else `ArgumentException`), both sessions must be live, and the output is zeroed on failure. Per-secret fields keep using `ReEncrypt`.
 
-The problem (D5a): `ReEncrypt` works only inside one session, so source and target share one data key. Moving metadata fields from the source user's metadata key to the target user's key during a transfer (TRF-7) cannot be done with this API. Either the API needs a cross-session re-encrypt, or the fields that move in a transfer must stay under per-secret data keys.
+Sharing (Stage 5) opens the owner's key ring on the server (`OpenForReadAsync`) to decrypt only the rows that are shared. The unwrap count per sharing endpoint is not recorded in the table above.
 
-`feature/vault-and-folders` or `feature/offboarding-transfers`, whichever comes first, must decide and record the choice in its plan.
+### Field table (persisted format)
+
+The purposes and item ids are part of the persisted format. Changing them makes stored data undecryptable.
+
+| Field | Stored property | Key | Purpose | Item id | Owner id | Plaintext limit |
+|---|---|---|---|---|---|---|
+| Secret name | `NameEnvelope` | metadata key | `secret.name` | secret id | owner | 1 to 200 characters |
+| Username | `UsernameEnvelope` | metadata key | `secret.username` | secret id | owner | up to 256 characters |
+| URL | `UrlEnvelope` | metadata key | `secret.url` | secret id | owner | up to 2,048 characters, absolute `http` or `https` |
+| Tags | `TagsEnvelope` | metadata key | `secret.tags` | secret id | owner | JSON array of up to 20 tags, 1 to 50 characters each |
+| Value | `ValueEnvelope` | per-secret key | `secret.value` | secret id | owner | 1 to 8,192 characters |
+| Notes | `NotesEnvelope` | per-secret key | `secret.notes` | secret id | owner | 1 to 8,192 characters |
+| History value | `ValueEnvelope` of the history row | the secret's per-secret key | `secret.value.history` | version id | owner | same as value |
+| Folder name | `NameEnvelope` | metadata key | `folder.name` | folder id | owner | 1 to 100 characters |
+
+- A full secret row (two maximum envelopes plus small fields) stays under 70 KB, inside the 1 MB entity limit.
+- Names, usernames, URLs, tags and folder names are trimmed before encryption. Values and notes are stored byte-exact.
+- Each secret and folder row stores the `MetadataKeyVersion` it was encrypted under. The key ring stores the current version (1). A mismatch reads as damaged, so a future metadata key change has room to exist.
+- History value rows use the version id as item id (decided as ENC-D24), so a history envelope cannot be swapped into the current value.
+
+### Unwraps per endpoint
+
+These are the counts in the handlers. "Metadata" means the vault metadata key, and "secret" means the per-secret key.
+
+| Endpoint | Unwraps |
+|---|---|
+| List secrets, search, get secret, list folders, recycle bin list | 1 (metadata) |
+| Create secret | 1 (metadata), or 0 on the very first create, which creates the metadata key. The secret key is wrapped, not unwrapped. |
+| Update secret | 1 (metadata), plus 1 (secret) when the value or notes change |
+| Move secret | 1 (metadata, for the response) |
+| Reveal value or notes | 1 (secret) |
+| Reveal history version | 1 (secret) |
+| Restore history version | 2 (metadata, for the response, and secret) |
+| Create folder, rename folder, move folder | 1 (metadata). Create is 0 on the very first create. |
+| Restore recycled secret, restore recycled folder | 1 (metadata) |
+| Delete secret, delete folder, purge recycled secret or folder | 0 |
+
+### History and crypto-shredding
+
+- An update that replaces a value re-encrypts the current value from (`secret.value`, secret id) to (`secret.value.history`, version id), under the same per-secret key. No plaintext string is created.
+- Purging a recycled secret deletes its only copy of the per-secret wrapped key (the `bs_` row) and every history row in the same transaction. Any leftover history envelope could not be decrypted, so the value is gone even if a copy of the envelope survives.
+
+### Residual risk for the vault
+
+The tables keep history rows for at most 20 previous values per secret. A rollback of one whole row cannot be detected by AES-GCM alone (see the residual risks above). The audit log records every reveal and copy.
 
 ## Testing
 
@@ -243,7 +293,7 @@ The problem (D5a): `ReEncrypt` works only inside one session, so source and targ
 - `FakeKeyVault` (unit tests): a `CryptographyClient` subclass with real in-memory RSA-OAEP-256 per key version. It covers call counts, rotation and zeroing.
 - `FakeKeyVaultHttpHandler` (unit tests): an `HttpMessageHandler` behind the real Key Vault SDK through `HttpClientTransport`. It covers challenge authentication, local versus remote wraps, the wire algorithm, host pinning and SDK logs. Log checks use `KeyMaterialLeakAssert`.
 - No live Azure in CI. Every Key Vault test uses the fakes.
-- `EncryptionPerformanceTests` (`Category=Performance`, run in CI on pushes to `main`) check the budgets in the plan (for example 50 microseconds average for 1 KiB encryption and a 100,000-nonce uniqueness check).
+- `EncryptionPerformanceTests` (`Category=Performance`, run in CI on pushes to `main`) check the time budgets (for example 50 microseconds average for 1 KiB encryption and a 100,000-nonce uniqueness check).
 - Benchmarks: `tests/SharpVault.Benchmarks` uses BenchmarkDotNet on the development provider. Run it with:
 
   ```bash

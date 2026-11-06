@@ -1,0 +1,61 @@
+<SvDialog IdPrefix="folder-delete" Title="Delete folder" Open="@Open" Danger="true" Busy="@Busy" OnCancel="@OnCancel">
+    <ChildContent>
+        <SvStack Spacing="3">
+            <SvText>Choose what happens to the contents of <strong>@FolderName</strong>. Everything deleted goes to the recycle bin. @SharedItemStatusText.SharingNoticeOnDelete</SvText>
+            <SvRadioGroup TValue="FolderDeleteModeDto?" Value="@_mode" ValueChanged="@SetMode">
+                <SvRadio Id="folder-delete-mode-move" TValue="FolderDeleteModeDto?" Value="@MoveMode">Move the contents to the parent folder, then delete this folder</SvRadio>
+                <SvRadio Id="folder-delete-mode-delete" TValue="FolderDeleteModeDto?" Value="@DeleteMode">Delete this folder and everything in it</SvRadio>
+            </SvRadioGroup>
+            @if (ErrorText is not null)
+            {
+                <SvAlert Id="folder-delete-error" Kind="AlertKind.Danger">@ErrorText</SvAlert>
+            }
+        </SvStack>
+    </ChildContent>
+    <Footer>
+        <SvButton Id="folder-delete-cancel" Variant="SvButtonVariant.Secondary" Disabled="@Busy" OnClick="@HandleCancelAsync">Cancel</SvButton>
+        <SvButton Id="folder-delete-confirm" Variant="SvButtonVariant.Danger" Busy="@Busy" Disabled="@(_mode is null)" OnClick="@HandleConfirmAsync">Delete</SvButton>
+    </Footer>
+</SvDialog>
+
+@code {
+    private static readonly FolderDeleteModeDto? MoveMode = FolderDeleteModeDto.MoveToParent;
+    private static readonly FolderDeleteModeDto? DeleteMode = FolderDeleteModeDto.DeleteContents;
+
+    private FolderDeleteModeDto? _mode;
+    private bool _wasOpen;
+
+    [Parameter]
+    public bool Open { get; set; }
+
+    [Parameter]
+    public string FolderName { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public string? ErrorText { get; set; }
+
+    [Parameter]
+    public EventCallback<FolderDeleteModeDto> OnConfirm { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen)
+        {
+            _mode = null;
+        }
+
+        _wasOpen = Open;
+    }
+
+    private void SetMode(FolderDeleteModeDto? value) => _mode = value;
+
+    private Task HandleConfirmAsync() => _mode is { } mode && !Busy ? OnConfirm.InvokeAsync(mode) : Task.CompletedTask;
+
+    private Task HandleCancelAsync() => Busy ? Task.CompletedTask : OnCancel.InvokeAsync();
+}

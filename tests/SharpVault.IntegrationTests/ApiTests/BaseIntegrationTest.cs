@@ -30,7 +30,7 @@ public abstract class BaseIntegrationTest(ApiTestFactory factory) : IAsyncLifeti
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask DisposeAsync()
+    public virtual async ValueTask DisposeAsync()
     {
         await Factory.ResetStorageAsync(CancellationToken.None);
         GC.SuppressFinalize(this);
@@ -44,7 +44,7 @@ public abstract class BaseIntegrationTest(ApiTestFactory factory) : IAsyncLifeti
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var seededAt = DateTimeOffset.UtcNow;
-        foreach (var locked in new[] { TestUsers.LockedUser, TestUsers.LockedAdmin })
+        foreach (var locked in new[] { TestUsers.LockedUser, TestUsers.LockedAdmin, TestUsers.LockedRecipient })
         {
             if (await UserRows.GetAsync(GetUsersTable(), locked.ObjectId, cancellationToken) is null)
             {

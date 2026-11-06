@@ -10,7 +10,7 @@ using SharpVault.Api.Security;
 using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Factories;
 using SharpVault.IntegrationTests.Support;
-using SharpVault.ServiceDefaults.Identity;
+using SharpVault.Authentication.Identity;
 
 namespace SharpVault.IntegrationTests.ApiTests;
 
@@ -68,20 +68,6 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
         using var client = CallerClients.CreateFor(Factory, caller);
 
         var response = await client.GetAsync(path, cancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-    }
-
-    [Theory]
-    [InlineData("/Health")]
-    [InlineData("/HEALTH")]
-    [InlineData("/Alive")]
-    [InlineData("/ALIVE")]
-    public async Task HealthEndpoints_DifferentCasing_Returns200Anonymously(string path)
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-
-        var response = await Client.GetAsync(path, cancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }

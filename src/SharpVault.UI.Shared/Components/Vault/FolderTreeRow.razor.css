@@ -1,0 +1,25 @@
+.vault-tree-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+}
+
+.vault-tree-row ::deep .mud-link {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vault-tree-row ::deep .mud-icon-button,
+.vault-tree-row ::deep .mud-menu {
+    flex: 0 0 auto;
+}
+
+.vault-tree-row ::deep .vault-tree-spacer {
+    display: inline-block;
+    flex: 0 0 auto;
+    width: 48px;
+    height: 48px;
+}

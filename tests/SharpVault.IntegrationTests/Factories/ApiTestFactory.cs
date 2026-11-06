@@ -9,12 +9,17 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using SharpVault.Application.Common.Interfaces;
+using SharpVault.Infrastructure.Directory;
 using SharpVault.Infrastructure.Encryption;
 using SharpVault.Infrastructure.Storage;
 using SharpVault.IntegrationTests.Authentication;
+using SharpVault.IntegrationTests.Encryption;
 using SharpVault.IntegrationTests.Logging;
+using SharpVault.IntegrationTests.Support;
 using SharpVault.IntegrationTests.Storage;
 using Testcontainers.Azurite;
 
@@ -31,6 +36,10 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>, IAsyncLifet
     public StorageRequestRecorder StorageRequests { get; } = new();
 
     public CapturingLoggerProvider Logs { get; } = new();
+
+    public TestDirectoryHandler GraphDirectory { get; } = new();
+
+    public CountingKeyWrapProvider KeyWraps => Services.GetRequiredService<CountingKeyWrapProvider>();
 
     public string DevelopmentKeyMaterial { get; } = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
 
@@ -72,8 +81,11 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>, IAsyncLifet
         return client;
     }
 
-    public Task SeedUserAsync(TestUser user, string status, DateTimeOffset lastSignInAt, CancellationToken cancellationToken) =>
-        UserRows.InsertAsync(StorageAdminClient.GetTableClient(TableNames.Users), user, status, lastSignInAt, cancellationToken);
+    public async Task SeedUserAsync(TestUser user, string status, DateTimeOffset lastSignInAt, CancellationToken cancellationToken)
+    {
+        await StorageAdminClient.CreateTableIfNotExistsAsync(TableNames.Users, cancellationToken);
+        await UserRows.InsertAsync(StorageAdminClient.GetTableClient(TableNames.Users), user, status, lastSignInAt, cancellationToken);
+    }
 
     public async Task ResetStorageAsync(CancellationToken cancellationToken)
     {
@@ -95,6 +107,13 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>, IAsyncLifet
         builder.UseSetting($"ConnectionStrings:{TableStorageConnection.Name}", _azurite.GetConnectionString());
         TestIdentityProvider.ApplyApiSettings(builder);
         builder.UseSetting("UserAccess:CacheTtl", "00:00:00");
+        builder.UseSetting("RecycleBinPurge:Enabled", "false");
+        builder.UseSetting("Transfers:Enabled", "false");
+        builder.UseSetting("VaultRateLimits:RequestsPerMinute", "100000");
+        builder.UseSetting("VaultRateLimits:RevealsPerMinute", "100000");
+        builder.UseSetting("VaultRateLimits:ShareWritesPerMinute", "100000");
+        builder.UseSetting("VaultRateLimits:DirectorySearchesPerMinute", "100000");
+        builder.UseSetting("VaultRateLimits:AdminActionsPerMinute", "100000");
         builder.UseSetting($"{EncryptionOptions.SectionName}:{nameof(EncryptionOptions.DevelopmentKeyMaterial)}", DevelopmentKeyMaterial);
         builder.UseSetting("Logging:LogLevel:Default", "Debug");
         builder.UseSetting("Logging:LogLevel:Microsoft", "Debug");
@@ -106,6 +125,19 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>, IAsyncLifet
         {
             services.AddSingleton<HttpPipelinePolicy>(StorageRequests);
             TestIdentityProvider.ConfigureApi(services);
+            services.RemoveAll<GraphCredential>();
+            services.AddSingleton(new GraphCredential(new TestGraphCredential()));
+            services.AddHttpClient<IUserDirectory, GraphUserDirectory>().ConfigurePrimaryHttpMessageHandler(() => GraphDirectory);
+            services.RemoveAll<IEnvelopeEncryptor>();
+            services.AddSingleton(provider => new CountingKeyWrapProvider(provider.GetRequiredService<IKeyWrapProvider>()));
+            services.AddSingleton<IEnvelopeEncryptor>(provider => new EnvelopeEncryptor(provider.GetRequiredService<CountingKeyWrapProvider>(), provider.GetRequiredService<ILogger<EnvelopeEncryptor>>()));
         });
+    }
+
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        var host = base.CreateHost(builder);
+        EntraModeAssertion.Assert(host.Services);
+        return host;
     }
 }

@@ -3,7 +3,7 @@
 
 namespace SharpVault.UI.Shared.Services;
 
-public sealed record ApiResponse<T>(ApiCallStatus Status, T? Value)
+public sealed record ApiResponse<T>(ApiCallStatus Status, T? Value, string? Detail = null)
 {
     public static ApiResponse<T> Success(T value) => new(ApiCallStatus.Success, value);
 
@@ -11,5 +11,15 @@ public sealed record ApiResponse<T>(ApiCallStatus Status, T? Value)
 
     public static ApiResponse<T> AccessDenied() => new(ApiCallStatus.AccessDenied, default);
 
+    public static ApiResponse<T> ConfigurationMismatch() => new(ApiCallStatus.ConfigurationMismatch, default);
+
     public static ApiResponse<T> Failed() => new(ApiCallStatus.Failed, default);
+
+    public static ApiResponse<T> NotFound() => new(ApiCallStatus.NotFound, default);
+
+    public static ApiResponse<T> Conflict() => new(ApiCallStatus.Conflict, default);
+
+    public static ApiResponse<T> Invalid(string? detail) => new(ApiCallStatus.Invalid, default, detail);
+
+    public static ApiResponse<T> RateLimited() => new(ApiCallStatus.RateLimited, default);
 }

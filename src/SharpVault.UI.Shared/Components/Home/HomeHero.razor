@@ -1,0 +1,13 @@
+@inject IOptions<SignInPresentationOptions> SignInPresentation
+
+<SvPaper Id="home" Class="sv-hero">
+    <VaultDoor />
+    <div class="sv-hero__text">
+        <p class="sv-plate">Organisation vault</p>
+        <SvText Id="home-heading" Kind="SvTextKind.Display" HtmlTag="h1">SharpVault</SvText>
+        <SvText Id="home-tagline" Kind="SvTextKind.Subtitle" Secondary="true">Password and secrets manager for your organisation.</SvText>
+        <div class="sv-hero__actions">
+            <SignInLink Id="home-sign-in" Text="@SignInPresentation.Value.HomeButtonText" />
+        </div>
+    </div>
+</SvPaper>

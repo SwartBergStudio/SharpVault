@@ -1,0 +1,11 @@
+@page "/admin/transfers/{TransferId:guid}"
+@attribute [Authorize]
+
+<PageTitle>Transfer</PageTitle>
+
+<TransferDetail @key="TransferId" TransferId="TransferId" />
+
+@code {
+    [Parameter]
+    public Guid TransferId { get; set; }
+}

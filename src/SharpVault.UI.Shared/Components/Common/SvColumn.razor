@@ -1,0 +1,30 @@
+@typeparam TItem
+
+@code {
+    [CascadingParameter]
+    private SvTable<TItem>? Table { get; set; }
+
+    [Parameter, EditorRequired]
+    public string Header { get; set; } = string.Empty;
+
+    [Parameter]
+    public Func<TItem, string?>? Value { get; set; }
+
+    [Parameter]
+    public RenderFragment<TItem>? ChildContent { get; set; }
+
+    internal RenderFragment Render(TItem item) =>
+        ChildContent is not null
+            ? ChildContent(item)
+            : builder => builder.AddContent(0, Value?.Invoke(item));
+
+    protected override void OnInitialized()
+    {
+        if (Table is null)
+        {
+            throw new InvalidOperationException("SvColumn must be placed inside an SvTable.");
+        }
+
+        Table.Register(this);
+    }
+}

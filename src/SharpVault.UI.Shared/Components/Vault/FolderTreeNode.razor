@@ -1,0 +1,57 @@
+@{
+    var id = Node.Folder.Id.ToString("D");
+    var name = Node.DisplayName;
+    var selected = SelectedFolderId == Node.Folder.Id;
+    var hasChildren = Node.Children.Count > 0;
+    var expanded = hasChildren && Expanded.Contains(Node.Folder.Id);
+}
+<li id="@($"folder-node-{id}")">
+    <FolderTreeRow>
+        <Lead>
+            @if (hasChildren)
+            {
+                <SvIconButton Id="@($"folder-toggle-{id}")" Icon="@(expanded ? SvIcons.Collapse : SvIcons.Expand)" Label="@($"{(expanded ? "Collapse" : "Expand")} {name}")" OnClick="@(() => OnToggle.InvokeAsync(Node.Folder.Id))" />
+            }
+            else
+            {
+                <span class="vault-tree-spacer" aria-hidden="true"></span>
+            }
+        </Lead>
+        <ChildContent>
+            <SvLink Id="@($"folder-link-{id}")" Href="@VaultRoutes.Folder(Node.Folder.Id)" Selected="@selected" Title="@name">@name</SvLink>
+            <SvMenu Id="@($"folder-actions-{id}")" Label="@($"Actions for {name}")">
+                <SvMenuItem Id="@($"folder-new-child-{id}")" Icon="@SvIcons.Add" OnClick="@(() => Raise(FolderActionKind.NewChild))">New folder inside</SvMenuItem>
+                @if (!Node.Folder.IsDamaged)
+                {
+                    <SvMenuItem Id="@($"folder-rename-{id}")" Icon="@SvIcons.Edit" OnClick="@(() => Raise(FolderActionKind.Rename))">Rename</SvMenuItem>
+                }
+                <SvMenuItem Id="@($"folder-move-{id}")" Icon="@SvIcons.Move" OnClick="@(() => Raise(FolderActionKind.Move))">Move</SvMenuItem>
+                <SvMenuItem Id="@($"folder-share-{id}")" Icon="@SvIcons.Share" OnClick="@(() => Raise(FolderActionKind.Share))">Share</SvMenuItem>
+                <SvMenuItem Id="@($"folder-delete-{id}")" Icon="@SvIcons.Delete" OnClick="@(() => Raise(FolderActionKind.Delete))">Delete</SvMenuItem>
+            </SvMenu>
+        </ChildContent>
+    </FolderTreeRow>
+    @if (expanded)
+    {
+        <FolderTreeList Nodes="@Node.Children" SelectedFolderId="@SelectedFolderId" Expanded="@Expanded" OnToggle="@OnToggle" OnAction="@OnAction" />
+    }
+</li>
+
+@code {
+    [Parameter, EditorRequired]
+    public FolderNode Node { get; set; } = default!;
+
+    [Parameter]
+    public Guid? SelectedFolderId { get; set; }
+
+    [Parameter, EditorRequired]
+    public IReadOnlySet<Guid> Expanded { get; set; } = new HashSet<Guid>();
+
+    [Parameter]
+    public EventCallback<Guid> OnToggle { get; set; }
+
+    [Parameter]
+    public EventCallback<FolderActionRequest> OnAction { get; set; }
+
+    private Task Raise(FolderActionKind kind) => OnAction.InvokeAsync(new FolderActionRequest(kind, Node.Folder));
+}

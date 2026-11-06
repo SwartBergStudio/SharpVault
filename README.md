@@ -22,7 +22,7 @@ Blazor web app · .NET MAUI mobile and desktop apps · Azure Table Storage · Mi
 
 > ⚠️ **Status: Early development.** SharpVault has not been independently security-audited. Please don't use it as your only store for important credentials yet.
 >
-> So far the repository contains the solution foundation (build, local Aspire setup, storage registration, CI), the encryption core (envelope encryption and key wrap providers, which no feature uses yet), Microsoft Entra ID sign-in limited to one tenant with app roles, and the Vault Steel theme. There is no vault, sharing, lock or transfer feature yet. The API has one admin endpoint, a read-only user list. The unticked features below are planned and not built.
+> So far the repository contains the solution foundation (build, local Aspire setup, storage registration, CI), the encryption core (envelope encryption and key wrap providers), Microsoft Entra ID sign-in limited to one tenant with app roles, a local development sign-in for Development runs, and the Vault Steel theme on MudBlazor. The vault (secrets, folders, history, recycle bin and the password generator) is built on the `feature/local-debug-auth` branch, together with sharing with colleagues (Stage 5) and admin lock, unlock and transfers with second-admin approval (Stage 6). The work since the last commit is not committed or merged yet. One-time share links, scheduled locks and audit log search are not built. The unticked features below are planned and not built. Status and open items are in [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## ✨ Why SharpVault?
 
@@ -41,28 +41,31 @@ SharpVault is a team password manager for organisations that already run on Micr
 The full specification is in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
 ### Vault
-- [ ] Encrypted vault for logins, secure notes, API keys and cards
-- [ ] Folders and sub-folders, tags and search
-- [ ] Strong password and passphrase generator
-- [ ] Secret history with restore, and a recycle bin
+- [x] Encrypted vault for logins, secure notes, API keys and cards (see [docs/VAULT.md](docs/VAULT.md))
+- [x] Folders and sub-folders, tags and search
+- [x] Strong password and passphrase generator
+- [x] Secret history with restore, and a recycle bin (30 days, then purged)
 
-### Sharing
-- [ ] Share secrets or whole folders with colleagues in your Entra tenant (view, edit or manage)
+### Sharing (see [docs/SHARING.md](docs/SHARING.md))
+- [x] Share secrets or whole folders with colleagues in your Entra tenant (view or edit; only the owner can give manage). Local development uses the four local accounts.
+- [x] Shared with me, grouped by owner, with filing into your own folders
+- [x] Revoke a share at any time
 - [ ] One-time share links for anyone, destroyed after one view or when they expire
-- [ ] Each user sees only their own vault and what is shared with them
+- [x] Each user sees only their own vault and what is shared with them
 
-### Administration
-- [ ] Lock users out instantly, or schedule a lock for their last day
-- [ ] Transfer a user's secrets when they leave, are dismissed or pass away
-- [ ] Every transfer needs a written reason and approval by a second admin
-- [ ] Admins never see other users' secrets unless they receive them through an approved transfer
-- [ ] Append-only audit log of every reveal, share, lock and transfer, with search and CSV export
+### Administration (see [docs/TRANSFERS.md](docs/TRANSFERS.md))
+- [x] Lock users out: their next API call is refused, and an open page ends within about a minute (scheduled locks are not built yet)
+- [x] See a user's secret count and the shares they have given, on demand, with no names (the list itself makes no count calls)
+- [x] Transfer a user's vault when they leave, are dismissed or change role
+- [x] Every transfer needs a written reason and approval by a second admin
+- [x] Admins never see other users' secrets unless they receive them through an approved transfer or a share
+- [ ] Audit log search and CSV export (audit entries are already written for every reveal, share, lock and transfer)
 
 ### Security
-- [x] AES-256-GCM encryption with a unique key per secret, wrapped by your Azure Key Vault (encryption core only: no feature stores secrets yet)
+- [x] AES-256-GCM encryption with a unique key per secret, wrapped by your Azure Key Vault (the Key Vault provider is tested with fakes and is not provisioned yet)
 - [x] Microsoft Entra ID sign-in, limited to your tenant, with `SharpVault.Admin` and `SharpVault.User` roles
 - [ ] Managed identity access to Table Storage and Key Vault, no secrets in configuration
-- [ ] Clipboard auto-clear and idle auto-lock
+- [x] Clipboard auto-clear and idle auto-lock (the idle timeout is set by configuration, the clipboard timeout is fixed, and there is no admin screen yet)
 
 ### Platforms
 - [ ] Blazor web app
@@ -76,7 +79,7 @@ The full specification is in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
 ## 🔒 Security model
 
-SharpVault uses **server-side envelope encryption**. The encryption core is built, with no secret stored yet. The design and formats are in [docs/ENCRYPTION.md](docs/ENCRYPTION.md).
+SharpVault uses **server-side envelope encryption**. The encryption core is built and the vault stores secrets with it. The design and formats are in [docs/ENCRYPTION.md](docs/ENCRYPTION.md).
 
 ```
 Secret value ──► AES-256-GCM (random data key + nonce) ──► Encrypted value ──► Azure Table Storage
@@ -91,7 +94,7 @@ What exists today:
 - A development key wrap provider for local runs. It refuses to run outside the Development environment, and the AppHost generates its key material.
 - Entra ID sign-in is built for one tenant. The API accepts only v2 access tokens for its own scope, from the configured tenant, with a `SharpVault.User` or `SharpVault.Admin` role. Every request also checks the user's lock status. Setup is in [docs/ENTRA-SETUP.md](docs/ENTRA-SETUP.md).
 
-Secret values will be decrypted only when a user explicitly reveals or copies them, and every reveal will be audited. That part comes with the vault feature.
+Secret values and notes are decrypted only when the owner reveals or copies them, and every reveal and copy is audited before the text is returned. Names and other metadata are decrypted to build lists and search results. The vault rules are in [docs/VAULT.md](docs/VAULT.md) and the storage layout is in [docs/STORAGE.md](docs/STORAGE.md).
 
 **This is not a zero-knowledge design, on purpose.** Because admins must be able to transfer secrets when people leave, the application (through your Key Vault) can decrypt secrets. Whoever controls your Azure tenant and Key Vault controls access to the data, so protect those accordingly.
 
@@ -104,23 +107,27 @@ SharpVault/
 ├── SharpVault.slnx                   # Solution (Linux build and tests)
 ├── global.json, Directory.Build.props, Directory.Packages.props
 ├── src/
-│   ├── SharpVault.Domain/            # Core rules (user and audit entry types, no methods yet)
-│   ├── SharpVault.Application/       # CQRS via SwartBerg.Mediator, mapping, validation, user access gate
-│   ├── SharpVault.Infrastructure/    # Azure Table Storage (users, audit log), encryption core and key wrap providers
+│   ├── SharpVault.Dtos/              # API contracts shared by the API, the Web and the UI (no logic)
+│   ├── SharpVault.Domain/            # Core types (users, audit entries, vault items, maintenance lease)
+│   ├── SharpVault.Application/       # CQRS via SwartBerg.Mediator, mapping, validation, user access gate, vault features
+│   ├── SharpVault.PasswordGeneration/ # Password and passphrase generator (RandomNumberGenerator, EFF word list)
+│   ├── SharpVault.Infrastructure/    # Azure Table Storage (users, audit log, vaults, maintenance), encryption core and key wrap providers
+│   ├── SharpVault.Authentication/    # Entra ID identity, authentication mode (Entra or local) and the local development sign-in
 │   ├── SharpVault.Api/               # ASP.NET Core minimal API host
-│   ├── SharpVault.UI.Shared/         # Razor Class Library (shared UI)
+│   ├── SharpVault.UI.Shared/         # Razor Class Library (shared UI on MudBlazor, API clients)
 │   ├── SharpVault.Web/               # Blazor web app host
 │   ├── SharpVault.Maui/              # .NET MAUI Blazor Hybrid app (planned in feature/maui-app)
 │   ├── SharpVault.AppHost/           # Aspire orchestration for local development
-│   └── SharpVault.ServiceDefaults/   # OpenTelemetry, health checks, security headers, Entra identity helpers
+│   └── SharpVault.ServiceDefaults/   # OpenTelemetry, health checks, security headers, request limits
 ├── tests/
 │   ├── SharpVault.UnitTests/
 │   ├── SharpVault.IntegrationTests/  # Api and Web hosts with Azurite (Testcontainers)
+│   ├── SharpVault.E2ETests/          # Browser journeys in system Chrome against the built API and Web (Category=E2E, plus the SiteTour)
 │   ├── SharpVault.AppHost.Tests/     # Aspire AppHost model tests
 │   └── SharpVault.Benchmarks/        # BenchmarkDotNet benchmarks for encryption (not a test project)
 ├── eng/
 │   └── CoverageGate.cs               # Coverage threshold check used in CI
-├── docs/                             # Requirements, progress, local development, storage, testing, Entra setup, theme
+├── docs/                             # Requirements, progress, local development, storage, encryption, vault, sharing, transfers, testing, Entra setup, theme
 └── .github/                          # CI and Dependabot
 ```
 
@@ -135,8 +142,8 @@ SharpVault/
 | Application  | SwartBerg.Mediator (CQRS), Mapster, FluentValidation |
 | Storage      | Azure Table Storage (`Azure.Data.Tables`)           |
 | Keys         | Azure Key Vault (provider built, not provisioned)   |
-| Auth         | Microsoft Entra ID, Microsoft.Identity.Web (one tenant, app roles) |
-| Theme        | Vault Steel: CSS tokens, self-hosted Archivo and JetBrains Mono, see [docs/THEME.md](docs/THEME.md) |
+| Auth         | Microsoft Entra ID, Microsoft.Identity.Web (one tenant, app roles); local sign-in for Development runs |
+| Theme        | Vault Steel on MudBlazor 9.11.0, self-hosted Archivo and JetBrains Mono, see [docs/THEME.md](docs/THEME.md) |
 | Local dev    | .NET Aspire with a persistent Azurite container     |
 | Testing      | xUnit, bUnit, Testcontainers (Azurite), AutoFixture |
 
@@ -145,7 +152,8 @@ SharpVault/
 ### Prerequisites
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Aspire runs Azurite in a container, and the integration tests start one)
-- An Entra ID tenant with two app registrations, to sign in. The repository ships placeholders only. See [docs/ENTRA-SETUP.md](docs/ENTRA-SETUP.md). The tests do not need a tenant.
+- No Entra ID tenant is needed to run locally. With no Entra ID settings in Development, the web app offers a sign-in picker with four local development accounts. See [docs/LOCAL-DEV.md](docs/LOCAL-DEV.md).
+- To sign in with Entra ID, you need a tenant with two app registrations. The repository ships placeholders only. See [docs/ENTRA-SETUP.md](docs/ENTRA-SETUP.md). The tests do not need a tenant.
 - The .NET MAUI workload is not needed yet, because the MAUI project is planned in `feature/maui-app`.
 
 ### Clone and run
@@ -156,19 +164,21 @@ cd SharpVault
 dotnet run --project src/SharpVault.AppHost
 ```
 
-The API and the web app read their Entra settings when they start, and they stop with an error if the tenant or client ids are missing. Set them with `dotnet user-secrets` first, as described in [docs/ENTRA-SETUP.md](docs/ENTRA-SETUP.md). After that the Aspire dashboard opens with the API, the web app and Azurite running. Azurite uses a persistent container and data volume, so your local data survives between debug sessions. For the HTTPS profile, run `dotnet dev-certs https --trust` if you get a certificate error.
+With no Entra ID settings in Development, the web app starts in local mode. Its sign-in page is a picker with four local accounts, and no Entra ID tenant is needed. To sign in with Entra ID instead, set the settings described in [docs/ENTRA-SETUP.md](docs/ENTRA-SETUP.md). Both hosts read the same settings at startup. They stop with an error if only one of the two ids is set, or if neither is set outside Development.
 
-The web app has a home page with a sign-in link, an account page, and access-denied, signed-out and sign-in-error pages. The API answers `/health` and `/alive` anonymously, returns 401 without a valid token, and returns 403 for a signed-in caller who has no accepted role or who is locked. The OpenAPI document and Scalar are available in Development only.
+After startup the Aspire dashboard shows the API, the web app and Azurite. Azurite uses a persistent container and data volume, so your local data survives between debug sessions. For the HTTPS profile, run `dotnet dev-certs https --trust` if you get a certificate error.
 
-See [docs/LOCAL-DEV.md](docs/LOCAL-DEV.md) for profiles, wiping local data and coverage commands, and [docs/THEME.md](docs/THEME.md) for the theme.
+The web app has a home page with a sign-in link. Signed-in users who open `/` go to the vault, and the side navigation has no Home link. It also has a vault for signed-in users (secrets, folders, history and the recycle bin), a "Shared with me" page, an account page, an admin users page for administrators, an admin transfers page for administrators (new transfers, approvals and the transfer detail), and access-denied, signed-out, sign-in-error and not-found pages. The API answers `/health` and `/alive` anonymously, returns 401 without a valid token, and returns 403 for a signed-in caller who has no accepted role or who is locked. The OpenAPI document and Scalar are available in Development only. Local mode details are in [docs/LOCAL-DEV.md](docs/LOCAL-DEV.md).
+
+See [docs/LOCAL-DEV.md](docs/LOCAL-DEV.md) for profiles, wiping local data, local mode and coverage commands, and [docs/THEME.md](docs/THEME.md) for the theme.
 
 ### Run the tests
 
 ```bash
-dotnet test SharpVault.slnx --filter "Category!=Performance"
+dotnet test SharpVault.slnx --filter "Category!=Performance&Category!=E2E&Category!=SiteTour"
 ```
 
-Integration tests start their own Azurite container with Testcontainers, so Docker must be running. See [docs/TESTING.md](docs/TESTING.md) for the test projects and helpers.
+Integration tests start their own Azurite container with Testcontainers, so Docker must be running. The browser journeys (`Category=E2E`) need Docker, the system Chrome and a built API and Web. The screenshot tour (`Category=SiteTour`) is run by hand. See [docs/TESTING.md](docs/TESTING.md) for the test projects, helpers and the commands.
 
 ## 🗺️ Roadmap
 

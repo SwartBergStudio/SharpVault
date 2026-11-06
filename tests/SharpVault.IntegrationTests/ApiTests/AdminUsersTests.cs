@@ -243,6 +243,36 @@ public sealed class AdminUsersTests(ApiTestFactory factory) : ApiSecurityTestBas
     }
 
     [Theory]
+    [InlineData("abc")]
+    [InlineData("1e2")]
+    [InlineData("5.5")]
+    [InlineData("-1")]
+    [InlineData("99999999999999999999")]
+    public async Task AdminUsers_UnparsableAndZeroPageSize_ReturnIdenticalProblemResponses(string unparsable)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        SetAuthenticatedClient(TestUsers.Admin);
+
+        var zero = await Client.GetAsync($"{AdminUsersPath}?pageSize=0", cancellationToken);
+        var other = await Client.GetAsync($"{AdminUsersPath}?pageSize={unparsable}", cancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, zero.StatusCode);
+        Assert.Equal(zero.StatusCode, other.StatusCode);
+        Assert.Equal(zero.Content.Headers.ContentType?.ToString(), other.Content.Headers.ContentType?.ToString());
+        var zeroBody = await WithoutTraceIdAsync(zero, cancellationToken);
+        var otherBody = await WithoutTraceIdAsync(other, cancellationToken);
+        Assert.Contains("PageSize", zeroBody, StringComparison.Ordinal);
+        Assert.Equal(zeroBody, otherBody);
+    }
+
+    private static async Task<string> WithoutTraceIdAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken))!.AsObject();
+        node.Remove("traceId");
+        return node.ToJsonString();
+    }
+
+    [Theory]
     [MemberData(nameof(InvalidContinuationTokens))]
     public async Task AdminUsers_InvalidContinuationToken_Returns400WithoutEchoingInput(string token)
     {

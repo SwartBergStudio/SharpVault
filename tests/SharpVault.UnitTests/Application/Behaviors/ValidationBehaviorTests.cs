@@ -7,14 +7,14 @@ using Mediator;
 using NSubstitute;
 using SharpVault.Application.Common.Behaviors;
 using SharpVault.Application.Common.Models;
-using SharpVault.Application.Features.Users.Dtos;
 using SharpVault.Application.Features.Users.Queries;
+using SharpVault.Dtos.Users;
 
 namespace SharpVault.UnitTests.Application.Behaviors;
 
 public sealed class ValidationBehaviorTests
 {
-    private static readonly Result<UserPageDto> Expected = Result<UserPageDto>.Success(new UserPageDto([], null));
+    private static readonly Result<UserPageDto> Expected = Result<UserPageDto>.Success(new UserPageDto());
 
     private int _nextCalls;
 

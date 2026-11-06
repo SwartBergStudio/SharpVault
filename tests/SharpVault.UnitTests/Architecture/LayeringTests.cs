@@ -12,11 +12,14 @@ namespace SharpVault.UnitTests.Architecture;
 public sealed class LayeringTests
 {
     private const string Domain = "SharpVault.Domain";
+    private const string Dtos = "SharpVault.Dtos";
+    private const string Authentication = "SharpVault.Authentication";
     private const string Application = "SharpVault.Application";
     private const string Infrastructure = "SharpVault.Infrastructure";
     private const string ServiceDefaults = "SharpVault.ServiceDefaults";
     private const string Api = "SharpVault.Api";
     private const string UiShared = "SharpVault.UI.Shared";
+    private const string PasswordGeneration = "SharpVault.PasswordGeneration";
     private const string Web = "SharpVault.Web";
 
     private const string AuthenticationHandlerName = "Microsoft.AspNetCore.Authentication.AuthenticationHandler`1";
@@ -24,7 +27,7 @@ public sealed class LayeringTests
     private const string ComponentBaseName = "Microsoft.AspNetCore.Components.ComponentBase";
 
     public static TheoryData<string> ProductionAssemblyNames { get; } =
-        [Domain, Application, Infrastructure, ServiceDefaults, Api, UiShared, Web];
+        [Domain, Dtos, Application, Infrastructure, Authentication, ServiceDefaults, Api, UiShared, PasswordGeneration, Web];
 
     [Fact]
     public void Domain_ReferencedAssemblies_ContainNoOtherSharpVaultProject()
@@ -47,13 +50,59 @@ public sealed class LayeringTests
     }
 
     [Fact]
-    public void Application_ReferencedAssemblies_ContainOnlyDomainAmongSharpVaultProjects()
+    public void Application_ReferencedAssemblies_ContainOnlyDomainAndDtosAmongSharpVaultProjects()
     {
         var sharpVaultReferences = ReferencedNames(Application)
             .Where(name => name.StartsWith("SharpVault.", StringComparison.Ordinal))
             .ToList();
 
-        Assert.All(sharpVaultReferences, name => Assert.Equal(Domain, name));
+        Assert.All(sharpVaultReferences, name => Assert.Contains(name, new[] { Domain, Dtos }));
+    }
+
+    [Fact]
+    public void Dtos_ReferencedAssemblies_ContainNoOtherSharpVaultProject()
+    {
+        var referenced = ReferencedNames(Dtos);
+
+        Assert.DoesNotContain(referenced, name => name.StartsWith("SharpVault.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Authentication_ReferencedAssemblies_ContainNoOtherSharpVaultProject()
+    {
+        var referenced = ReferencedNames(Authentication);
+
+        Assert.DoesNotContain(referenced, name => name.StartsWith("SharpVault.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void UiShared_SharpVaultReferences_AreOnlyDtosAndPasswordGeneration()
+    {
+        var sharpVaultReferences = ReferencedNames(UiShared)
+            .Where(name => name.StartsWith("SharpVault.", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.All(sharpVaultReferences, name => Assert.Contains(name, new[] { Dtos, PasswordGeneration }));
+    }
+
+    [Fact]
+    public void PasswordGeneration_ReferencedAssemblies_ContainNoSharpVaultOrFrameworkProject()
+    {
+        var referenced = ReferencedNames(PasswordGeneration);
+
+        Assert.DoesNotContain(referenced, name => name.StartsWith("SharpVault.", StringComparison.Ordinal));
+        Assert.DoesNotContain(referenced, name => name.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal));
+        Assert.DoesNotContain(referenced, name => name.StartsWith("Azure.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PasswordGenerationProjectFile_PackageReferences_AreEmpty()
+    {
+        var projectFile = Path.Combine(RepositoryRoot.Path, "src", PasswordGeneration, PasswordGeneration + ".csproj");
+
+        var packages = System.Xml.Linq.XDocument.Load(projectFile).Descendants("PackageReference");
+
+        Assert.Empty(packages);
     }
 
     [Fact]
@@ -119,12 +168,15 @@ public sealed class LayeringTests
 
     [Theory]
     [InlineData(Domain, new string[0])]
-    [InlineData(Application, new[] { Domain })]
+    [InlineData(Dtos, new string[0])]
+    [InlineData(Application, new[] { Domain, Dtos })]
     [InlineData(Infrastructure, new[] { Application })]
+    [InlineData(Authentication, new string[0])]
     [InlineData(ServiceDefaults, new string[0])]
-    [InlineData(Api, new[] { Application, Infrastructure, ServiceDefaults })]
-    [InlineData(UiShared, new string[0])]
-    [InlineData(Web, new[] { UiShared, ServiceDefaults })]
+    [InlineData(Api, new[] { Application, Infrastructure, ServiceDefaults, Authentication, Dtos })]
+    [InlineData(UiShared, new[] { Dtos, PasswordGeneration })]
+    [InlineData(PasswordGeneration, new string[0])]
+    [InlineData(Web, new[] { UiShared, ServiceDefaults, Authentication })]
     public void ProjectFiles_ProjectReferences_MatchTheAllowedLayering(string project, string[] allowed)
     {
         var projectFile = Path.Combine(RepositoryRoot.Path, "src", project, project + ".csproj");
@@ -278,7 +330,7 @@ public sealed class LayeringTests
         Assert.Empty(offenders);
     }
 
-    private static string[] ProductionAssemblyNamesList() => [Domain, Application, Infrastructure, ServiceDefaults, Api, UiShared, Web];
+    private static string[] ProductionAssemblyNamesList() => [Domain, Dtos, Application, Infrastructure, Authentication, ServiceDefaults, Api, UiShared, PasswordGeneration, Web];
 
     private static List<string> ReferencedNames(string assemblyName) =>
         Assembly.Load(new AssemblyName(assemblyName))

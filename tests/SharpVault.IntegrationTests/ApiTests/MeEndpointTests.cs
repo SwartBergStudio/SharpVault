@@ -4,12 +4,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using SharpVault.Application.Features.Users.Dtos;
+using SharpVault.Dtos.Users;
 using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Factories;
 using SharpVault.IntegrationTests.Storage;
 using SharpVault.IntegrationTests.Support;
-using SharpVault.UI.Shared.Models;
 
 namespace SharpVault.IntegrationTests.ApiTests;
 
@@ -32,7 +31,10 @@ public sealed class MeEndpointTests(ApiTestFactory factory) : ApiSecurityTestBas
 
         var profile = await response.Content.ReadFromJsonAsync<CurrentUserDto>(cancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(new CurrentUserDto(TestUsers.User.ObjectId, TestUsers.User.DisplayName, false), profile);
+        Assert.NotNull(profile);
+        Assert.Equal(TestUsers.User.ObjectId, profile.UserId);
+        Assert.Equal(TestUsers.User.DisplayName, profile.DisplayName);
+        Assert.False(profile.IsAdmin);
     }
 
     [Fact]
@@ -44,7 +46,10 @@ public sealed class MeEndpointTests(ApiTestFactory factory) : ApiSecurityTestBas
         var response = await Client.GetAsync(MePath, cancellationToken);
 
         var profile = await response.Content.ReadFromJsonAsync<CurrentUserDto>(cancellationToken);
-        Assert.Equal(new CurrentUserDto(TestUsers.Admin.ObjectId, TestUsers.Admin.DisplayName, true), profile);
+        Assert.NotNull(profile);
+        Assert.Equal(TestUsers.Admin.ObjectId, profile.UserId);
+        Assert.Equal(TestUsers.Admin.DisplayName, profile.DisplayName);
+        Assert.True(profile.IsAdmin);
     }
 
     [Fact]
@@ -209,29 +214,10 @@ public sealed class MeEndpointTests(ApiTestFactory factory) : ApiSecurityTestBas
         var first = await Client.GetFromJsonAsync<CurrentUserDto>(MePath, cancellationToken);
         var second = await Client.GetFromJsonAsync<CurrentUserDto>(MePath, cancellationToken);
 
-        Assert.Equal(first, second);
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        Assert.Equal(first.UserId, second.UserId);
+        Assert.Equal(first.DisplayName, second.DisplayName);
+        Assert.Equal(first.IsAdmin, second.IsAdmin);
     }
-
-    [Fact]
-    public async Task ApiContract_GetMe_DeserializesIntoUiSharedProfile()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        SetAuthenticatedClient(TestUsers.Admin);
-
-        var response = await Client.GetAsync(MePath, cancellationToken);
-
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        var dto = JsonSerializer.Deserialize<CurrentUserDto>(json, JsonSerializerOptions.Web);
-        var profile = JsonSerializer.Deserialize<CurrentUserProfile>(json, JsonSerializerOptions.Web);
-        Assert.NotNull(dto);
-        Assert.NotNull(profile);
-        Assert.Equal(dto.UserId, profile.UserId);
-        Assert.Equal(dto.DisplayName, profile.DisplayName);
-        Assert.Equal(dto.IsAdmin, profile.IsAdmin);
-        Assert.Equal(
-            typeof(CurrentUserDto).GetProperties().Where(property => property.Name != "EqualityContract").Select(Describe).Order(StringComparer.Ordinal),
-            typeof(CurrentUserProfile).GetProperties().Where(property => property.Name != "EqualityContract").Select(Describe).Order(StringComparer.Ordinal));
-    }
-
-    private static string Describe(System.Reflection.PropertyInfo property) => $"{property.Name}:{property.PropertyType.FullName}";
 }

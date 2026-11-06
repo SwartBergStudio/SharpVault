@@ -1,0 +1,37 @@
+@inherits SharpVaultComponentBase
+
+@if (Selected is { } chosen)
+{
+    <SvStack Row="true" Spacing="2" Center="true">
+        <span id="recipient-selected">@Describe(chosen)</span>
+        <SvButton Id="recipient-clear" Variant="SvButtonVariant.Ghost" Icon="@SvIcons.Close" Disabled="@Disabled" OnClick="@ClearAsync">Choose someone else</SvButton>
+    </SvStack>
+}
+else
+{
+    <SvStack Spacing="2">
+        <EditForm id="recipient-search-form" Model="@_model" OnSubmit="@SearchAsync" class="d-flex flex-wrap align-center gap-2">
+            <SvTextField Id="recipient-search-input" Label="Find a colleague" Value="@_model.Term" ValueChanged="@SetTerm" MaxLength="@MaxTermLength" Disabled="@(Disabled || _searching)" HelperText="Type at least 3 letters of a name or email address." />
+            <SvButton Id="recipient-search-submit" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Search" ButtonType="ButtonType.Submit" Busy="@_searching" Disabled="@Disabled">Search</SvButton>
+        </EditForm>
+        @if (_error is not null)
+        {
+            <SvAlert Id="recipient-error" Kind="AlertKind.Danger">@_error</SvAlert>
+        }
+        @if (_results is { Count: 0 })
+        {
+            <SvText Id="recipient-none" Secondary="true">@SharedItemStatusText.NoPeopleFound</SvText>
+        }
+        else if (_results is { } results)
+        {
+            <ul id="recipient-results" class="list-unstyled">
+                @foreach (var user in results)
+                {
+                    <li @key="user.Id">
+                        <SvButton Id="@($"recipient-result-{user.Id:D}")" Variant="SvButtonVariant.Ghost" Icon="@SvIcons.People" Disabled="@Disabled" OnClick="@(() => SelectAsync(user))">@Describe(user)</SvButton>
+                    </li>
+                }
+            </ul>
+        }
+    </SvStack>
+}

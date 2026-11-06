@@ -24,4 +24,7 @@ public sealed class ThrowingUserStore : IUserStore
 
     public Task<UserListPage> ListAsync(int pageSize, Guid? afterUserId, CancellationToken cancellationToken) =>
         throw new RequestFailedException(ServiceUnavailable, Message);
+
+    public Task<IReadOnlyList<User>> ListAdminsAsync(int limit, CancellationToken cancellationToken) =>
+        throw new RequestFailedException(ServiceUnavailable, Message);
 }

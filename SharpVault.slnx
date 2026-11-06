@@ -8,9 +8,12 @@
   <Folder Name="/src/">
     <Project Path="src/SharpVault.Api/SharpVault.Api.csproj" />
     <Project Path="src/SharpVault.AppHost/SharpVault.AppHost.csproj" />
+    <Project Path="src/SharpVault.Authentication/SharpVault.Authentication.csproj" />
     <Project Path="src/SharpVault.Application/SharpVault.Application.csproj" />
     <Project Path="src/SharpVault.Domain/SharpVault.Domain.csproj" />
+    <Project Path="src/SharpVault.Dtos/SharpVault.Dtos.csproj" />
     <Project Path="src/SharpVault.Infrastructure/SharpVault.Infrastructure.csproj" />
+    <Project Path="src/SharpVault.PasswordGeneration/SharpVault.PasswordGeneration.csproj" />
     <Project Path="src/SharpVault.ServiceDefaults/SharpVault.ServiceDefaults.csproj" />
     <Project Path="src/SharpVault.UI.Shared/SharpVault.UI.Shared.csproj" />
     <Project Path="src/SharpVault.Web/SharpVault.Web.csproj" />
@@ -18,6 +21,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/SharpVault.AppHost.Tests/SharpVault.AppHost.Tests.csproj" />
     <Project Path="tests/SharpVault.Benchmarks/SharpVault.Benchmarks.csproj" />
+    <Project Path="tests/SharpVault.E2ETests/SharpVault.E2ETests.csproj" />
     <Project Path="tests/SharpVault.IntegrationTests/SharpVault.IntegrationTests.csproj" />
     <Project Path="tests/SharpVault.UnitTests/SharpVault.UnitTests.csproj" />
   </Folder>

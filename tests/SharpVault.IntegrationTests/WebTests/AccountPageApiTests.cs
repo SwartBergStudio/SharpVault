@@ -2,10 +2,13 @@
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
 using System.Net;
+using SharpVault.Dtos.Users;
 using SharpVault.Infrastructure.Storage;
 using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Factories;
 using SharpVault.IntegrationTests.Storage;
+using SharpVault.IntegrationTests.Support;
+using SharpVault.UI.Shared.Services;
 
 namespace SharpVault.IntegrationTests.WebTests;
 
@@ -37,17 +40,17 @@ public sealed class AccountPageApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AccountPage_SignedInUser_RendersProfileFromApi()
+    public async Task Me_ApiClientThroughTheRealApi_ReturnsTheSignedInProfile()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await _web.CreateSignedInClientAsync(TestUsers.User, cancellationToken);
+        using var circuit = WebCircuit.For(_web, TestUsers.User);
 
-        var response = await client.GetAsync("/account", cancellationToken);
+        var response = await circuit.Me.GetCurrentUserAsync(cancellationToken);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync(cancellationToken);
-        Assert.Matches($"id=\"account-display-name\"[^>]*>{TestUsers.User.DisplayName}<", html);
-        Assert.Matches($"id=\"account-user-id\"[^>]*>{TestUsers.User.ObjectId:D}<", html);
+        Assert.Equal(ApiCallStatus.Success, response.Status);
+        Assert.Equal(TestUsers.User.DisplayName, response.Value!.DisplayName);
+        Assert.Equal(TestUsers.User.ObjectId, response.Value.UserId);
+        Assert.False(response.Value.IsAdmin);
         var users = _api.StorageAdminClient.GetTableClient(TableNames.Users);
         Assert.Equal(1, await UserRows.CountAsync(users, cancellationToken));
         Assert.NotNull(await UserRows.GetAsync(users, TestUsers.User.ObjectId, cancellationToken));
@@ -55,135 +58,131 @@ public sealed class AccountPageApiTests : IAsyncLifetime
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task AccountPage_SignedInAdmin_RendersAdminBadge()
+    public async Task Me_SignedInAdmin_ReturnsIsAdmin()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await _web.CreateSignedInClientAsync(TestUsers.Admin, cancellationToken);
+        using var circuit = WebCircuit.For(_web, TestUsers.Admin);
 
-        var html = await client.GetStringAsync("/account", cancellationToken);
+        var response = await circuit.Me.GetCurrentUserAsync(cancellationToken);
 
-        Assert.Contains("id=\"account-admin-badge\"", html, StringComparison.Ordinal);
+        Assert.Equal(ApiCallStatus.Success, response.Status);
+        Assert.True(response.Value!.IsAdmin);
     }
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task AccountPage_SignedInUser_HasNoAdminBadge()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await _web.CreateSignedInClientAsync(TestUsers.User, cancellationToken);
-
-        var html = await client.GetStringAsync("/account", cancellationToken);
-
-        Assert.DoesNotContain("id=\"account-admin-badge\"", html, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task AccountPage_SignedInUser_ShowsOnlyTheirOwnIdentity()
+    public async Task Me_SignedInUser_ShowsOnlyTheirOwnIdentity()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await _api.SeedUserAsync(TestUsers.OtherUser, UserRows.ActiveStatus, DateTimeOffset.UtcNow, cancellationToken);
-        using var client = await _web.CreateSignedInClientAsync(TestUsers.User, cancellationToken);
+        using var circuit = WebCircuit.For(_web, TestUsers.User);
 
-        var html = await client.GetStringAsync("/account", cancellationToken);
+        var response = await circuit.Me.GetCurrentUserAsync(cancellationToken);
 
-        Assert.DoesNotContain(TestUsers.OtherUser.ObjectId.ToString("D"), html, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(TestUsers.OtherUser.DisplayName, html, StringComparison.Ordinal);
-        Assert.DoesNotContain(TestUsers.OtherUser.Email!, html, StringComparison.Ordinal);
+        Assert.Equal(TestUsers.User.ObjectId, response.Value!.UserId);
+        Assert.NotEqual(TestUsers.OtherUser.ObjectId, response.Value.UserId);
+        Assert.NotEqual(TestUsers.OtherUser.DisplayName, response.Value.DisplayName);
+    }
+
+    [Theory]
+    [Trait("Category", "Security")]
+    [InlineData("LockedUser")]
+    [InlineData("LockedAdmin")]
+    public async Task Me_LockedUser_ReturnsAccessDenied(string name)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var locked = name == "LockedAdmin" ? TestUsers.LockedAdmin : TestUsers.LockedUser;
+        await _api.SeedUserAsync(locked, UserRows.LockedStatus, DateTimeOffset.UtcNow, cancellationToken);
+        using var circuit = WebCircuit.For(_web, locked);
+
+        var response = await circuit.Me.GetCurrentUserAsync(cancellationToken);
+
+        Assert.Equal(ApiCallStatus.AccessDenied, response.Status);
+        Assert.Null(response.Value);
     }
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task AccountPage_LockedUser_RedirectsToAccessDenied()
+    public async Task Me_NoRoleUser_ReturnsAccessDeniedAndCreatesNoRow()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await _api.SeedUserAsync(TestUsers.LockedUser, UserRows.LockedStatus, DateTimeOffset.UtcNow, cancellationToken);
-        using var client = await _web.CreateSignedInClientAsync(TestUsers.LockedUser, cancellationToken);
+        using var circuit = WebCircuit.For(_web, TestUsers.AuthenticatedWithoutRole);
 
-        var response = await client.GetAsync("/account", cancellationToken);
+        var response = await circuit.Me.GetCurrentUserAsync(cancellationToken);
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/account/access-denied", new Uri(new Uri("https://localhost"), response.Headers.Location!).AbsolutePath);
-        Assert.DoesNotContain(TestUsers.LockedUser.DisplayName, await response.Content.ReadAsStringAsync(cancellationToken), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task AccountPage_LockedAdmin_RedirectsToAccessDenied()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        await _api.SeedUserAsync(TestUsers.LockedAdmin, UserRows.LockedStatus, DateTimeOffset.UtcNow, cancellationToken);
-        using var client = await _web.CreateSignedInClientAsync(TestUsers.LockedAdmin, cancellationToken);
-
-        var response = await client.GetAsync("/account", cancellationToken);
-
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/account/access-denied", new Uri(new Uri("https://localhost"), response.Headers.Location!).AbsolutePath);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task AccountPage_NoRoleUser_RedirectsToAccessDenied()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await _web.CreateSignedInClientAsync(TestUsers.AuthenticatedWithoutRole, cancellationToken);
-
-        var response = await client.GetAsync("/account", cancellationToken);
-
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/account/access-denied", new Uri(new Uri("https://localhost"), response.Headers.Location!).AbsolutePath);
+        Assert.Equal(ApiCallStatus.AccessDenied, response.Status);
         Assert.Equal(0, await UserRows.CountAsync(_api.StorageAdminClient.GetTableClient(TableNames.Users), cancellationToken));
     }
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task AccountPage_GuestUser_RedirectsToAccessDenied()
+    public async Task Me_GuestUser_ReturnsAccessDenied()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await _web.CreateSignedInClientAsync(TestUsers.Guest, cancellationToken);
+        using var circuit = WebCircuit.For(_web, TestUsers.Guest);
 
-        var response = await client.GetAsync("/account", cancellationToken);
+        var response = await circuit.Me.GetCurrentUserAsync(cancellationToken);
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/account/access-denied", new Uri(new Uri("https://localhost"), response.Headers.Location!).AbsolutePath);
+        Assert.Equal(ApiCallStatus.AccessDenied, response.Status);
     }
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task AccountPage_OtherTenantUser_DoesNotRenderProfile()
+    public async Task Me_OtherTenantUser_DoesNotReturnTheProfile()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await _web.CreateSignedInClientAsync(TestUsers.OtherTenantUser, cancellationToken);
+        using var circuit = WebCircuit.For(_web, TestUsers.OtherTenantUser);
 
-        var response = await client.GetAsync("/account", cancellationToken);
+        var response = await circuit.Me.GetCurrentUserAsync(cancellationToken);
 
-        Assert.NotEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotEqual(ApiCallStatus.Success, response.Status);
+        Assert.Null(response.Value);
         Assert.Equal(0, await UserRows.CountAsync(_api.StorageAdminClient.GetTableClient(TableNames.Users), cancellationToken));
     }
 
     [Fact]
-    [Trait("Category", "Security")]
-    public async Task AccountPage_Rendered_ContainsNoAccessToken()
+    public async Task CurrentUserAccessor_TwoReadsInOneCircuit_ReturnTheSameCachedProfile()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await _web.CreateSignedInClientAsync(TestUsers.User, cancellationToken);
+        using var circuit = WebCircuit.For(_web, TestUsers.User);
 
-        var response = await client.GetAsync("/account", cancellationToken);
+        var first = await circuit.CurrentUser.GetAsync(cancellationToken);
+        var second = await circuit.CurrentUser.GetAsync(cancellationToken);
 
-        var html = await response.Content.ReadAsStringAsync(cancellationToken);
-        var token = TestTokens.ForObjectId(TestUsers.User.ObjectId);
-        Assert.DoesNotContain("eyJ", html, StringComparison.Ordinal);
-        foreach (var segment in token.Split('.'))
-        {
-            Assert.DoesNotContain(segment, html, StringComparison.Ordinal);
-        }
-
-        Assert.DoesNotContain(WebTestSupport.SetCookies(response), cookie => cookie.Contains("eyJ", StringComparison.Ordinal));
+        Assert.Equal(ApiCallStatus.Success, first.Status);
+        Assert.Same(first.Value, second.Value);
     }
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task AccountPage_ApiCall_TokenNotLoggedByWebOrApi()
+    public async Task AdminUsers_AdminThroughTheRealApi_ListsDirectoryFieldsOnly()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _api.SeedUserAsync(TestUsers.OtherUser, UserRows.ActiveStatus, DateTimeOffset.UtcNow, cancellationToken);
+        using var circuit = WebCircuit.For(_web, TestUsers.Admin);
+
+        var response = await circuit.AdminUsers.ListUsersAsync(50, null, cancellationToken);
+
+        Assert.Equal(ApiCallStatus.Success, response.Status);
+        Assert.Contains(response.Value!.Users, user => user.UserId == TestUsers.OtherUser.ObjectId && user.Status == UserStatusDto.Active);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task AdminUsers_UserThroughTheRealApi_ReturnsAccessDenied()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var circuit = WebCircuit.For(_web, TestUsers.User);
+
+        var response = await circuit.AdminUsers.ListUsersAsync(50, null, cancellationToken);
+
+        Assert.Equal(ApiCallStatus.AccessDenied, response.Status);
+        Assert.Null(response.Value);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task Shell_SignedIn_HtmlContainsNoTokenOrSegmentOfIt()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = await _web.CreateSignedInClientAsync(TestUsers.User, cancellationToken);
@@ -191,8 +190,28 @@ public sealed class AccountPageApiTests : IAsyncLifetime
         var response = await client.GetAsync("/account", cancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync(cancellationToken);
         var token = TestTokens.ForObjectId(TestUsers.User.ObjectId);
-        var parts = token.Split('.');
+        Assert.False(WebTestSupport.ContainsJwt(html), "The page contains a JWT-shaped string.");
+        foreach (var segment in token.Split('.'))
+        {
+            Assert.DoesNotContain(segment, html, StringComparison.Ordinal);
+        }
+
+        Assert.DoesNotContain(WebTestSupport.SetCookies(response), cookie => WebTestSupport.ContainsJwt(cookie));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task Me_ApiCall_TokenNotLoggedByWebOrApi()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var circuit = WebCircuit.For(_web, TestUsers.User);
+
+        var response = await circuit.Me.GetCurrentUserAsync(cancellationToken);
+
+        Assert.Equal(ApiCallStatus.Success, response.Status);
+        var parts = TestTokens.ForObjectId(TestUsers.User.ObjectId).Split('.');
         foreach (var logs in new[] { _web.Logs, _api.Logs })
         {
             Assert.False(logs.ContainsText(parts[0] + "." + parts[1]), "A token header and payload were logged.");
@@ -204,12 +223,12 @@ public sealed class AccountPageApiTests : IAsyncLifetime
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task AccountPage_SignedIn_NamesAndEmailsAreNotLoggedByWebOrApi()
+    public async Task Me_SignedIn_NamesAndEmailsAreNotLoggedByWebOrApi()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await _web.CreateSignedInClientAsync(TestUsers.User, cancellationToken);
+        using var circuit = WebCircuit.For(_web, TestUsers.User);
 
-        await client.GetAsync("/account", cancellationToken);
+        await circuit.Me.GetCurrentUserAsync(cancellationToken);
 
         foreach (var logs in new[] { _web.Logs, _api.Logs })
         {
@@ -220,12 +239,12 @@ public sealed class AccountPageApiTests : IAsyncLifetime
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task AccountPage_SignedIn_NeverQueriesStorageWithoutPartitionKey()
+    public async Task Me_SignedIn_NeverQueriesStorageWithoutPartitionKey()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = await _web.CreateSignedInClientAsync(TestUsers.User, cancellationToken);
+        using var circuit = WebCircuit.For(_web, TestUsers.User);
 
-        await client.GetAsync("/account", cancellationToken);
+        await circuit.Me.GetCurrentUserAsync(cancellationToken);
 
         Assert.Empty(_api.StorageRequests.QueriesWithoutPartitionKey());
     }

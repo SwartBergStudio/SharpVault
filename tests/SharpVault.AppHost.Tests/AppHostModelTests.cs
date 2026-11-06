@@ -21,8 +21,22 @@ public sealed class AppHostModelTests
     private const string AzuriteTag = "3.35.0";
     private const string AzuriteDataPath = "/data";
     private const int TestKeyMaterialByteCount = 48;
+    private const string TenantId = "5f0c1d2e-4b7a-4c3d-9e8f-00000000a001";
+    private const string ApiClientId = "5f0c1d2e-4b7a-4c3d-9e8f-00000000a002";
+    private const string WebClientId = "5f0c1d2e-4b7a-4c3d-9e8f-00000000a003";
+    private const string Instance = "https://login.microsoftonline.com/";
+    private const string WebSecret = "apphost-test-web-secret-value";
 
     private static readonly string TestKeyMaterial = Convert.ToBase64String(RandomNumberGenerator.GetBytes(TestKeyMaterialByteCount));
+
+    private static readonly string[] BlockedForwardedKeys =
+    [
+        $"--{AppHostResourceNames.TenantIdKey}=",
+        $"--{AppHostResourceNames.InstanceKey}=",
+        $"--{AppHostResourceNames.ApiClientIdKey}=",
+        $"--{AppHostResourceNames.WebClientIdKey}=",
+        $"--{AppHostResourceNames.WebClientSecretKey}=",
+    ];
 
     [Fact]
     public async Task AppHost_StorageEmulator_UsesPersistentLifetime()
@@ -364,6 +378,37 @@ public sealed class AppHostModelTests
         Assert.Empty(comments);
     }
 
+    [Theory]
+    [Trait("Category", "Security")]
+    [InlineData("UseLocalAccount")]
+    [InlineData("Authentication__")]
+    [InlineData("Authentication:")]
+    [InlineData("LocalAccount")]
+    public void AppHost_Source_DoesNotSetLocalAccountSettings(string forbidden)
+    {
+        foreach (var fileName in new[] { "AppHost.cs", "AppHostResourceNames.cs" })
+        {
+            var source = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "src", "SharpVault.AppHost", fileName));
+
+            Assert.DoesNotContain(forbidden, source, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Theory]
+    [Trait("Category", "Security")]
+    [InlineData(ApiName)]
+    [InlineData(WebName)]
+    public async Task AppHost_ProjectResource_SetsNoAuthenticationVariables(string resourceName)
+    {
+        var builder = await CreateBuilderAsync();
+        var project = Find<ProjectResource>(builder, resourceName);
+
+        var variables = await RunEnvironmentCallbacksAsync(project);
+
+        Assert.DoesNotContain(variables.Keys, key => key.StartsWith("Authentication", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(variables.Keys, key => key.Contains("LocalAccount", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     [Trait("Category", "Security")]
     public async Task AppHost_Model_RunsAsEmulatorOnlyInRunMode()
@@ -391,8 +436,245 @@ public sealed class AppHostModelTests
 
     private static async Task<IDistributedApplicationTestingBuilder> CreateBuilderAsync(string[] additionalArguments) =>
         await DistributedApplicationTestingBuilder.CreateAsync<Projects.SharpVault_AppHost>(
-            [$"--Parameters:{AppHostResourceNames.DevelopmentKeyMaterial}={TestKeyMaterial}", .. additionalArguments],
+            [
+                $"--Parameters:{AppHostResourceNames.DevelopmentKeyMaterial}={TestKeyMaterial}",
+                .. BlockedForwardedKeys,
+                .. additionalArguments,
+            ],
             TestContext.Current.CancellationToken);
+
+    private static string[] Configured(params (string Key, string Value)[] settings) =>
+        [.. settings.Select(setting => $"--{setting.Key}={setting.Value}")];
+
+    private static async Task<Dictionary<string, object>> VariablesOfAsync(string resourceName, params (string Key, string Value)[] settings)
+    {
+        var builder = await CreateBuilderAsync(Configured(settings));
+        return await RunEnvironmentCallbacksAsync(Find<ProjectResource>(builder, resourceName));
+    }
+
+    [Theory]
+    [InlineData(ApiName)]
+    [InlineData(WebName)]
+    [Trait("Category", "Security")]
+    public async Task AppHost_NothingConfigured_ForwardsNoAzureAdVariables(string resourceName)
+    {
+        var variables = await VariablesOfAsync(resourceName);
+
+        Assert.DoesNotContain(variables.Keys, key => key.StartsWith("AzureAd", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(variables.Keys, key => key.StartsWith("SharpVaultApi", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task AppHost_NothingConfigured_ModelHasNoExtraResources()
+    {
+        var builder = await CreateBuilderAsync();
+
+        Assert.DoesNotContain(builder.Resources, resource => resource.Name == AppHostResourceNames.WebClientSecretParameter);
+        Assert.Single(builder.Resources.OfType<ParameterResource>());
+    }
+
+    [Theory]
+    [InlineData(ApiName)]
+    [InlineData(WebName)]
+    public async Task AppHost_TenantConfigured_ForwardsTenantToApiAndWeb(string resourceName)
+    {
+        var variables = await VariablesOfAsync(resourceName, (AppHostResourceNames.TenantIdKey, TenantId));
+
+        Assert.Equal(TenantId, variables[AppHostResourceNames.TenantIdVariable]);
+    }
+
+    [Theory]
+    [InlineData(ApiName)]
+    [InlineData(WebName)]
+    public async Task AppHost_InstanceConfigured_ForwardsInstanceToApiAndWeb(string resourceName)
+    {
+        var variables = await VariablesOfAsync(resourceName, (AppHostResourceNames.InstanceKey, Instance));
+
+        Assert.Equal(Instance, variables[AppHostResourceNames.InstanceVariable]);
+    }
+
+    [Fact]
+    public async Task AppHost_ApiClientIdConfigured_ApiGetsItAsClientId()
+    {
+        var variables = await VariablesOfAsync(ApiName, (AppHostResourceNames.ApiClientIdKey, ApiClientId));
+
+        Assert.Equal(ApiClientId, variables[AppHostResourceNames.ClientIdVariable]);
+    }
+
+    [Fact]
+    public async Task AppHost_WebClientIdConfigured_WebGetsItAsClientId()
+    {
+        var variables = await VariablesOfAsync(WebName, (AppHostResourceNames.WebClientIdKey, WebClientId));
+
+        Assert.Equal(WebClientId, variables[AppHostResourceNames.ClientIdVariable]);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task AppHost_ApiClientIdConfigured_ApiDoesNotReceiveWebClientId()
+    {
+        var variables = await VariablesOfAsync(
+            ApiName,
+            (AppHostResourceNames.ApiClientIdKey, ApiClientId),
+            (AppHostResourceNames.WebClientIdKey, WebClientId));
+
+        Assert.Equal(ApiClientId, variables[AppHostResourceNames.ClientIdVariable]);
+        Assert.DoesNotContain(variables.Values, value => Equals(value, WebClientId));
+    }
+
+    [Fact]
+    public async Task AppHost_WebClientIdConfigured_WebDoesNotReceiveApiClientIdAsItsClientId()
+    {
+        var variables = await VariablesOfAsync(
+            WebName,
+            (AppHostResourceNames.ApiClientIdKey, ApiClientId),
+            (AppHostResourceNames.WebClientIdKey, WebClientId));
+
+        Assert.Equal(WebClientId, variables[AppHostResourceNames.ClientIdVariable]);
+    }
+
+    [Fact]
+    public async Task AppHost_ApiClientIdConfigured_WebGetsDerivedScope()
+    {
+        var variables = await VariablesOfAsync(WebName, (AppHostResourceNames.ApiClientIdKey, ApiClientId));
+
+        Assert.Equal($"api://{ApiClientId}/access_as_user", variables[AppHostResourceNames.ApiScopeVariable]);
+        Assert.False(variables.ContainsKey(AppHostResourceNames.ClientIdVariable));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task AppHost_WebSecretConfigured_AddsSecretParameterAndForwardsOnlyToWeb()
+    {
+        var builder = await CreateBuilderAsync(Configured((AppHostResourceNames.WebClientSecretKey, WebSecret)));
+        var web = Find<ProjectResource>(builder, WebName);
+
+        var variables = await RunEnvironmentCallbacksAsync(web);
+
+        var secret = Assert.Single(builder.Resources.OfType<ParameterResource>(), parameter => parameter.Name == AppHostResourceNames.WebClientSecretParameter);
+        Assert.True(secret.Secret);
+        Assert.Same(secret, variables[AppHostResourceNames.ClientCredentialSecretVariable]);
+        Assert.Equal(AppHostResourceNames.ClientSecretSourceType, variables[AppHostResourceNames.ClientCredentialSourceTypeVariable]);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task AppHost_WebSecretConfigured_ApiReceivesNoSecretOrCredentialVariables()
+    {
+        var variables = await VariablesOfAsync(ApiName, (AppHostResourceNames.WebClientSecretKey, WebSecret));
+
+        Assert.DoesNotContain(variables.Keys, key => key.Contains("ClientCredentials", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(variables.Keys, key => key.Contains("Secret", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(variables.Values, value => value is ParameterResource parameter && parameter.Name == AppHostResourceNames.WebClientSecretParameter);
+        Assert.DoesNotContain(variables.Values, value => Equals(value, WebSecret));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task AppHost_WebSecretConfigured_SecretIsAParameterResourceNotAPlainString()
+    {
+        var variables = await VariablesOfAsync(WebName, (AppHostResourceNames.WebClientSecretKey, WebSecret));
+
+        var value = variables[AppHostResourceNames.ClientCredentialSecretVariable];
+        Assert.IsType<ParameterResource>(value);
+        Assert.DoesNotContain(variables.Values, candidate => Equals(candidate, WebSecret));
+    }
+
+    [Theory]
+    [InlineData(ApiName)]
+    [InlineData(WebName)]
+    public async Task AppHost_WhitespaceValues_AreNotForwarded(string resourceName)
+    {
+        var variables = await VariablesOfAsync(
+            resourceName,
+            (AppHostResourceNames.TenantIdKey, "   "),
+            (AppHostResourceNames.InstanceKey, " "),
+            (AppHostResourceNames.ApiClientIdKey, "  "),
+            (AppHostResourceNames.WebClientIdKey, " "),
+            (AppHostResourceNames.WebClientSecretKey, "   "));
+
+        Assert.DoesNotContain(variables.Keys, key => key.StartsWith("AzureAd", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(variables.Keys, key => key.StartsWith("SharpVaultApi", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task AppHost_WhitespaceSecret_AddsNoParameter()
+    {
+        var builder = await CreateBuilderAsync(Configured((AppHostResourceNames.WebClientSecretKey, "  ")));
+
+        Assert.DoesNotContain(builder.Resources, resource => resource.Name == AppHostResourceNames.WebClientSecretParameter);
+    }
+
+    [Theory]
+    [InlineData(ApiName)]
+    [InlineData(WebName)]
+    public async Task AppHost_OnlyTenantConfigured_ForwardsOnlyTenant(string resourceName)
+    {
+        var variables = await VariablesOfAsync(resourceName, (AppHostResourceNames.TenantIdKey, TenantId));
+
+        var azureAd = variables.Keys.Where(key => key.StartsWith("AzureAd", StringComparison.OrdinalIgnoreCase)).ToList();
+        Assert.Equal([AppHostResourceNames.TenantIdVariable], azureAd);
+        Assert.DoesNotContain(variables.Keys, key => key.StartsWith("SharpVaultApi", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task AppHost_PublishMode_ForwardsNoAzureAdValuesAndDeclaresNoParameters()
+    {
+        var outputPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var builder = await CreateBuilderAsync(
+            [
+                "--operation", "publish", "--publisher", "manifest", "--output-path", outputPath,
+                .. Configured(
+                    (AppHostResourceNames.TenantIdKey, TenantId),
+                    (AppHostResourceNames.ApiClientIdKey, ApiClientId),
+                    (AppHostResourceNames.WebClientIdKey, WebClientId),
+                    (AppHostResourceNames.WebClientSecretKey, WebSecret)),
+            ]);
+
+            Assert.DoesNotContain(builder.Resources, resource => resource is ParameterResource);
+            foreach (var name in new[] { ApiName, WebName })
+            {
+                var variables = await RunEnvironmentCallbacksAsync(Find<ProjectResource>(builder, name));
+                Assert.DoesNotContain(variables.Keys, key => key.StartsWith("AzureAd", StringComparison.OrdinalIgnoreCase));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(outputPath))
+            {
+                Directory.Delete(outputPath, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task AppHost_DevelopmentKeyMaterial_StillGeneratedPersistedAndSecret()
+    {
+        var builder = await CreateBuilderAsync(Configured((AppHostResourceNames.WebClientSecretKey, WebSecret)));
+
+        var parameter = Assert.Single(builder.Resources.OfType<ParameterResource>(), candidate => candidate.Name == AppHostResourceNames.DevelopmentKeyMaterial);
+
+        Assert.True(parameter.Secret);
+        Assert.NotNull(parameter.Default);
+    }
+
+    [Theory]
+    [Trait("Category", "Security")]
+    [InlineData("ClientSecret = \"")]
+    [InlineData("ClientSecret=\"")]
+    [InlineData("secret: false")]
+    public void AppHost_Source_ContainsNoClientSecretLiteral(string forbidden)
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "src", "SharpVault.AppHost", "AppHost.cs"));
+
+        Assert.DoesNotContain(forbidden, source, StringComparison.Ordinal);
+        Assert.Contains("secret: true", source, StringComparison.Ordinal);
+    }
+
 
     private static async Task<Dictionary<string, object>> RunEnvironmentCallbacksAsync(ProjectResource resource)
     {

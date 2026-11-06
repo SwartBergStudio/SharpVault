@@ -10,7 +10,7 @@ using NSubstitute.ExceptionExtensions;
 using SharpVault.Api.Security;
 using SharpVault.Application.Common.Interfaces;
 using SharpVault.Application.Features.Users.Access;
-using SharpVault.ServiceDefaults.Identity;
+using SharpVault.Authentication.Identity;
 using SharpVault.UnitTests.Support;
 
 namespace SharpVault.UnitTests.Api.Security;

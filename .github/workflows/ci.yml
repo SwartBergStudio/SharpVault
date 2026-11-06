@@ -21,8 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
           dotnet-version: 10.0.x
       - name: Dotnet info
@@ -42,7 +42,7 @@ jobs:
       - name: Test
         run: >
           dotnet test SharpVault.slnx -c Release --no-build
-          --filter "Category!=Performance"
+          --filter "Category!=Performance&Category!=E2E&Category!=SiteTour"
           --settings tests/coverage.runsettings
           --collect "XPlat Code Coverage"
           --results-directory TestResults
@@ -56,10 +56,10 @@ jobs:
       - name: Coverage summary
         run: cat TestResults/coverage/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
       - name: Coverage gate
-        run: dotnet run eng/CoverageGate.cs -- TestResults/coverage/Cobertura.xml SharpVault.Application=80 SharpVault.Infrastructure=80 SharpVault.Domain.Encryption=95 SharpVault.Infrastructure.Encryption=95
+        run: dotnet run eng/CoverageGate.cs -- TestResults/coverage/Cobertura.xml SharpVault.Application=80 SharpVault.Infrastructure=80 SharpVault.Authentication=90 SharpVault.Domain.Encryption=95 SharpVault.Infrastructure.Encryption=95 SharpVault.PasswordGeneration=95
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: test-results
           path: TestResults
@@ -70,11 +70,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
           dotnet-version: 10.0.x
       - name: Performance tests
         run: dotnet test SharpVault.slnx -c Release --filter "Category=Performance"
       - name: Benchmarks smoke run
         run: dotnet run -c Release --project tests/SharpVault.Benchmarks -- --filter '*' --job dry
+
+  e2e:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
+        with:
+          dotnet-version: 10.0.x
+      - name: End-to-end tests
+        run: dotnet test tests/SharpVault.E2ETests -c Release --filter "Category=E2E"

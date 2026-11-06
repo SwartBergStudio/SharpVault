@@ -31,7 +31,7 @@ internal static partial class RazorTags
     }
 
     [GeneratedRegex(
-        "<(?<name>button|a|input|select|textarea|summary|NavLink|InputText|InputTextArea|InputSelect|InputCheckbox|InputNumber|InputDate|InputRadio|InputFile)\\b(?<attrs>(?:[^>\"']|\"[^\"]*\"|'[^']*')*)>",
+        "<(?<name>button|a|input|select|textarea|summary|NavLink|InputText|InputTextArea|InputSelect|InputCheckbox|InputNumber|InputDate|InputRadio|InputFile|MudButton|MudIconButton|MudTextField|MudSelect|MudNavLink|MudLink|MudMenuItem|MudCheckBox|MudSwitch|MudRadio|MudSlider|SvButton|SvIconButton|SvTextField|SvSelect|SvCheckbox|SvSlider)\\b(?<attrs>(?:[^>\"']|\"[^\"]*\"|'[^']*')*)>",
         RegexOptions.CultureInvariant)]
     private static partial Regex OpeningTags();
 }

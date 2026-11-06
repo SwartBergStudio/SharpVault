@@ -1,0 +1,12 @@
+@using System.Diagnostics
+
+@if (!string.IsNullOrEmpty(_requestId))
+{
+    <p id="error-request-id">Request ID: <code class="sv-mono">@_requestId</code></p>
+}
+
+@code {
+    private string? _requestId;
+
+    protected override void OnInitialized() => _requestId = Activity.Current?.Id;
+}

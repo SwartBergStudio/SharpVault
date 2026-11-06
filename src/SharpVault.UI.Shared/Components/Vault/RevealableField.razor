@@ -1,0 +1,176 @@
+@inherits SharpVaultComponentBase
+@inject VaultUiSettings Settings
+@inject TimeProvider Time
+@inject SecretClipboard Clipboard
+
+@if (ShowLabel)
+{
+    <SvText Id="@($"{IdPrefix}-label")" Kind="SvTextKind.Label">@Label</SvText>
+}
+<SecretField IdPrefix="@IdPrefix" Revealed="@(_held.Text is not null)">
+    <ChildContent>@_held.Text</ChildContent>
+    <Actions>
+        @if (_held.Text is null)
+        {
+            <SvIconButton Id="@($"{IdPrefix}-reveal")" Icon="@SvIcons.Show" Label="@($"Reveal {Label}")" OnClick="@RevealAsync" />
+        }
+        else
+        {
+            <SvIconButton Id="@($"{IdPrefix}-hide")" Icon="@SvIcons.Hide" Label="@($"Hide {Label}")" OnClick="@HideAsync" />
+        }
+        <SvIconButton Id="@($"{IdPrefix}-copy")" Icon="@SvIcons.Copy" Label="@($"Copy {Label}")" OnClick="@CopyAsync" />
+    </Actions>
+</SecretField>
+
+@code {
+    private HeldValue _held = new();
+    private CancellationTokenSource? _hideSource;
+    private bool _busy;
+
+    [Parameter, EditorRequired]
+    public string IdPrefix { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool ShowLabel { get; set; } = true;
+
+    [Parameter, EditorRequired]
+    public Func<RevealIntentDto, CancellationToken, Task<ApiResponse<RevealedValueDto>>> Reveal { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<ApiCallStatus> OnFailure { get; set; }
+
+    [Parameter]
+    public EventCallback OnCopied { get; set; }
+
+    [Parameter]
+    public EventCallback OnSucceeded { get; set; }
+
+    protected override void OnInitialized() => _held = Track(_held);
+
+    protected override void OnParametersSet()
+    {
+        ComponentIds.EnsureValid(IdPrefix, nameof(IdPrefix));
+        ArgumentException.ThrowIfNullOrWhiteSpace(Label);
+        ArgumentNullException.ThrowIfNull(Reveal);
+    }
+
+    private async Task RevealAsync()
+    {
+        var value = await FetchAsync(RevealIntentDto.View);
+        if (value is null)
+        {
+            return;
+        }
+
+        _held.Text = value;
+        StartAutoHide();
+    }
+
+    private async Task CopyAsync()
+    {
+        var value = await FetchAsync(RevealIntentDto.Copy);
+        if (value is null)
+        {
+            return;
+        }
+
+        if (await Clipboard.CopyAsync(value, Cts.Token))
+        {
+            await OnCopied.InvokeAsync();
+            return;
+        }
+
+        await OnFailure.InvokeAsync(ApiCallStatus.Failed);
+    }
+
+    private Task HideAsync()
+    {
+        CancelAutoHide();
+        _held.Text = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task<string?> FetchAsync(RevealIntentDto intent)
+    {
+        if (_busy)
+        {
+            return null;
+        }
+
+        _busy = true;
+        try
+        {
+            var response = await Reveal(intent, Cts.Token);
+            if (response.Status == ApiCallStatus.Success && response.Value is not null)
+            {
+                await OnSucceeded.InvokeAsync();
+                return response.Value.Value;
+            }
+
+            var status = response.Status == ApiCallStatus.Success ? ApiCallStatus.Failed : response.Status;
+            await OnFailure.InvokeAsync(status);
+            return null;
+        }
+        catch (OperationCanceledException) when (IsDisposed)
+        {
+            return null;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void StartAutoHide()
+    {
+        CancelAutoHide();
+        var source = CancellationTokenSource.CreateLinkedTokenSource(Cts.Token);
+        _hideSource = source;
+        _ = HideAfterDelayAsync(source);
+    }
+
+    private async Task HideAfterDelayAsync(CancellationTokenSource source)
+    {
+        try
+        {
+            await Task.Delay(Settings.RevealAutoHideDelay, Time, source.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(_hideSource, source))
+        {
+            return;
+        }
+
+        _held.Text = null;
+        _hideSource = null;
+        source.Dispose();
+        await InvokeStateChangedAsync();
+    }
+
+    private void CancelAutoHide()
+    {
+        var source = _hideSource;
+        _hideSource = null;
+        if (source is null)
+        {
+            return;
+        }
+
+        source.Cancel();
+        source.Dispose();
+    }
+
+    private sealed class HeldValue : IDisposable
+    {
+        public string? Text { get; set; }
+
+        public void Dispose() => Text = null;
+    }
+}

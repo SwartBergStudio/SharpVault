@@ -48,9 +48,17 @@ public static class CallerClients
         CallerKind.OtherTenantUser => TestUsers.OtherTenantUser,
         CallerKind.Guest => TestUsers.Guest,
         CallerKind.User => TestUsers.User,
+        CallerKind.OtherUser => TestUsers.OtherUser,
         CallerKind.Admin => TestUsers.Admin,
         CallerKind.LockedUser => TestUsers.LockedUser,
         CallerKind.LockedAdmin => TestUsers.LockedAdmin,
+        CallerKind.ShareViewer => TestUsers.ShareViewer,
+        CallerKind.ShareEditor => TestUsers.ShareEditor,
+        CallerKind.ShareManager => TestUsers.ShareManager,
+        CallerKind.ManagerGrantee => TestUsers.ManagerGrantee,
+        CallerKind.FolderViewer => TestUsers.FolderViewer,
+        CallerKind.FolderManager => TestUsers.FolderManager,
+        CallerKind.LockedRecipient => TestUsers.LockedRecipient,
         _ => null,
     };
 }

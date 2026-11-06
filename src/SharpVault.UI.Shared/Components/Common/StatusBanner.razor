@@ -1,0 +1,55 @@
+@inherits SharpVaultComponentBase
+@inject TimeProvider Time
+
+@if (Message.Text is not null)
+{
+    <SvAlert Id="@Id" Kind="@Message.Kind">@Message.Text</SvAlert>
+}
+
+@code {
+    private int _seenVersion = -1;
+
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public StatusMessage Message { get; set; } = default!;
+
+    [Parameter]
+    public TimeSpan ExpireAfter { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Message.Version == _seenVersion)
+        {
+            return;
+        }
+
+        _seenVersion = Message.Version;
+        if (Message.Text is not null && Message.Expires)
+        {
+            _ = ExpireAsync(Message.Version);
+        }
+    }
+
+    private async Task ExpireAsync(int version)
+    {
+        try
+        {
+            await Task.Delay(ExpireAfter, Time, Cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (version != Message.Version)
+        {
+            return;
+        }
+
+        Message.Clear();
+        _seenVersion = Message.Version;
+        await InvokeStateChangedAsync();
+    }
+}

@@ -1,0 +1,29 @@
+@inherits ErrorBoundaryBase
+@inject ILogger<AppErrorBoundary> Logger
+
+@if (CurrentException is null)
+{
+    @ChildContent
+}
+else
+{
+    <StatePanel Id="error-boundary" Kind="StatePanelKind.Danger" Icon="@SvIcons.Danger" HeadingLevel="1" Title="Something went wrong">
+        <ChildContent>
+            <p id="error-boundary-message">This page hit an unexpected problem. Try again, or go back to the start page.</p>
+        </ChildContent>
+        <Actions>
+            <SvButton Id="error-boundary-retry" Variant="SvButtonVariant.Primary" Icon="@SvIcons.Refresh" OnClick="@HandleRetry">Try again</SvButton>
+            <SvButton Id="error-boundary-home" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Home" Href="@AccountRoutes.Home">Start page</SvButton>
+        </Actions>
+    </StatePanel>
+}
+
+@code {
+    protected override Task OnErrorAsync(Exception exception)
+    {
+        Logger.LogError("A component failed with {ExceptionType}", exception.GetType().Name);
+        return Task.CompletedTask;
+    }
+
+    private void HandleRetry(MouseEventArgs args) => Recover();
+}

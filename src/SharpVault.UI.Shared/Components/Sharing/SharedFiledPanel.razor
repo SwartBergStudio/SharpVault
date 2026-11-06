@@ -1,0 +1,34 @@
+@inherits LoadableComponentBase<SharedItemPageDto>
+
+<DataStateView TValue="SharedItemPageDto" IdPrefix="shared-filed" State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+    <Empty></Empty>
+    <ChildContent>
+        <SvPaper Id="shared-filed-panel" Class="pa-3 mt-4">
+            <SvText Id="shared-filed-heading" Kind="SvTextKind.Heading" HtmlTag="h2">Shared with you in this folder</SvText>
+            <SvTable Id="shared-filed-table" TItem="SharedItemDto" Items="@Value!.Items">
+                <Columns>
+                    <SvColumn TItem="SharedItemDto" Header="Name" Context="item">
+                        <SvLink Id="@($"shared-filed-link-{SharedItemText.ElementKey(item)}")" Href="@SharedItemText.Href(item)">@SharedItemText.Name(item)</SvLink>
+                    </SvColumn>
+                    <SvColumn TItem="SharedItemDto" Header="From" Value="@(item => item.OwnerDisplayName)" />
+                    <SvColumn TItem="SharedItemDto" Header="Access" Value="@(item => PermissionLabels.Label(item.Permission))" />
+                </Columns>
+            </SvTable>
+        </SvPaper>
+    </ChildContent>
+</DataStateView>
+
+@code {
+    public const int PageSize = 100;
+
+    [Inject]
+    private ISharedItemsApiClient SharedClient { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public Guid FolderId { get; set; }
+
+    protected override Task<ApiResponse<SharedItemPageDto>> LoadAsync(CancellationToken cancellationToken) =>
+        SharedClient.ListAsync(FolderId, PageSize, null, cancellationToken);
+
+    protected override bool IsEmpty(SharedItemPageDto value) => value.Items.Count == 0;
+}

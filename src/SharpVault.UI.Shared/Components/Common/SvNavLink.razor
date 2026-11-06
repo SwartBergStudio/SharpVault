@@ -1,0 +1,20 @@
+<MudNavLink id="@Id" Href="@Href" Match="@(ExactMatch ? NavLinkMatch.All : NavLinkMatch.Prefix)" Icon="@Icon">@ChildContent</MudNavLink>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Href { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Icon { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool ExactMatch { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    protected override void OnParametersSet() => ComponentIds.EnsureValid(Id, nameof(Id));
+}

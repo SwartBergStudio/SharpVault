@@ -4,6 +4,7 @@
 using NSubstitute;
 using SharpVault.Application.Common.Interfaces;
 using SharpVault.Application.Features.Users.Queries;
+using SharpVault.Dtos.Users;
 
 namespace SharpVault.UnitTests.Application.Users;
 
@@ -35,7 +36,7 @@ public sealed class GetCurrentUserTests
     [Trait("Category", "Security")]
     public void CurrentUserDto_Properties_AreIdNameAndAdminFlagOnly()
     {
-        var names = typeof(SharpVault.Application.Features.Users.Dtos.CurrentUserDto)
+        var names = typeof(CurrentUserDto)
             .GetProperties()
             .Select(property => property.Name)
             .Order(StringComparer.Ordinal);

@@ -8,11 +8,14 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/SharpVault.Domain/SharpVault.Domain.csproj" />
+    <ProjectReference Include="../../src/SharpVault.Dtos/SharpVault.Dtos.csproj" />
     <ProjectReference Include="../../src/SharpVault.Application/SharpVault.Application.csproj" />
     <ProjectReference Include="../../src/SharpVault.Infrastructure/SharpVault.Infrastructure.csproj" />
     <ProjectReference Include="../../src/SharpVault.ServiceDefaults/SharpVault.ServiceDefaults.csproj" />
+    <ProjectReference Include="../../src/SharpVault.Authentication/SharpVault.Authentication.csproj" />
     <ProjectReference Include="../../src/SharpVault.Api/SharpVault.Api.csproj" />
     <ProjectReference Include="../../src/SharpVault.UI.Shared/SharpVault.UI.Shared.csproj" />
+    <ProjectReference Include="../../src/SharpVault.PasswordGeneration/SharpVault.PasswordGeneration.csproj" />
     <ProjectReference Include="../../src/SharpVault.Web/SharpVault.Web.csproj" Aliases="WebApp" />
   </ItemGroup>
 </Project>

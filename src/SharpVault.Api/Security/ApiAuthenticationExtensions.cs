@@ -8,7 +8,9 @@ using Microsoft.Identity.Web;
 using SharpVault.Application.Common.Interfaces;
 using SharpVault.Application.Features.Tenancy;
 using SharpVault.Application.Features.Users.Access;
-using SharpVault.ServiceDefaults.Identity;
+using SharpVault.Authentication.Identity;
+using SharpVault.Authentication.Local;
+using SharpVault.Authentication.Mode;
 
 namespace SharpVault.Api.Security;
 
@@ -16,14 +18,46 @@ public static class ApiAuthenticationExtensions
 {
     public static IHostApplicationBuilder AddApiAuthentication(this IHostApplicationBuilder builder)
     {
+        var mode = builder.AddAuthenticationMode();
+        if (mode.Mode == AuthenticationMode.Local)
+        {
+            return AddLocalAuthenticationScheme(builder, mode.Entra);
+        }
+
         var section = builder.Configuration.GetSection(EntraApplicationSettings.SectionName);
-        var entra = EntraApplicationSettings.Read(section);
-        builder.Services.AddSingleton(entra);
+        var entra = mode.Entra;
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddMicrosoftIdentityWebApi(jwt => ConfigureJwtBearer(jwt, entra), identity => section.Bind(identity));
         builder.Services.PostConfigure<JwtBearerOptions>(
             JwtBearerDefaults.AuthenticationScheme,
             jwt => jwt.TokenValidationParameters.IssuerValidator = ExactIssuerValidator.For(entra.V2Issuer));
+        return AddAccessControl(builder, entra, JwtBearerDefaults.AuthenticationScheme);
+    }
+
+    private static IHostApplicationBuilder AddLocalAuthenticationScheme(
+        IHostApplicationBuilder builder,
+        EntraApplicationSettings entra)
+    {
+        builder.AddLocalAuthentication();
+        builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
+        builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+            .Configure<LocalSigningKey>((jwt, key) =>
+            {
+                jwt.MapInboundClaims = false;
+                jwt.IncludeErrorDetails = false;
+                jwt.TokenValidationParameters = LocalTokenValidation.Create(key);
+                jwt.Events ??= new JwtBearerEvents();
+                jwt.Events.OnTokenValidated = context => AccessTokenValidation.ValidateAsync(context, entra);
+            });
+        builder.Services.AddHostedService<LocalAccountSeeder>();
+        return AddAccessControl(builder, entra, JwtBearerDefaults.AuthenticationScheme);
+    }
+
+    private static IHostApplicationBuilder AddAccessControl(
+        IHostApplicationBuilder builder,
+        EntraApplicationSettings entra,
+        string scheme)
+    {
         builder.Services.AddOptions<UserAccessOptions>()
             .Bind(builder.Configuration.GetSection(UserAccessOptions.SectionName))
             .ValidateOnStart();
@@ -32,10 +66,11 @@ public static class ApiAuthenticationExtensions
             .ValidateOnStart();
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
+        builder.Services.AddScoped<IRequestMetadata, HttpContextRequestMetadata>();
         builder.Services.AddSingleton<IAuthorizationHandler, SharpVaultAccessHandler>();
 
-        var userPolicy = BuildPolicy(AppRoles.User, AppRoles.Admin);
-        var adminPolicy = BuildPolicy(AppRoles.Admin);
+        var userPolicy = BuildPolicy(scheme, AppRoles.User, AppRoles.Admin);
+        var adminPolicy = BuildPolicy(scheme, AppRoles.Admin);
         builder.Services.AddAuthorizationBuilder()
             .AddPolicy(Policies.User, userPolicy)
             .AddPolicy(Policies.Admin, adminPolicy)
@@ -44,8 +79,8 @@ public static class ApiAuthenticationExtensions
         return builder;
     }
 
-    private static AuthorizationPolicy BuildPolicy(params string[] roles) =>
-        new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
+    private static AuthorizationPolicy BuildPolicy(string scheme, params string[] roles) =>
+        new AuthorizationPolicyBuilder(scheme)
             .RequireAuthenticatedUser()
             .AddRequirements(new SharpVaultAccessRequirement(roles))
             .Build();

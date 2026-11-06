@@ -35,6 +35,20 @@ public static class TestUsers
         [AdminRole],
         Email: "admin@sharpvault.test");
 
+    public static TestUser SecondAdmin { get; } = new(
+        Guid.Parse("5f0c1d2e-4b7a-4c3d-9e8f-00000000b010"),
+        "Second test admin",
+        TestTenant.Id,
+        [AdminRole],
+        Email: "admin-two@sharpvault.test");
+
+    public static TestUser ThirdAdmin { get; } = new(
+        Guid.Parse("5f0c1d2e-4b7a-4c3d-9e8f-00000000b011"),
+        "Third test admin",
+        TestTenant.Id,
+        [AdminRole],
+        Email: "admin-three@sharpvault.test");
+
     public static TestUser LockedUser { get; } = new(
         Guid.Parse("5f0c1d2e-4b7a-4c3d-9e8f-00000000b005"),
         "Locked test user",
@@ -64,6 +78,56 @@ public static class TestUsers
         [UserRole],
         Email: "user@other.test");
 
+
+    public static TestUser ShareViewer { get; } = new(
+        Guid.Parse("5f0c1d2e-4b7a-4c3d-9e8f-00000000b009"),
+        "Share viewer",
+        TestTenant.Id,
+        [UserRole],
+        Email: "share-viewer@sharpvault.test");
+
+    public static TestUser ShareEditor { get; } = new(
+        Guid.Parse("5f0c1d2e-4b7a-4c3d-9e8f-00000000b00a"),
+        "Share editor",
+        TestTenant.Id,
+        [UserRole],
+        Email: "share-editor@sharpvault.test");
+
+    public static TestUser ShareManager { get; } = new(
+        Guid.Parse("5f0c1d2e-4b7a-4c3d-9e8f-00000000b00b"),
+        "Share manager",
+        TestTenant.Id,
+        [UserRole],
+        Email: "share-manager@sharpvault.test");
+
+    public static TestUser ManagerGrantee { get; } = new(
+        Guid.Parse("5f0c1d2e-4b7a-4c3d-9e8f-00000000b00c"),
+        "Manager grantee",
+        TestTenant.Id,
+        [UserRole],
+        Email: "manager-grantee@sharpvault.test");
+
+    public static TestUser FolderViewer { get; } = new(
+        Guid.Parse("5f0c1d2e-4b7a-4c3d-9e8f-00000000b00d"),
+        "Folder viewer",
+        TestTenant.Id,
+        [UserRole],
+        Email: "folder-viewer@sharpvault.test");
+
+    public static TestUser FolderManager { get; } = new(
+        Guid.Parse("5f0c1d2e-4b7a-4c3d-9e8f-00000000b00e"),
+        "Folder manager",
+        TestTenant.Id,
+        [UserRole],
+        Email: "folder-manager@sharpvault.test");
+
+    public static TestUser LockedRecipient { get; } = new(
+        Guid.Parse("5f0c1d2e-4b7a-4c3d-9e8f-00000000b00f"),
+        "Locked recipient",
+        TestTenant.Id,
+        [UserRole],
+        Email: "locked-recipient@sharpvault.test");
+
     public static IReadOnlyList<TestUser> All { get; } =
     [
         AuthenticatedWithoutRole,
@@ -74,5 +138,12 @@ public static class TestUsers
         LockedAdmin,
         Guest,
         OtherTenantUser,
+        ShareViewer,
+        ShareEditor,
+        ShareManager,
+        ManagerGrantee,
+        FolderViewer,
+        FolderManager,
+        LockedRecipient,
     ];
 }

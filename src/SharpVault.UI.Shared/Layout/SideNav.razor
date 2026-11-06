@@ -1,14 +1,29 @@
 <AuthorizeView>
     <Authorized>
-        <nav id="side-nav" class="sv-sidenav" aria-label="Main">
-            <ul class="sv-nav">
-                <li>
-                    <NavLink id="nav-home" class="sv-nav__link" href="" Match="NavLinkMatch.All">
-                        <Icon Name="IconName.Vault" />
-                        <span>Home</span>
-                    </NavLink>
-                </li>
-            </ul>
-        </nav>
+        <SvDrawer Open="@Open" OpenChanged="@OpenChanged">
+            <SvNavMenu Id="side-nav" Label="Main">
+                <SvNavLink Id="nav-vault" Href="@VaultRoutes.Vault" ExactMatch="true" Icon="@SvIcons.Vault">Vault</SvNavLink>
+                <SvNavLink Id="nav-shared" Href="@SharingRoutes.Shared" Icon="@SvIcons.People">Shared with me</SvNavLink>
+                <SvNavLink Id="nav-recycle-bin" Href="@VaultRoutes.RecycleBin" Icon="@SvIcons.Delete">Recycle bin</SvNavLink>
+                <SvNavLink Id="nav-account" Href="@AccountRoutes.Account" Icon="@SvIcons.User">Account</SvNavLink>
+                @if (CurrentUser is { IsAdmin: true })
+                {
+                    <SvText Id="nav-admin-heading" Kind="SvTextKind.Overline" Class="sv-sidenav__group">Administration</SvText>
+                    <SvNavLink Id="nav-admin-users" Href="@AccountRoutes.AdminUsers" Icon="@SvIcons.Admin">Users</SvNavLink>
+                    <SvNavLink Id="nav-admin-transfers" Href="@TransferRoutes.Transfers" Icon="@SvIcons.Transfer">Transfers</SvNavLink>
+                }
+            </SvNavMenu>
+        </SvDrawer>
     </Authorized>
 </AuthorizeView>
+
+@code {
+    [Parameter]
+    public bool Open { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> OpenChanged { get; set; }
+
+    [CascadingParameter(Name = LayoutCascades.CurrentUser)]
+    private CurrentUserDto? CurrentUser { get; set; }
+}

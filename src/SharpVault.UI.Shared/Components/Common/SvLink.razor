@@ -1,0 +1,31 @@
+<MudLink id="@Id"
+         Href="@Href"
+         Underline="Underline.Hover"
+         Color="@(Selected ? Color.Primary : Color.Default)"
+         Class="@(Selected ? "font-weight-bold" : null)"
+         Target="@(External ? "_blank" : null)"
+         rel="@(External ? "noopener noreferrer" : null)"
+         title="@Title"
+         aria-current="@(Selected ? "page" : null)">@ChildContent</MudLink>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Href { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool Selected { get; set; }
+
+    [Parameter]
+    public bool External { get; set; }
+
+    [Parameter]
+    public string? Title { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    protected override void OnParametersSet() => ComponentIds.EnsureValid(Id, nameof(Id));
+}

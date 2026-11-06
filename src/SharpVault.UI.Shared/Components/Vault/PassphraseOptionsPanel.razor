@@ -1,0 +1,29 @@
+<SvStack Spacing="1">
+    <SvSlider Id="generator-word-count" Label="Words" Min="@GeneratorLimits.MinWords" Max="@GeneratorLimits.MaxWords" Value="@Options.WordCount" ValueChanged="@(count => Change(Options with { WordCount = count }))" />
+    <SvSelect Id="generator-separator" Label="Separator" Options="@SeparatorOptions" Value="@Options.Separator.ToString()" ValueChanged="@HandleSeparatorChanged" />
+    <SvCheckbox Id="generator-capitalize" Label="Capitalize each word" Value="@Options.Capitalize" ValueChanged="@(on => Change(Options with { Capitalize = on }))" />
+    <SvCheckbox Id="generator-include-number" Label="Add a number" Value="@Options.IncludeNumber" ValueChanged="@(on => Change(Options with { IncludeNumber = on }))" />
+</SvStack>
+
+@code {
+    private static readonly IReadOnlyList<SvSelectOption> SeparatorOptions =
+    [
+        new(nameof(PassphraseSeparator.Hyphen), "Hyphen (-)"),
+        new(nameof(PassphraseSeparator.Space), "Space"),
+        new(nameof(PassphraseSeparator.Period), "Period (.)"),
+        new(nameof(PassphraseSeparator.Underscore), "Underscore (_)"),
+    ];
+
+    [Parameter, EditorRequired]
+    public PassphraseOptions Options { get; set; } = PassphraseOptions.Default;
+
+    [Parameter]
+    public EventCallback<PassphraseOptions> OptionsChanged { get; set; }
+
+    private Task HandleSeparatorChanged(string value) =>
+        Enum.TryParse<PassphraseSeparator>(value, ignoreCase: false, out var separator) && Enum.GetName(separator) == value
+            ? Change(Options with { Separator = separator })
+            : Task.CompletedTask;
+
+    private Task Change(PassphraseOptions options) => OptionsChanged.InvokeAsync(options);
+}

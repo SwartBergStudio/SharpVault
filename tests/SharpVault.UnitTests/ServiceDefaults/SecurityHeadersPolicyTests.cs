@@ -33,18 +33,6 @@ public sealed class SecurityHeadersPolicyTests
 
     [Fact]
     [Trait("Category", "Security")]
-    public void ForWeb_Always_DisallowsInlineAndEvalScript()
-    {
-        var policy = SecurityHeadersPolicy.ForWeb(IdentityProvider);
-
-        Assert.DoesNotContain("unsafe-inline", policy.ContentSecurityPolicy, StringComparison.Ordinal);
-        Assert.DoesNotContain("unsafe-eval", policy.ContentSecurityPolicy, StringComparison.Ordinal);
-        Assert.Contains("frame-ancestors 'none'", policy.ContentSecurityPolicy, StringComparison.Ordinal);
-        Assert.Empty(policy.PathsWithoutContentSecurityPolicy);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
     public void ForApi_Always_DeniesEverySourceByDefault()
     {
         var policy = SecurityHeadersPolicy.ForApi(false);
@@ -69,16 +57,60 @@ public sealed class SecurityHeadersPolicyTests
 
     [Fact]
     [Trait("Category", "Security")]
-    public void ForWeb_Theme_KeepsStyleAndFontSourcesSelfOnly()
+    public void ForWeb_ScriptSrc_DisallowsInlineAndEval()
+    {
+        var csp = SecurityHeadersPolicy.ForWeb(IdentityProvider).ContentSecurityPolicy;
+
+        var scriptSrc = Assert.Single(csp.Split("; "), directive => directive.StartsWith("script-src", StringComparison.Ordinal));
+        Assert.Equal("script-src 'self'", scriptSrc);
+        Assert.DoesNotContain("unsafe-inline", scriptSrc, StringComparison.Ordinal);
+        Assert.DoesNotContain("unsafe-eval", csp, StringComparison.Ordinal);
+        Assert.Contains("frame-ancestors 'none'", csp, StringComparison.Ordinal);
+        Assert.Empty(SecurityHeadersPolicy.ForWeb(IdentityProvider).PathsWithoutContentSecurityPolicy);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void ForWeb_StyleSrc_IsSelfAndUnsafeInlineOnly()
     {
         var csp = SecurityHeadersPolicy.ForWeb(IdentityProvider).ContentSecurityPolicy;
 
         var directives = csp.Split("; ");
-        Assert.Equal("style-src 'self'", Assert.Single(directives, directive => directive.StartsWith("style-src", StringComparison.Ordinal)));
+        Assert.Equal("style-src 'self' 'unsafe-inline'", Assert.Single(directives, directive => directive.StartsWith("style-src", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void ForWeb_FontSrcScriptSrcImgSrcConnectSrc_RemainSelf()
+    {
+        var csp = SecurityHeadersPolicy.ForWeb(IdentityProvider).ContentSecurityPolicy;
+
+        var directives = csp.Split("; ");
         Assert.Equal("font-src 'self'", Assert.Single(directives, directive => directive.StartsWith("font-src", StringComparison.Ordinal)));
         Assert.Equal("script-src 'self'", Assert.Single(directives, directive => directive.StartsWith("script-src", StringComparison.Ordinal)));
-        Assert.DoesNotContain("unsafe-inline", csp, StringComparison.Ordinal);
-        Assert.DoesNotContain("unsafe-eval", csp, StringComparison.Ordinal);
+        Assert.Equal("img-src 'self' data:", Assert.Single(directives, directive => directive.StartsWith("img-src", StringComparison.Ordinal)));
+        Assert.Equal("connect-src 'self'", Assert.Single(directives, directive => directive.StartsWith("connect-src", StringComparison.Ordinal)));
+        Assert.Equal("default-src 'self'", Assert.Single(directives, directive => directive.StartsWith("default-src", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void ForWeb_UnsafeInline_AppearsExactlyOnceAndOnlyInStyleSrc()
+    {
+        var csp = SecurityHeadersPolicy.ForWeb(IdentityProvider).ContentSecurityPolicy;
+
+        Assert.Equal(1, csp.Split("unsafe-inline", StringSplitOptions.None).Length - 1);
+        var owner = Assert.Single(csp.Split("; "), directive => directive.Contains("unsafe-inline", StringComparison.Ordinal));
+        Assert.StartsWith("style-src ", owner, StringComparison.Ordinal);
+        Assert.DoesNotContain("style-src-elem", csp, StringComparison.Ordinal);
+        Assert.DoesNotContain("style-src-attr", csp, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void ForApi_Csp_IsUnchanged()
+    {
+        Assert.Equal("default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'", SecurityHeadersPolicy.ForApi(false).ContentSecurityPolicy);
     }
 
     [Fact]
@@ -148,14 +180,14 @@ public sealed class SecurityHeadersPolicyTests
     {
         var csp = SecurityHeadersPolicy.ForWeb(IdentityProvider).ContentSecurityPolicy;
 
-        Assert.Equal("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://login.microsoftonline.com; upgrade-insecure-requests", csp);
+        Assert.Equal("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://login.microsoftonline.com; upgrade-insecure-requests", csp);
     }
 
     [Theory]
     [Trait("Category", "Security")]
     [InlineData("default-src 'self'")]
     [InlineData("script-src 'self'")]
-    [InlineData("style-src 'self'")]
+    [InlineData("style-src 'self' 'unsafe-inline'")]
     [InlineData("object-src 'none'")]
     [InlineData("frame-ancestors 'none'")]
     [InlineData("base-uri 'self'")]
@@ -173,7 +205,7 @@ public sealed class SecurityHeadersPolicyTests
     public void SecurityHeaderValues_Constants_HaveExactExpectedText()
     {
         Assert.Equal("default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'", SecurityHeaderValues.ApiContentSecurityPolicy);
-        Assert.Equal("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' {0}; upgrade-insecure-requests", SecurityHeaderValues.WebContentSecurityPolicyFormat);
+        Assert.Equal("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' {0}; upgrade-insecure-requests", SecurityHeaderValues.WebContentSecurityPolicyFormat);
         Assert.Equal("nosniff", SecurityHeaderValues.NoSniff);
         Assert.Equal("DENY", SecurityHeaderValues.FrameDeny);
         Assert.Equal("no-referrer", SecurityHeaderValues.NoReferrer);

@@ -1,0 +1,57 @@
+<SvSelect Id="@Id" Label="@Label" Options="@_options" Value="@SelectedValue" ValueChanged="@HandleChangedAsync" />
+
+@code {
+    public const string NoFolderText = "No folder";
+    public const string NoFolderValue = "";
+    public const string IndentUnit = "\u00A0\u00A0";
+
+    private IReadOnlyList<SvSelectOption> _options = [];
+
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public IReadOnlyList<FolderDto> Folders { get; set; } = [];
+
+    [Parameter]
+    public Guid? Value { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid?> ValueChanged { get; set; }
+
+    [Parameter]
+    public Guid? ExcludeSubtreeOf { get; set; }
+
+    private string SelectedValue => Value?.ToString("D") ?? NoFolderValue;
+
+    protected override void OnParametersSet() => _options = BuildOptions();
+
+    private Task HandleChangedAsync(string value) =>
+        ValueChanged.InvokeAsync(Guid.TryParse(value, out var id) ? id : null);
+
+    private List<SvSelectOption> BuildOptions()
+    {
+        var options = new List<SvSelectOption> { new(NoFolderValue, NoFolderText) };
+        var excluded = ExcludedIds();
+        var byParent = Folders
+            .Where(folder => !excluded.Contains(folder.Id))
+            .ToLookup(folder => folder.ParentId is { } parent && Folders.Any(candidate => candidate.Id == parent) ? parent : (Guid?)null);
+        AppendLevel(options, byParent, null, 0);
+        return options;
+    }
+
+    private HashSet<Guid> ExcludedIds() =>
+        ExcludeSubtreeOf is { } root ? FolderNodes.SubtreeIds(Folders, root) : [];
+
+    private static void AppendLevel(List<SvSelectOption> options, ILookup<Guid?, FolderDto> byParent, Guid? parent, int depth)
+    {
+        foreach (var folder in byParent[parent].OrderBy(folder => folder.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            options.Add(new SvSelectOption(folder.Id.ToString("D"), string.Concat(Enumerable.Repeat(IndentUnit, depth)) + FolderNodes.NameOf(folder)));
+            AppendLevel(options, byParent, folder.Id, depth + 1);
+        }
+    }
+}

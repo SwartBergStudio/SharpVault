@@ -9,4 +9,9 @@ public enum ApiCallStatus
     Success,
     SignInRequired,
     AccessDenied,
+    ConfigurationMismatch,
+    NotFound,
+    Conflict,
+    Invalid,
+    RateLimited,
 }

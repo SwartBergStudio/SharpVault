@@ -10,4 +10,6 @@ public static class UserColumns
     public const string Status = "Status";
     public const string CreatedAt = "CreatedAt";
     public const string LastSignInAt = "LastSignInAt";
+    public const string IsAdmin = "IsAdmin";
+    public const string RoleObservedAt = "RoleObservedAt";
 }

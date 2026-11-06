@@ -1,6 +1,7 @@
 // SharpVault - Copyright (c) SwartBergStudio.
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
+using System.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http.Metadata;
@@ -9,6 +10,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SharpVault.ServiceDefaults;
@@ -50,16 +52,6 @@ public sealed class ServiceDefaultsExtensionsTests
         var self = Assert.Single(registrations);
         Assert.Equal("self", self.Name);
         Assert.Contains("live", self.Tags);
-    }
-
-    [Fact]
-    public void AddServiceDefaults_Registered_ReturnsSameBuilder()
-    {
-        var builder = WebApplication.CreateBuilder();
-
-        var returned = builder.AddServiceDefaults();
-
-        Assert.Same(builder, returned);
     }
 
     [Fact]
@@ -146,20 +138,12 @@ public sealed class ServiceDefaultsExtensionsTests
         Assert.DoesNotContain(alive.Metadata, IsOutputCachePolicy);
     }
 
-    [Fact]
-    public void MapDefaultEndpoints_Mapped_ReturnsSameApplication()
-    {
-        using var app = BuildApp();
-
-        var returned = app.MapDefaultEndpoints();
-
-        Assert.Same(app, returned);
-    }
-
     [Theory]
     [Trait("Category", "Security")]
     [InlineData("Microsoft.AspNetCore.Hosting.Diagnostics")]
     [InlineData("System.Net.Http.HttpClient")]
+    [InlineData("Polly")]
+    [InlineData("Microsoft.AspNetCore.Routing.Matching")]
     public void SuppressQueryStringLogging_Registered_FiltersHostingDiagnosticsAndHttpClientBelowWarning(string category)
     {
         using var app = BuildApp();
@@ -174,8 +158,41 @@ public sealed class ServiceDefaultsExtensionsTests
 
     [Theory]
     [Trait("Category", "Security")]
+    [InlineData("Azure.Core")]
+    [InlineData("Azure.Core.Pipeline")]
+    public void SuppressQueryStringLogging_AzureCore_EffectiveLevelIsWarning(string category)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Logging:LogLevel:Default"] = "Debug" });
+        builder.AddServiceDefaults();
+        using var app = builder.Build();
+
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(category);
+
+        Assert.False(logger.IsEnabled(LogLevel.Information));
+        Assert.False(logger.IsEnabled(LogLevel.Debug));
+        Assert.True(logger.IsEnabled(LogLevel.Warning));
+    }
+
+    [Fact]
+    public void SuppressQueryStringLogging_AzureCore_DoesNotSilenceOtherCategories()
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Logging:LogLevel:Default"] = "Debug" });
+        builder.AddServiceDefaults();
+        using var app = builder.Build();
+
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("SharpVault.Api.Probe");
+
+        Assert.True(logger.IsEnabled(LogLevel.Debug));
+    }
+
+    [Theory]
+    [Trait("Category", "Security")]
     [InlineData("Microsoft.AspNetCore.Hosting.Diagnostics")]
     [InlineData("System.Net.Http.HttpClient")]
+    [InlineData("Polly")]
+    [InlineData("Microsoft.AspNetCore.Routing.Matching.DfaMatcher")]
     public void SuppressQueryStringLogging_ProviderSpecificConfigLowersLevel_EffectiveLevelStaysWarning(string category)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
@@ -185,6 +202,9 @@ public sealed class ServiceDefaultsExtensionsTests
             ["Logging:Console:LogLevel:System.Net.Http.HttpClient"] = "Debug",
             ["Logging:OpenTelemetry:LogLevel:Microsoft.AspNetCore.Hosting.Diagnostics"] = "Information",
             ["Logging:OpenTelemetry:LogLevel:System.Net.Http.HttpClient"] = "Debug",
+            ["Logging:Console:LogLevel:Polly"] = "Information",
+            ["Logging:OpenTelemetry:LogLevel:Polly"] = "Debug",
+            ["Logging:OpenTelemetry:LogLevel:Microsoft.AspNetCore.Routing"] = "Debug",
         });
         builder.AddServiceDefaults();
         using var app = builder.Build();
@@ -268,6 +288,61 @@ public sealed class ServiceDefaultsExtensionsTests
         Assert.True(logger.IsEnabled(LogLevel.Debug));
     }
 
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task StandardResilience_PostThatGets503_IsAttemptedOnce()
+    {
+        var handler = new CountingHandler(HttpStatusCode.ServiceUnavailable);
+        using var client = BuildResilientClient(handler);
+
+        using var response = await client.PostAsync("http://probe.test/write", new StringContent("{}"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal(1, handler.Attempts);
+    }
+
+    [Fact]
+    public async Task StandardResilience_GetThatGets503_IsStillRetried()
+    {
+        var handler = new CountingHandler(HttpStatusCode.ServiceUnavailable);
+        using var client = BuildResilientClient(handler);
+
+        using var response = await client.GetAsync("http://probe.test/read", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.True(handler.Attempts > 1);
+    }
+
+    private static HttpClient BuildResilientClient(CountingHandler handler)
+    {
+        const string clientName = "probe";
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
+        builder.AddServiceDefaults();
+        builder.Services.AddHttpClient(clientName).ConfigurePrimaryHttpMessageHandler(() => handler);
+        builder.Services.Configure<HttpStandardResilienceOptions>(
+            clientName + "-standard",
+            options =>
+            {
+                options.Retry.Delay = TimeSpan.FromMilliseconds(1);
+                options.Retry.UseJitter = false;
+            });
+        var app = builder.Build();
+        return app.Services.GetRequiredService<IHttpClientFactory>().CreateClient(clientName);
+    }
+
+    private sealed class CountingHandler(HttpStatusCode status) : HttpMessageHandler
+    {
+        private int _attempts;
+
+        public int Attempts => Volatile.Read(ref _attempts);
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _attempts);
+            return Task.FromResult(new HttpResponseMessage(status));
+        }
+    }
+
     private static bool IsOutputCachePolicy(object metadata) =>
         metadata.GetType().Namespace == "Microsoft.AspNetCore.OutputCaching";
 
@@ -289,4 +364,27 @@ public sealed class ServiceDefaultsExtensionsTests
             .SelectMany(source => source.Endpoints)
             .OfType<RouteEndpoint>()
             .Single(endpoint => endpoint.RoutePattern.RawText == pattern);
+
+    [Theory]
+    [Trait("Category", "Security")]
+    [InlineData("Logging:Console:LogLevel:Default", "Azure.Core")]
+    [InlineData("Logging:Console:LogLevel:Default", "Azure.Core.Pipeline")]
+    [InlineData("Logging:Console:LogLevel:Azure.Core", "Azure.Core")]
+    [InlineData("Logging:Console:LogLevel:Azure.*", "Azure.Core.Pipeline")]
+    [InlineData("Logging:Console:LogLevel:Azure", "Azure.Core")]
+    [InlineData("Logging:OpenTelemetry:LogLevel:Default", "Azure.Core")]
+    [InlineData("Logging:OpenTelemetry:LogLevel:Azure.Core", "Azure.Core.Pipeline")]
+    public void SuppressQueryStringLogging_AzureCoreWithProviderSpecificConfig_EffectiveLevelStaysWarning(string settingKey, string category)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { [settingKey] = "Debug" });
+        builder.AddServiceDefaults();
+        using var app = builder.Build();
+
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(category);
+
+        Assert.False(logger.IsEnabled(LogLevel.Debug));
+        Assert.False(logger.IsEnabled(LogLevel.Information));
+        Assert.True(logger.IsEnabled(LogLevel.Warning));
+    }
 }

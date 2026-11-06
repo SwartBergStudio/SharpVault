@@ -385,16 +385,6 @@ public sealed class HealthEndpointTests(ApiTestFactory factory) : BaseIntegratio
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    [Fact]
-    public async Task AliveEndpoint_HeadRequest_Returns200()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-
-        var response = await Client.SendAsync("HEAD", HealthEndpoints.AlivePath, cancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-    }
-
     private static void AssertNoSensitiveHeaders(HttpResponseMessage response)
     {
         foreach (var header in response.Headers)

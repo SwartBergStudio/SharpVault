@@ -1,0 +1,43 @@
+@page "/account/local-sign-in"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@using Microsoft.AspNetCore.Components.Forms
+@using SharpVault.Authentication.Local
+@using SharpVault.UI.Shared.Navigation
+@using SharpVault.Web.Account
+@using SharpVault.Web.Security
+
+<PageTitle>Choose a local account</PageTitle>
+
+<div class="sv-picker">
+    <VaultDoor Variant="VaultDoorVariant.Mark" />
+    <SvText Id="local-sign-in-heading" Kind="SvTextKind.Title" HtmlTag="h1">Choose a local account</SvText>
+    <SvText Id="local-sign-in-note" Kind="SvTextKind.Small" Secondary="true">Local development accounts. Not available when Entra is configured.</SvText>
+</div>
+
+<div class="sv-account-list">
+<SvGrid Id="local-account-list" Spacing="3">
+    @foreach (var account in LocalAccounts.All)
+    {
+        var slug = LocalAccountPresentation.Slug(account);
+        <SvGridItem Xs="12" Sm="6">
+            <SvPaper Class="sv-account-card">
+                <form method="post" action="@AccountRoutes.LocalSignIn" id="local-account-form-@slug">
+                    <AntiforgeryToken />
+                    <input id="local-account-id-@slug" type="hidden" name="@AccountEndpoints.AccountIdField" value="@account.Id.ToString("D")" />
+                    <input id="local-return-url-@slug" type="hidden" name="@AccountRoutes.ReturnUrlParameter" value="@ReturnUrls.Sanitize(ReturnUrl)" />
+                    <p class="sv-plate">@LocalAccountPresentation.RoleLabel(account)</p>
+                    <SvText Kind="SvTextKind.Heading" HtmlTag="h2">@account.DisplayName</SvText>
+                    <span id="local-account-roles-@slug" class="sv-mono sv-account-card__roles">@string.Join(", ", account.Roles)</span>
+                    <SvButton Id="@($"local-account-{slug}")" Variant="SvButtonVariant.Primary" Icon="@SvIcons.Key" ButtonType="ButtonType.Submit">Sign in as @account.DisplayName</SvButton>
+                </form>
+            </SvPaper>
+        </SvGridItem>
+    }
+</SvGrid>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = AccountRoutes.ReturnUrlParameter)]
+    private string? ReturnUrl { get; set; }
+}

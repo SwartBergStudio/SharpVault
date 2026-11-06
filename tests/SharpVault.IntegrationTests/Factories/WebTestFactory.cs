@@ -13,7 +13,6 @@ using Microsoft.Identity.Web;
 using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Logging;
 using SharpVault.IntegrationTests.Support;
-using SharpVault.UI.Shared.Services;
 using WebApp::SharpVault.Web.Api;
 
 namespace SharpVault.IntegrationTests.Factories;
@@ -61,9 +60,19 @@ public sealed class WebTestFactory : WebApplicationFactory<WebApp::Program>
             if (_api is not null)
             {
                 var api = _api;
-                services.AddHttpClient<ISharpVaultApiClient, SharpVaultApiClient>()
-                    .ConfigurePrimaryHttpMessageHandler(() => api.Server.CreateHandler());
+                services.UsePrimaryHandler(() => api.Server.CreateHandler());
+            }
+            else
+            {
+                services.UseSharedSessionHandler(() => new NoApiAttachedHandler());
             }
         });
+    }
+
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        var host = base.CreateHost(builder);
+        EntraModeAssertion.Assert(host.Services);
+        return host;
     }
 }

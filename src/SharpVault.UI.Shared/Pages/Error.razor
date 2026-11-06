@@ -1,0 +1,15 @@
+@page "/error"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+
+<PageTitle>Error</PageTitle>
+
+<StatePanel Id="error" TitleId="error-heading" Kind="StatePanelKind.Danger" Icon="@SvIcons.Danger" HeadingLevel="1" Title="Something went wrong">
+    <ChildContent>
+        <p id="error-message">An error occurred while processing your request.</p>
+        <ErrorRequestId />
+    </ChildContent>
+    <Actions>
+        <SvButton Id="error-home-link" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Home" Href="@AccountRoutes.Home">Start page</SvButton>
+    </Actions>
+</StatePanel>

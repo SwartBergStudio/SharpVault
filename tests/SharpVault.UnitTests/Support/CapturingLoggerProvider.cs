@@ -11,6 +11,8 @@ internal sealed class CapturingLoggerProvider : ILoggerProvider
 
     public IReadOnlyList<string> Messages => _messages;
 
+    public string AllText => string.Join(Environment.NewLine, _messages);
+
     public ILogger CreateLogger(string categoryName) => new CapturingLogger(_messages);
 
     public void Dispose()
@@ -30,6 +32,6 @@ internal sealed class CapturingLoggerProvider : ILoggerProvider
             TState state,
             Exception? exception,
             Func<TState, Exception?, string> formatter) =>
-            messages.Add(formatter(state, exception));
+            messages.Add(exception is null ? formatter(state, exception) : formatter(state, exception) + exception);
     }
 }

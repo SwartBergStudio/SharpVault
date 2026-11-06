@@ -5,4 +5,4 @@ using SharpVault.Domain.Users;
 
 namespace SharpVault.Application.Common.Models;
 
-public sealed record CachedUserAccess(UserStatus Status, DateTimeOffset LastSignInAt);
+public sealed record CachedUserAccess(UserStatus Status, DateTimeOffset LastSignInAt, bool IsAdmin = false, DateTimeOffset? RoleObservedAt = null);

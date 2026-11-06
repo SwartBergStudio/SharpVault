@@ -14,6 +14,7 @@ using SharpVault.Application;
 using SharpVault.Application.Common.Behaviors;
 using SharpVault.Application.Common.Interfaces;
 using SharpVault.Application.Features.Tenancy;
+using SharpVault.Application.Features.Transfers.Common;
 using SharpVault.Application.Features.Users.Access;
 using SharpVault.Application.Features.Users.Queries;
 
@@ -21,16 +22,6 @@ namespace SharpVault.UnitTests.Application;
 
 public sealed class ApplicationRegistrationTests
 {
-    [Fact]
-    public void AddApplication_Registered_ResolvesMediator()
-    {
-        using var provider = BuildProvider();
-
-        var mediator = provider.GetService<IMediator>();
-
-        Assert.NotNull(mediator);
-    }
-
     [Fact]
     [Trait("Category", "Security")]
     public void AddApplication_Registered_DisablesNotificationPersistence()
@@ -42,52 +33,6 @@ public sealed class ApplicationRegistrationTests
 
         Assert.False(options.EnablePersistence);
         Assert.Null(persistence);
-    }
-
-    [Fact]
-    public void AddApplication_Registered_ResolvesMapsterMapper()
-    {
-        using var provider = BuildProvider();
-        using var scope = provider.CreateScope();
-
-        var mapper = scope.ServiceProvider.GetService<IMapper>();
-
-        Assert.NotNull(mapper);
-    }
-
-    [Fact]
-    public void AddApplication_Registered_ResolvesTypeAdapterConfig()
-    {
-        using var provider = BuildProvider();
-
-        var config = provider.GetService<TypeAdapterConfig>();
-
-        Assert.NotNull(config);
-    }
-
-    [Fact]
-    public void AddApplication_Registered_MapperIsScopedPerScope()
-    {
-        using var provider = BuildProvider();
-        using var firstScope = provider.CreateScope();
-        using var secondScope = provider.CreateScope();
-
-        var first = firstScope.ServiceProvider.GetRequiredService<IMapper>();
-        var sameScope = firstScope.ServiceProvider.GetRequiredService<IMapper>();
-        var second = secondScope.ServiceProvider.GetRequiredService<IMapper>();
-
-        Assert.Same(first, sameScope);
-        Assert.NotSame(first, second);
-    }
-
-    [Fact]
-    public void AddApplication_Registered_ReturnsSameServiceCollection()
-    {
-        var services = new ServiceCollection();
-
-        var returned = services.AddApplication();
-
-        Assert.Same(services, returned);
     }
 
     [Fact]
@@ -109,23 +54,6 @@ public sealed class ApplicationRegistrationTests
         Assert.NotNull(provider.GetService<IUserAccessGate>());
         Assert.NotNull(provider.GetService<IGuestAccessPolicy>());
         Assert.NotNull(provider.GetService<IValidateOptions<UserAccessOptions>>());
-    }
-
-    [Fact]
-    public void AddApplication_HostServicesMissing_FailsScopeValidation()
-    {
-        var services = new ServiceCollection().AddLogging().AddApplication();
-
-        var exception = Record.Exception(() =>
-        {
-            using var provider = services.BuildServiceProvider(new ServiceProviderOptions
-            {
-                ValidateScopes = true,
-                ValidateOnBuild = true,
-            });
-        });
-
-        Assert.IsType<AggregateException>(exception);
     }
 
     [Fact]
@@ -161,9 +89,19 @@ public sealed class ApplicationRegistrationTests
         services.AddSingleton(Substitute.For<IUserStore>());
         services.AddSingleton(Substitute.For<IAuditLog>());
         services.AddSingleton(Substitute.For<IUserAccessCache>());
+        services.AddSingleton(Substitute.For<IVaultStore>());
+        services.AddSingleton(Substitute.For<IShareInboxStore>());
+        services.AddSingleton(Substitute.For<IUserDirectory>());
+        services.AddSingleton(Substitute.For<IMaintenanceLeaseStore>());
+        services.AddSingleton(Substitute.For<ITransferJobStore>());
+        services.AddSingleton(Substitute.For<ITransferStagingStore>());
+        services.AddSingleton(Substitute.For<ISessionRevocationLedger>());
+        services.AddSingleton(Substitute.For<IEnvelopeEncryptor>());
+        services.AddScoped(_ => Substitute.For<IRequestMetadata>());
         services.AddSingleton(TimeProvider.System);
         services.AddScoped(_ => Substitute.For<ICurrentUser>());
         services.AddOptions<UserAccessOptions>();
         services.AddOptions<TenancyOptions>();
+        services.AddOptions<TransferOptions>();
     }
 }

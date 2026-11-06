@@ -1,0 +1,29 @@
+.field-select {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.field-select label {
+    color: var(--mud-palette-text-secondary);
+    font-size: 0.875rem;
+}
+
+.field-select select {
+    min-height: 2.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--mud-palette-lines-inputs);
+    border-radius: var(--mud-default-borderradius);
+    background-color: var(--mud-palette-surface);
+    color: var(--mud-palette-text-primary);
+    font: inherit;
+}
+
+.field-select select:focus-visible {
+    outline: 2px solid var(--mud-palette-primary);
+    outline-offset: 2px;
+}
+
+.field-select select:disabled {
+    opacity: 0.6;
+}

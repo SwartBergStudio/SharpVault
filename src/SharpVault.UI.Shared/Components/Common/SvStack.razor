@@ -1,0 +1,20 @@
+<MudStack Row="@Row" Spacing="@Spacing" AlignItems="@Align" Class="@Class">@ChildContent</MudStack>
+
+@code {
+    [Parameter]
+    public bool Row { get; set; }
+
+    [Parameter]
+    public int Spacing { get; set; } = 3;
+
+    [Parameter]
+    public bool Center { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private AlignItems? Align => Center ? AlignItems.Center : null;
+}

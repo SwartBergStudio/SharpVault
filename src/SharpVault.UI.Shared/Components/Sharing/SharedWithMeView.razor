@@ -1,0 +1,25 @@
+@inherits LoadableComponentBase<SharedItemPageDto>
+
+<SvPageTitle Id="shared-heading">Shared with me</SvPageTitle>
+
+<StatusBanner Id="shared-status" Message="@_status" />
+<DataStateView TValue="SharedItemPageDto" IdPrefix="shared-items" EmptyTitle="Nothing has been shared with you" EmptyDescription="When a colleague shares a password, secret or folder with you, it appears here. You can then file it in your own folders." State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+    <ChildContent>
+        @foreach (var group in Groups)
+        {
+            <SharedOwnerGroup @key="group.OwnerId" OwnerId="@group.OwnerId" OwnerName="@group.OwnerName" Items="@group.Items" Folders="@_folders" Disabled="@IsCommandRunning" OnFile="@OpenFiling" />
+        }
+        @if (LoadMoreFailed)
+        {
+            <SvAlert Id="shared-load-more-error" Kind="AlertKind.Danger">@LoadMoreText</SvAlert>
+        }
+        @if (_continuation is not null)
+        {
+            <div class="d-flex justify-center mt-4">
+                <SvButton Id="shared-load-more" Variant="SvButtonVariant.Secondary" Busy="IsLoadingMore" Disabled="IsCommandRunning" OnClick="@LoadMoreAsync">Load more</SvButton>
+            </div>
+        }
+    </ChildContent>
+</DataStateView>
+
+<FileSharedItemDialog Open="@(_filing is not null)" ItemName="@FilingName" CurrentFolderId="@FilingCurrentFolder" Folders="@(_folders ?? [])" Loading="@_foldersLoading" FoldersLoaded="@(_folders is not null)" Busy="@IsCommandRunning" ErrorText="@_fileError" OnConfirm="@FileAsync" OnCancel="@CloseFiling" />

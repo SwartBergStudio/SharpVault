@@ -1,0 +1,100 @@
+<SvDialog IdPrefix="folder-editor" Title="@Title" Open="@Open" Busy="@Busy" OnCancel="@OnCancel">
+    <ChildContent>
+        <SvStack Spacing="3">
+            @if (Mode == FolderEditorMode.Move)
+            {
+                <FolderPicker Id="folder-editor-parent-select" Label="Parent folder" Folders="@Folders" Value="@_parentId" ValueChanged="@SetParent" ExcludeSubtreeOf="@ExcludeSubtreeOf" />
+            }
+            else
+            {
+                <SvTextField Id="folder-editor-name-input" Label="Folder name" Value="@_name" ValueChanged="@SetName" MaxLength="@VaultFieldRules.FolderNameMaxLength" Required="true" />
+                @if (Mode == FolderEditorMode.Rename && FolderId is { } renamedId)
+                {
+                    <p id="folder-reference">Reference <span class="sv-mono">@FolderReference.Of(renamedId)</span></p>
+                }
+            }
+            @if (ErrorText is not null)
+            {
+                <SvAlert Id="folder-editor-error" Kind="AlertKind.Danger">@ErrorText</SvAlert>
+            }
+        </SvStack>
+    </ChildContent>
+    <Footer>
+        <SvButton Id="folder-editor-cancel" Variant="SvButtonVariant.Secondary" Disabled="@Busy" OnClick="@HandleCancelAsync">Cancel</SvButton>
+        <SvButton Id="folder-editor-save" Variant="SvButtonVariant.Primary" Busy="@Busy" Disabled="@(!CanSave)" OnClick="@HandleSaveAsync">@SaveText</SvButton>
+    </Footer>
+</SvDialog>
+
+@code {
+    private string _name = string.Empty;
+    private Guid? _parentId;
+    private bool _wasOpen;
+
+    [Parameter]
+    public bool Open { get; set; }
+
+    [Parameter]
+    public FolderEditorMode Mode { get; set; }
+
+    [Parameter]
+    public string InitialName { get; set; } = string.Empty;
+
+    [Parameter]
+    public Guid? InitialParentId { get; set; }
+
+    [Parameter]
+    public Guid? FolderId { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<FolderDto> Folders { get; set; } = [];
+
+    [Parameter]
+    public Guid? ExcludeSubtreeOf { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public string? ErrorText { get; set; }
+
+    [Parameter]
+    public EventCallback<FolderEditorInput> OnSave { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private string Title => Mode switch
+    {
+        FolderEditorMode.Rename => "Rename folder",
+        FolderEditorMode.Move => "Move folder",
+        _ => InitialParentId is null ? "New folder" : "New subfolder",
+    };
+
+    private string SaveText => Mode switch
+    {
+        FolderEditorMode.Rename => "Rename",
+        FolderEditorMode.Move => "Move",
+        _ => "Create",
+    };
+
+    private bool CanSave => Mode == FolderEditorMode.Move || !string.IsNullOrWhiteSpace(_name);
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen)
+        {
+            _name = InitialName;
+            _parentId = InitialParentId;
+        }
+
+        _wasOpen = Open;
+    }
+
+    private void SetName(string value) => _name = value;
+
+    private void SetParent(Guid? value) => _parentId = value;
+
+    private Task HandleSaveAsync() => CanSave && !Busy ? OnSave.InvokeAsync(new FolderEditorInput(_name, _parentId)) : Task.CompletedTask;
+
+    private Task HandleCancelAsync() => Busy ? Task.CompletedTask : OnCancel.InvokeAsync();
+}

@@ -1,0 +1,26 @@
+@inherits LoadableComponentBase<UserCountsDto>
+@inject IAdminUsersApiClient UsersClient
+@using SharpVault.Dtos.Users
+
+<DataStateView TValue="UserCountsDto" IdPrefix="user-counts" State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+    <ChildContent Context="counts">
+        <dl class="sv-fields">
+            <dt>Secrets</dt>
+            <dd id="user-counts-secrets">@counts.ItemCount</dd>
+            <dt>Shares on their items</dt>
+            <dd id="user-counts-shares">@counts.ShareCount</dd>
+        </dl>
+        @if (counts.CountsAreCapped)
+        {
+            <SvAlert Id="user-counts-capped" Kind="AlertKind.Warning">This vault is very large, so the real numbers are higher.</SvAlert>
+        }
+    </ChildContent>
+</DataStateView>
+
+@code {
+    [Parameter, EditorRequired]
+    public Guid UserId { get; set; }
+
+    protected override Task<ApiResponse<UserCountsDto>> LoadAsync(CancellationToken cancellationToken) =>
+        UsersClient.GetCountsAsync(UserId, cancellationToken);
+}

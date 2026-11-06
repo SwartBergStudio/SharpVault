@@ -1,207 +1,233 @@
 # Theme: Vault Steel
 
-The SharpVault look is called Vault Steel: a machined vault at night. Surfaces are blued graphite and deep navy, like gun-blued steel. The header has a faint brushed-metal grain and a thin brass rim. Labels look like engraved plates (wide, tracked capitals). Brass is the one accent, and it marks only the parts of a vault door that are polished: the primary action, the focus ring, the current location and a revealed secret. Secret values sit in sunken wells and use a monospace face with ligatures off.
+The SharpVault look is called Vault Steel: a machined vault at night. Surfaces are blued graphite and deep navy. Brass is the one accent, and it marks the primary action, the focus ring and a revealed secret. Secret values sit in monospace text with ligatures off.
 
-The theme is built once in `src/SharpVault.UI.Shared`, so the Web app and the planned MAUI app share it. Nothing in the theme is specific to one host.
+The UI is built on MudBlazor 9.11.0 (MIT). Vault Steel is a MudBlazor theme plus one small stylesheet. Both live in `src/SharpVault.UI.Shared`, so the Web app and the planned MAUI app share them.
 
 ## Where things are
 
 | Path (under `src/SharpVault.UI.Shared/`) | What it is |
 |---|---|
-| `wwwroot/css/app.css` | The whole stylesheet: tokens, reset, base, components, layout and utilities, in cascade layers |
+| `Theming/SharpVaultTheme.cs` | The MudBlazor theme: dark and light palettes, typography and layout sizes |
+| `wwwroot/css/app.css` | The stylesheet for what MudBlazor does not cover: fonts, skip link, focus ring, state panels, secret wells, vault door, error bar, reduced motion, forced colours and print |
 | `wwwroot/fonts/` | Four WOFF2 files and two licence files |
 | `wwwroot/brand/favicon.svg` | The vault door favicon |
-| `Components/` | Razor components: `Icon`, `Brand/VaultDoor`, `Common/StatusBadge`, `Alert`, `EmptyState`, `DialogShell`, `SecretFrame`, `BusyIndicator`, and `ComponentIds` |
-| `Layout/` | `MainLayout`, `SkipLink`, `AppHeader`, `SideNav`, `AccountMenu` |
-| `Pages/` | Home, NotFound, AccessDenied, SignedOut, SignInError, Account |
+| `Components/Base/` | `SharpVaultComponentBase`, `LoadableComponentBase<T>`, `DataStateView<TValue>`, `LoadState` |
+| `Components/Common/` | The `Sv*` wrappers and the state, status and secret components |
+| `Components/Brand/` | `VaultDoor` |
+| `Components/Icons/SvIcons.cs` | Icon names used by the components (MudBlazor Material icons) |
+| `Components/Layout/` | `AppErrorBoundary` and `IdleLock` |
+| `Components/Account/`, `Components/Home/`, `Components/Users/` | Feature components: `ProfileCard`, `HomeHero`, `UserDirectoryTable` |
+| `Layout/` | `MainLayout`, `AppHeader`, `SideNav`, `AccountMenu`, `SkipLink` |
+| `Pages/` | Home, Account, AdminUsers, AccessDenied, SignedOut, SignInError, NotFound, Error |
+| `Services/` | `Auth/` (token types, `ISessionActions`, `ISessionValidator`), `Clients/` (API clients on `ApiClientBase`), `Users/` (`ICurrentUserAccessor`) and `Idle/` (idle monitor and options) |
 
-`THIRD-PARTY-NOTICES.md` in the repository root lists the fonts and icons with their licences.
+The Web host also links `_content/MudBlazor/MudBlazor.min.css` and `MudBlazor.min.js` from `App.razor`. `THIRD-PARTY-NOTICES.md` in the repository root lists the fonts and the word list. It does not yet list MudBlazor (MIT) or the Material icon notice (Apache-2.0), see `docs/PROGRESS.md`.
+
+## MudBlazor theme
+
+`SharpVaultTheme.Instance` is the one theme. `MainLayout` passes it to `MudThemeProvider`.
+
+- Dark is the default. After the first interactive render the layout asks the browser for the system scheme (`GetSystemDarkModeAsync`) and follows it. There is no in-app toggle.
+- Typography: Archivo for text, buttons without upper-case and at weight 600.
+- Layout: border radius 6px, drawer 15rem, app bar 3.5rem.
+
+Palette values in the code (dark, then light):
+
+| Palette role | Dark | Light |
+|---|---|---|
+| Primary (brass) | `#D9AE55` | `#7D5A0F` |
+| Secondary (muted text) | `#9AA7B6` | `#4B5869` |
+| Tertiary and Info (locked) | `#8DBDF0` | `#1F5A94` |
+| Success (active) | `#5BD69A` | `#146C43` |
+| Warning | `#FF9D57` | `#9A4300` |
+| Error | `#E5484D` | `#B3242B` |
+| Background | `#0A1017` | `#ECEFF3` |
+| Surface and app bar | `#111923` | `#F8FAFC` |
+| Divider | `#233140` | `#CBD3DC` |
+| Text | `#E7EBF0` | `#0E1620` |
+
+The palette is the colour source. The stylesheet has no colour tokens of its own. Its colours come from `var(--mud-palette-*)`, with two exceptions: the error bar shadow is a fixed `rgba` value, and the print rule sets fixed black text and a white background. The forced-colours block uses system colours (`CanvasText`, `Highlight`).
+
+Contrast is not tested. The WCAG contrast tests were removed in the test cleanup, because they pinned colour, and the owner decided that appearance is reviewed by eye with the site tour. A palette change that breaks a pair is caught only by that review.
 
 ## Fonts and licences
 
-Both fonts are self-hosted. The stylesheet loads them from `../fonts/`. There is no CDN, no `local()` source and no preload.
+Both fonts are self-hosted. `app.css` loads them from `../fonts/`. There is no CDN and no `local()` source.
 
 | Role | Family | File | Licence |
 |---|---|---|---|
-| UI, body, headings, plate labels (Latin) | Archivo variable (`wdth` 62 to 125, `wght` 100 to 900) | `archivo-latin-wdth-normal.woff2` | SIL OFL 1.1 (`OFL-Archivo.txt`) |
+| UI, body, headings (Latin) | Archivo variable | `archivo-latin-wdth-normal.woff2` | SIL OFL 1.1 (`OFL-Archivo.txt`) |
 | Same, Latin Extended | Archivo | `archivo-latin-ext-wdth-normal.woff2` | SIL OFL 1.1 |
-| Secrets, identifiers, code (Latin) | JetBrains Mono variable (`wght` 100 to 800) | `jetbrains-mono-latin-wght-normal.woff2` | SIL OFL 1.1 (`OFL-JetBrainsMono.txt`) |
+| Secrets and code (Latin) | JetBrains Mono variable | `jetbrains-mono-latin-wght-normal.woff2` | SIL OFL 1.1 (`OFL-JetBrainsMono.txt`) |
 | Same, Latin Extended | JetBrains Mono | `jetbrains-mono-latin-ext-wght-normal.woff2` | SIL OFL 1.1 |
 
-Both fonts come from the npm packages `@fontsource-variable/archivo` and `@fontsource-variable/jetbrains-mono` (version 5.3.0). The WOFF2 files are the unmodified package files, and their SHA-256 hashes are pinned in the theme plan (`docs/plans/app-theme.md`, section 4.2). The licence files are the packages' OFL texts, unmodified. Neither font declares a Reserved Font Name.
+The fonts come from `@fontsource-variable/archivo` and `@fontsource-variable/jetbrains-mono` (5.3.0). The WOFF2 files are unmodified package files. Neither font declares a Reserved Font Name.
 
-Rules:
+Rules that the tests enforce:
 
-- Every `@font-face` rule uses `font-style: normal` and `font-display: swap`. No italics are shipped. Emphasis uses weight, and `font-synthesis: none` stops faux italics.
-- Secret and code text uses `font-variant-ligatures: none` and `font-feature-settings: "calt" 0, "liga" 0`, so `!=` or `->` inside a password are not merged.
+- Every `@font-face` uses `font-style: normal` and `font-display: swap`. No italics are shipped.
+- The `.sv-mono` class and secret values use JetBrains Mono with `font-variant-ligatures: none` and `font-feature-settings: "calt" 0`, so `!=` or `->` inside a password are not merged.
 
-Icons are inline SVG copied from `lucide-static` 1.66.0 (ISC licence, with an MIT notice for the Feather-derived icons). There are 31 icons, all listed in `Components/Icons/IconName.cs`.
+## Stylesheet
 
-## Design tokens
+`app.css` is trimmed to what the MudBlazor UI uses. It defines no design tokens of its own. It contains:
 
-Tokens are CSS custom properties on `:root`. Dark is the default. The light scheme is set by `@media (prefers-color-scheme: light)`. The theme follows the operating system, and there is no in-app toggle.
+- the four `@font-face` rules;
+- the focus ring (`:focus-visible`, 2px outline in `--mud-palette-primary`);
+- the skip link and the visually hidden helper;
+- the mono class, plate labels, brand, app bar, side nav, page header and hero rules;
+- state panel, picker, account card, dialog, secret well and busy indicator rules;
+- the vault door, with its sealing animation;
+- the Blazor error bar (`#blazor-error-ui`);
+- reduced motion, forced colours and print. Print hides revealed secret values.
 
-Main colour tokens (dark value, then light value):
+Size is not tested. The stylesheet and font size budgets were removed in the test cleanup, because they pinned appearance. The MudBlazor stylesheet itself is about 625 KB raw and 67 KB gzip (figures from the earlier notes, not re-measured). The Web page response budgets (150 ms per page, fifty requests each) stay in `WebPagePerformanceTests`.
 
-| Token | Dark | Light | Used for |
+## Component tiers
+
+| Tier | Where | What | Rule |
 |---|---|---|---|
-| `--color-bg` | `#0A1017` | `#ECEFF3` | page |
-| `--color-surface` | `#111923` | `#F8FAFC` | header, side nav, cards, tables |
-| `--color-surface-raised` | `#172230` | `#FFFFFF` | dialogs, buttons, current nav item |
-| `--color-surface-sunken` | `#070B10` | `#E2E7ED` | inputs, secret wells, tags |
-| `--color-border` | `#233140` | `#CBD3DC` | decorative dividers only |
-| `--color-border-strong` | `#6B7E93` | `#6A7A8D` | control boundaries |
-| `--color-text` | `#E7EBF0` | `#0E1620` | text |
-| `--color-text-muted` | `#9AA7B6` | `#4B5869` | secondary text, plates |
-| `--color-accent` | `#D9AE55` | `#7D5A0F` | brass: primary button, current marker, revealed frame |
-| `--color-focus` | `#F0C66B` | `#7D5A0F` | focus ring |
-| `--color-success` | `#5BD69A` | `#146C43` | Active |
-| `--color-locked` | `#8DBDF0` | `#1F5A94` | Locked |
-| `--color-warning` | `#FF9D57` | `#9A4300` | Warning, scheduled lock |
-| `--color-danger` | `#FF7A7A` | `#B3242B` | errors, destructive outline |
+| 1. MudBlazor | NuGet package | Mud components, providers, icons | Used inside the wrappers. Some pages still use a few Mud primitives directly (see Next in `PROGRESS.md`). |
+| 2. Wrappers | `Components/Common/`, `Components/Brand/` | `SvButton`, `SvIconButton`, `SvAlert`, `SvDialog`, `SvTable` with `SvColumn`, `StatePanel`, `StatusChip`, `SecretField`, `EmptyState`, `BusyIndicator`, `SignInLink`, `VaultDoor` | Take a stable kebab-case id. The wrappers check it with `ComponentIds.EnsureValid`, either directly or in the inner wrapper they pass it to (`EmptyState` passes its id to `StatePanel`, and `SignInLink` passes its id to `SvButton`). Forward only real Mud parameters and lowercase HTML attributes (`id`, `aria-*`, `data-*`). Never pass `Name` or `Value` to a Mud button (team rule; no test checks it). |
+| 3. Base | `Components/Base/` | `SharpVaultComponentBase`, `LoadableComponentBase<T>`, `DataStateView<TValue>` | Pages that load data inherit `LoadableComponentBase<T>` and render through `DataStateView`. |
+| 4. Layout and pages | `Layout/`, `Components/Layout/`, `Pages/` | The shell, the idle lock, the error boundary and the pages | Compose tiers 2 and 3. |
 
-Each status colour also has `-bg` and `-border` variants, and the danger fill has `-solid`, `-solid-hover` and `on-danger`. `--color-on-accent` is the text colour on brass. The `--color-grain` and `--color-overlay` tokens are `rgba(...)` values. All other colour tokens are opaque `#RRGGBB`.
+Wrapper behaviour:
 
-Other tokens:
+- `SvButton` variants: `Primary` and `Danger` are filled (Primary or Error colour), `Secondary` is outlined, `Ghost` is text. `Busy` disables the button and shows a small spinner.
+- `StatusChip` maps `Active` to Success, `Locked` to Info, `Warning` and `Danger` to Warning and Error. The text and icon always show, never colour alone.
+- `SvDialog` takes `IdPrefix`, `Title`, `Open`, `Danger`, `ChildContent`, `Footer` and `OnCancel`.
+- `SvTable` takes `Id`, `Items`, `Columns`, `EmptyContent` and `Loading`. Each `SvColumn` gives a `Header` and either a `Value` function or `ChildContent`. A column outside an `SvTable` throws.
+- `SecretField` shows a fixed mask of eight bullets unless `Revealed` is set, and never the content. Print hides revealed values.
 
-- **Shadows**: `--shadow-raised` (cards) and `--shadow-dialog` (dialogs and the error bar), with separate light and dark values.
-- **Fonts**: `--font-sans` (Archivo) and `--font-mono` (JetBrains Mono).
-- **Type sizes**: `--text-xs` to `--text-3xl`. The largest is fluid.
-- **Spacing**: `--space-xs` to `--space-2xl`.
-- **Radii**: `--radius-sm` (3px), `--radius-md` (6px), `--radius-lg` (10px) and `--radius-round`.
-- **Motion**: `--duration-fast`, `--duration-normal`, `--duration-seal`, `--ease-out` and `--ease-lock`.
-- **Layout**: `--header-height`, `--sidenav-width`, `--content-max`, `--control-height` and `--tap-target`.
-- **Layers**: `--z-header`, `--z-dialog`, `--z-lock`, `--z-error-ui` and `--z-skip`.
+Never put a `style` attribute or a `Style` parameter on any element (see CSP below).
 
-Media queries cannot use variables. The breakpoints are fixed at `30rem`, `40rem` (dialogs become bottom sheets below this), `48rem` and `60rem` (side nav column).
+## Loading, empty, error and success
 
-## Contrast
+`LoadableComponentBase<T>` runs `LoadAsync` once on initialisation. A subclass can override `IsEmpty` to report an empty result. `ReloadAsync` starts again from Loading, and the Try again button calls it.
 
-Every text and UI colour pair meets its WCAG 2.2 AA minimum in both schemes:
+The four states are `LoadState.Loading`, `Empty`, `Error` and `Loaded`. `DataStateView<TValue>` renders one of them:
 
-- Text and accent text: 4.5:1.
-- Text on filled controls (`on-accent`, `on-danger`): 4.5:1.
-- Status text and icons, and text inside status containers: 4.5:1.
-- Control boundaries (`border-strong`), the focus ring and filled control boundaries: 3:1.
-
-`--color-border` is decorative. It is never the only boundary of a control. Disabled controls are exempt.
-
-`ThemeContrastTests` computes the ratios from `app.css` itself, so a token change that breaks a pair fails the unit tests. Add a new pair to that test when you add a new text or control colour.
-
-## Stylesheet structure
-
-`app.css` has a fixed top-level order. The contrast test parser depends on it:
-
-1. `@layer sv-reset, sv-base, sv-components, sv-layout, sv-utilities;`
-2. The four `@font-face` rules.
-3. `:root` with every token (dark values).
-4. The light-scheme media block.
-5. `sv-reset`: box sizing, form control inheritance, `[hidden]`, and the reduced-motion rule.
-6. `sv-base`: body, headings, links, focus ring, selection, code, inputs, and the `.validation-message` and `.validation-errors` classes used by Blazor forms.
-7. The four `@keyframes`: `sv-seal-wheel`, `sv-seal-bolts`, `sv-dial-tick` and `sv-reveal`.
-8. `sv-components`: buttons, fields, cards, tables, lists, tags, status badges, alerts, secret frame, strength meter, dialogs, tree, empty and state panels, hero, busy indicator and lock screen.
-9. `sv-layout`: skip link, frame, sticky header, side nav and main.
-10. `sv-utilities`: utilities, forced colours and print.
-
-Why layers: unlayered styles beat layered ones. A component's `.razor.css` (unlayered) therefore overrides a theme default without specificity fights. The reduced-motion rule is layered `!important`, so it beats every unlayered animation.
-
-## Components and ids
-
-Every interactive element has a stable `id`. Components take the id as a parameter and check it with `ComponentIds.EnsureValid`, which requires lowercase kebab-case (`^[a-z][a-z0-9-]*\z`). It throws for anything else and does not echo the value.
-
-| Component | Parameters | Notes |
+| State | Renders | Element ids |
 |---|---|---|
-| `Icon` | `Name` (`IconName`), `Label`, `CssClass` | Decorative unless `Label` is set. |
-| `VaultDoor` | `Variant` (`Hero`, `Mark`), `Sealing`, `Id` | Brand mark and hero illustration. `Sealing` plays the wheel and bolt animation once, on sign-out. |
-| `StatusBadge` | `Status` (`Unknown`, `Active`, `Locked`, `Warning`, `Danger`), `Label`, `Icon`, `Id` | Always text and icon, never colour alone. |
-| `Alert` | `Id` (required), `Kind` (`Info`, `Success`, `Warning`, `Danger`), `Title` | `role="alert"` for Warning and Danger, `role="status"` otherwise. |
-| `EmptyState` | `Id`, `Title`, `Icon`, `ChildContent`, `Actions` | |
-| `DialogShell` | `IdPrefix`, `Title`, `Open`, `Danger`, `Footer`, `OnCancel` | Focuses the dialog, not a button. Escape calls `OnCancel`. A backdrop click does nothing. |
-| `SecretFrame` | `IdPrefix`, `Revealed` (default hidden), `Actions` | Hidden state renders a fixed mask of eight bullets and never the content. Print hides revealed values. |
-| `BusyIndicator` | `Id`, `Label` | `role="status"`. |
+| Loading | `BusyIndicator`, or the `Loading` fragment | `{prefix}-loading` |
+| Empty | `EmptyState` with `EmptyTitle`, or the `Empty` fragment | `{prefix}-empty` |
+| Error | `SvAlert` (danger) with `ErrorText`, a Try again button, or the `Error` fragment | `{prefix}-error`, `{prefix}-retry` |
+| Loaded | `ChildContent(Value)` | (the content's own ids) |
 
-Fixed ids in the shell and pages:
+The base maps each API result to a state:
 
-| Id | Element |
+| `ApiCallStatus` | Result |
 |---|---|
-| `skip-to-content` | Skip link |
-| `app-header`, `brand-home-link` | Header and brand |
-| `side-nav`, `nav-home` | Side navigation |
-| `account-menu`, `account-link`, `account-name`, `sign-in-link`, `sign-out-form`, `sign-out-button` | Account menu |
-| `app-frame`, `main-content`, `app-shell` | Layout and main landmark |
-| `blazor-error-ui`, `blazor-error-reload`, `blazor-error-dismiss` | Blazor error bar |
-| `home`, `home-heading`, `home-sign-in` | Home page |
-| `account-section`, `account-heading`, `account-display-name`, `account-user-id`, `account-admin-badge` | Account page |
-| `access-denied-heading`, `signed-out-heading`, `sign-in-error-heading`, `not-found-heading` | State pages |
+| `Success` with a value | Loaded, or Empty when `IsEmpty` is true |
+| `SignInRequired` | Full page navigation to sign-in, with the current page as `returnUrl` and the retry flag. If the page already has the retry flag, the state is Error with `SignInLoopText`. |
+| `AccessDenied` | Clears the current-user cache and navigates to the access-denied page |
+| `ConfigurationMismatch` | Error with `ConfigurationMismatchText` (the web app and the API disagree about the mode or the key) |
+| `Failed`, or any other exception | Error with `GenericErrorText`. The log has the exception type only. |
 
-Icons: `IconName` has 31 members. To add one, copy the inner SVG elements of the Lucide icon (not the outer `<svg>` or the license comment), add the member at the end of the enum, and add a notice line in `THIRD-PARTY-NOTICES.md` if the source version changes.
+Error text is always encoded (`ErrorText_WithMarkup_IsEncoded`).
 
-## Adding styles
+The current user is read through `ICurrentUserAccessor`. It is scoped per circuit and caches only a successful `GET /api/me`. Concurrent first calls share one request. A failed call is not cached, so the next call asks the API again. `Invalidate()` clears the cache. The cache is keyed on the `oid` claim: when the signed-in user changes, the cache and any pending request are dropped.
 
-1. Use the tokens. Do not write a new colour literal, `style` attribute or `<style>` element.
-2. Shared classes go in the matching layer of `app.css`. Feature-specific styles go in a `.razor.css` file. That file is unlayered, so it overrides the theme, and it may use tokens only.
-3. Dynamic visuals use classes or `data-*` attributes with a fixed set of rules, for example `.sv-meter[data-level="3"]`. Never compute a width in markup.
-4. Use the existing components before writing markup. The contract table in `app-theme.md` (section 4.15) gives the rule for each need: secrets, dialogs, status, messages, empty lists, loading, navigation, folder trees, tags, password strength, the idle lock screen and icon-only buttons.
-5. Icon-only buttons need `aria-label`. Secret inputs need `class="sv-input--secret"`, `spellcheck="false"`, `autocapitalize="off"`, `autocorrect="off"` and an explicit `autocomplete`.
-6. Run `dotnet test SharpVault.slnx --filter "FullyQualifiedName~UiShared"` after any CSS change. The source scans, contrast and budget tests enforce the rules above.
+## Static and interactive pages
+
+- `App.razor` picks `InteractiveServer(prerender: false)` only when the request is authenticated and the page accepts interactive routing. Anonymous requests get static server rendering, so no circuit exists before sign-in.
+- Pages marked `[ExcludeFromInteractiveRouting]` are static even for signed-in users: the local sign-in picker, signed-out, sign-in error, access denied, not found and error.
+- Static pages use dark colours only. The reason is that `app.css` holds no colour tokens for a light scheme, and the theme rules forbid colour literals. CSS media queries would not need JavaScript, so that is not the limit.
+- The five static pages in `Pages/` (AccessDenied, Error, NotFound, SignInError, SignedOut) are meant to use only `MudPaper`, `MudText` and `MudIcon`. No test enforces this now. The local picker in the Web also uses `MudGrid` and `MudItem`.
+- The picker is a static page with one POST form per account. Each form has an antiforgery token. The sign-out form also has one.
+- The providers (`MudThemeProvider`, `MudPopoverProvider`, `MudDialogProvider`, `MudSnackbarProvider`) live once in `MainLayout`. In static pages they render but do nothing interactive.
 
 ## Content Security Policy
 
-The Web host sends this policy on every page, with the Entra origin filled in:
+The Web host sends this policy on every page. The identity provider origin comes from `AzureAd:Instance`:
 
 ```
-default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://login.microsoftonline.com; upgrade-insecure-requests
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://login.microsoftonline.com; upgrade-insecure-requests
 ```
 
-The `form-action` entry is the identity provider origin (from `AzureAd:Instance`). The sign-out form posts to the app, and the browser then follows the redirect to Entra's logout endpoint.
+The API sends `default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`.
 
-What this means for UI work:
+Why the Web policy is this:
 
-- No `style` attributes, no `<style>` elements and no `style` set from code. `style-src 'self'` blocks them.
-- No inline `<script>`, no `on*` attributes and no `javascript:` URLs. `script-src 'self'` blocks them.
-- No external origins in `src`, `href`, `action`, `formaction`, `poster` or CSS `url()`. Fonts and icons are local.
-- No `<link rel="preconnect">`, `dns-prefetch`, `prefetch` or `preload`.
-- SVG presentation attributes (`fill`, `stroke`, `transform`) are allowed. They are not inline styles.
-- Do not loosen the policy to fit a feature. One-time links (OTL-3) depend on the strict policy.
+- **`style-src 'self' 'unsafe-inline'`.** MudBlazor 9.11.0 sets inline `style` attributes at runtime and has no nonce support, so hashes do not work. `'unsafe-inline'` appears only in `style-src`. Narrower forms fail (table below). CSS injection is the residual risk. Exfiltration through CSS stays closed, because `default-src`, `img-src`, `font-src` and `connect-src` remain `'self'`.
+- **`img-src 'self' data:`.** The MudBlazor stylesheet contains a `data:image/png` URL, so `data:` must stay. The earlier plan item to drop it was wrong.
+- **Script policy is unchanged.** No inline script, no `on*` attributes and no `javascript:` URLs.
 
-The stylesheet rules that these checks enforce are in section 4.5 of `app-theme.md`. One follow-up remains: `img-src` still allows `data:`, which the theme plan lists for removal.
+Evidence for the style decision. These were measured during planning in headless Chrome, on same-origin https, with a page that used a button, text field, select, menu, tooltip, table, data grid, tabs, dialog, snackbar, progress and skeleton. The probe projects are not in the repository.
 
-JavaScript: the theme adds no JavaScript. The Web host still has the Blazor reconnect script `Components/Layout/ReconnectModal.razor.js`, which comes from the Blazor template and runs under `script-src 'self'`. The JS interop rule in `CLAUDE.md` allows Blazor JS interop only for specific browser methods that .NET cannot call directly (for example the clipboard, or Web Crypto for one-time links), wrapped behind a C# interface. Dialog focus uses Blazor's own `ElementReference.FocusAsync()`.
+| Style policy | Result |
+|---|---|
+| `style-src 'self'` | 98 violations; the Mud theme variables are empty |
+| Only `style-src-elem` narrowed | Palette empty, app bar transparent, drawer 83 px instead of 240 px |
+| `style-src-attr 'none'` | 40 violations; the interactive page stops responding |
+| `style-src 'self' 'unsafe-inline'` | 0 violations; everything works |
+
+The source rules in `ThemeSourceScanTests` apply to our markup under `UI.Shared` and `Web`. They reject `style=` attributes (including a `Style` parameter), `<style>` elements, inline `<script>`, `on*` handlers on HTML elements, `javascript:` URLs, external origins in `src`, `href`, `action` and `formaction`, and resource hints (`preconnect`, `preload` and similar).
+
+The browser check is in the E2E project. `EveryVisitedPage_ProducesZeroCspViolationsAndNoPageErrors` (in `ShellSafetyTests`) visits the main screens as an admin and fails on any CSP violation or page error. See [TESTING.md](TESTING.md#browser-e2e-tests).
+
+## Icons
+
+Icons are MudBlazor Material icons, named once in `SvIcons` (`Components/Icons/SvIcons.cs`). The components use those names, and the wrappers pass them to MudBlazor.
 
 ## Motion, print and forced colours
 
-- `prefers-reduced-motion: reduce` shortens every animation and transition to 0.01 ms and sets the iteration count to 1. The rule is in `sv-reset` as layered `!important`.
-- The only infinite animations are the busy-dial pointer (`.sv-busy__pointer`) and the Web reconnect modal.
-- The vault door animation plays once on sign-out. The idle lock screen (ADM-4) will use the same sealing door.
-- The `forced-colors` and print rules are in `sv-utilities`. Print hides revealed secret values.
+- `prefers-reduced-motion: reduce` shortens every animation and transition, and sets the iteration count to 1. The rule uses `!important` so it beats the animations.
+- The only infinite animations are the busy spinner and the Web reconnect modal.
+- The vault door sealing animation plays once when its `Sealing` parameter is set.
+- Forced colours and print rules are in `app.css`. Print hides revealed secret values.
+
+## Ids
+
+Every interactive element and every landmark has a stable kebab-case id, and the wrappers check it. Examples from the shell and pages: `skip-to-content`, `main-content`, `side-nav`, `nav-admin-users`, `account-menu`, `sign-out-button`, `admin-users-table`, `blazor-error-reload`.
+
+## Idle lock
+
+The idle lock runs a small JavaScript module (`wwwroot/js/idle-monitor.js`). When the user has been idle for `IdleLock:Timeout` (default 15 minutes, allowed 1 minute to 8 hours), the module submits the sign-out form. This is configuration only (ADM-4). There is no UI to change it.
+
+- Signed-in static pages load `wwwroot/js/idle-boot.js` from `App.razor`. The page starts the module with the sign-out form id and the timeout, so the timer does not need a circuit.
+- Interactive pages start the same module from the `IdleLock` component through JS interop, so they need a live circuit.
+- Activity in any tab is shared through `localStorage`. If a submit does not complete, the module tries again after 10 seconds.
+- The module also sends a heartbeat to the server at most once a minute while the user is active, so the server's idle limit (the timeout plus 2 minutes of no inbound activity) does not end an active user. A session ended by the server is revoked through the API, so it ends on every instance.
+- If the module script is blocked or fails to load, the browser timer does not run. `IdleLock` logs a warning and the page keeps working. On interactive pages the server limit still ends the circuit. Static signed-in pages have no circuit, so they rely on the browser timer, and they hold no vault data. The E2E test `IdleMonitorBlocked_AppKeepsWorkingWithNoErrorBanner` checks that the page keeps working.
+
+## Adding styles
+
+1. Use the MudBlazor palette and components. Do not add a colour literal, a `style` attribute or a `<style>` element.
+2. Add shared classes to `app.css`. Keep them small. No test checks the size of the file now.
+3. Use existing wrappers before writing markup.
+4. Run `dotnet test SharpVault.slnx --filter "FullyQualifiedName~UiShared"` after any change.
+
+## Tests
+
+| Test class | What it checks |
+|---|---|
+| `ThemeSourceScanTests` | The CSP and Razor source rules above (no inline script or style, no external origins, no resource hints), the disconnected-state rule that hides sensitive values, and the print rule that hides revealed values |
+| `ThemeMarkupTests` | Rendered markup of the theme (security-relevant markup only) |
+| `ComponentIdsTests` | Id rules |
+| `ComponentSourceRulesTests` | Source rules: no direct icon names, and the page and layout rules that remain |
+| `IdleMonitorScriptTests`, `ReconnectModalScriptTests` | `idle-monitor.js` and the reconnect script, run under node with a harness |
+| Component tests in `UiShared/Components/` | One test class per wrapper: forwarding, encoding and behaviour, rendered with bUnit and `MudTestContext`. Appearance is not asserted |
+| Layout and page tests in `UiShared/Layout/` and `UiShared/Pages/` | `ShellTestContext` renders the shell and pages |
+| `ThemeWebTests` | Served theme assets, the CSP and the security headers of the Web |
+| `WebPagePerformanceTests` | The Web page response budgets (fifty requests per page, 150 ms each) |
+
+The appearance tests (palette, WCAG contrast, font and size budgets, reduced motion, forced colours, focus outline, icon and class-name checks) were removed in the test cleanup. The site tour (`SiteTour`) is how the screens are reviewed now.
+
+`MudTestContext` adds `Services.AddMudServices()` and sets `JSRuntimeMode.Loose`. `ShellTestContext` extends it for shell and page tests.
 
 ## MAUI notes
 
 The planned MAUI app (`feature/maui-app`) must:
 
-- link `_content/SharpVault.UI.Shared/css/app.css` from its `wwwroot/index.html`, so the fonts and stylesheet load through the same path as the Web;
+- link `_content/SharpVault.UI.Shared/css/app.css` and `_content/MudBlazor/MudBlazor.min.css` from its `wwwroot/index.html`, and the MudBlazor script;
 - set `<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />` and `<meta name="color-scheme" content="dark light" />`;
-- set the iOS and Mac Catalyst minimum to 15.4, because the stylesheet uses cascade layers, `:focus-visible` and `dvh`.
-
-Safe-area insets (`env(safe-area-inset-*)`) are used by the header, main, side nav strip, dialog bottom sheet, lock screen and error bar.
-
-## Tests
-
-Theme tests are in `tests/SharpVault.UnitTests/UiShared/Theme/`:
-
-| Test class | What it checks |
-|---|---|
-| `ThemeContrastTests` | Every contrast pair in both schemes, computed from `app.css` |
-| `ThemeSourceScanTests` | The CSS and Razor rules above (no inline style, no external origin, no comments, no unsafe `url()`) |
-| `ThemeMarkupTests` | Rendered HTML of the components and pages |
-| `ThemeBudgetTests` | Size budgets for the stylesheet and fonts |
-| `ThemeScanSupportTests` | The CSS parser used by the scans |
-| `IconTests`, `VaultDoorTests`, `StatusBadgeTests`, `AlertTests`, `EmptyStateTests`, `DialogShellTests`, `SecretFrameTests`, `BusyIndicatorTests`, `ComponentIdsTests` | Component behaviour with bUnit |
-
-The size budget tests run in every pull request, so a feature that bloats the stylesheet or adds a font fails the build.
+- set the iOS and Mac Catalyst minimum to 15.4, because the stylesheet uses `:focus-visible` and `dvh`.
 
 ## Not done yet
 
-- Playwright checks for the skip link and dialog focus (foundation D23 and theme D6, D14). Browser checks need the E2E setup, which is a later feature.
-- The MAUI `index.html` and iOS minimum (section above), which come with `feature/maui-app`.
-- Removing `data:` from `img-src` (theme D8).
+- Browser checks for the skip link and dialog focus. The E2E project has the CSP and page-error check and the idle checks, but no skip-link or dialog-focus journey yet.
+- The MAUI `index.html` and the iOS minimum, which come with `feature/maui-app`.
+- Pages still use a few MudBlazor primitives directly (`MudText`, `MudPaper`, `MudTh` and `MudTd`). The rule is that pages use the wrappers. Moving them is open work.

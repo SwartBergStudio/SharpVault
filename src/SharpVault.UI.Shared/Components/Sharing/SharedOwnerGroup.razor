@@ -1,0 +1,44 @@
+<SvPaper Id="@($"shared-owner-{OwnerId:D}")" Class="pa-3 mb-4">
+    <SvText Id="@($"shared-owner-heading-{OwnerId:D}")" Kind="SvTextKind.Heading" HtmlTag="h2">From @OwnerName</SvText>
+    <SvTable Id="@($"shared-owner-table-{OwnerId:D}")" TItem="SharedItemDto" Items="@Items">
+        <Columns>
+            <SvColumn TItem="SharedItemDto" Header="Name" Context="item">
+                <div class="d-flex align-center flex-wrap gap-2">
+                    <SvLink Id="@($"shared-item-link-{SharedItemText.ElementKey(item)}")" Href="@SharedItemText.Href(item)">@SharedItemText.Name(item)</SvLink>
+                    @if (item.IsDamaged)
+                    {
+                        <StatusChip Id="@($"shared-item-damaged-{SharedItemText.ElementKey(item)}")" Status="SecurityStatus.Warning" Label="Damaged" />
+                    }
+                </div>
+            </SvColumn>
+            <SvColumn TItem="SharedItemDto" Header="Type" Value="@(item => SharedItemText.KindLabel(item))" />
+            <SvColumn TItem="SharedItemDto" Header="Access" Value="@(item => PermissionLabels.Label(item.Permission))" />
+            <SvColumn TItem="SharedItemDto" Header="Filed in" Context="item">
+                <span id="@($"shared-item-filed-{SharedItemText.ElementKey(item)}")">@SharedItemText.FiledLabel(item, Folders)</span>
+            </SvColumn>
+            <SvColumn TItem="SharedItemDto" Header="Actions" Context="item">
+                <SvIconButton Id="@($"shared-item-file-{SharedItemText.ElementKey(item)}")" Icon="@SvIcons.Move" Label="@($"File {SharedItemText.Name(item)} in a folder")" Disabled="@Disabled" OnClick="@(() => OnFile.InvokeAsync(item))" />
+            </SvColumn>
+        </Columns>
+    </SvTable>
+</SvPaper>
+
+@code {
+    [Parameter, EditorRequired]
+    public Guid OwnerId { get; set; }
+
+    [Parameter, EditorRequired]
+    public string OwnerName { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<SharedItemDto> Items { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<FolderDto>? Folders { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public EventCallback<SharedItemDto> OnFile { get; set; }
+}

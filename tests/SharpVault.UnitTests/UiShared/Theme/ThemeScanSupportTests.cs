@@ -32,6 +32,13 @@ public sealed class ThemeScanSupportTests
     [InlineData("<button type=\"button\" @onclick=\"() => x > 1\" id=\"b\">", 1)]
     [InlineData("<NavLink id=\"n\" href=\"\">", 1)]
     [InlineData("<input /><textarea></textarea>", 2)]
+    [InlineData("<SvTextField Id=\"x\" Label=\"y\" />", 1)]
+    [InlineData("<SvSelect Id=\"x\" Label=\"y\" />", 1)]
+    [InlineData("<SvCheckbox Id=\"x\" Label=\"y\" />", 1)]
+    [InlineData("<SvSlider Id=\"x\" Label=\"y\" Min=\"1\" Max=\"2\" />", 1)]
+    [InlineData("<MudRadio Value=\"a\" />", 1)]
+    [InlineData("<MudSlider T=\"int\" />", 1)]
+    [InlineData("<MudRadioGroup T=\"string\"><MudSliderBar />", 0)]
     public void RazorTags_Sample_MatchesOnlyInteractiveElements(string markup, int expected)
     {
         Assert.Equal(expected, RazorTags.Find(markup).Count());
@@ -54,25 +61,4 @@ public sealed class ThemeScanSupportTests
         Assert.False(RazorTags.HasAttribute(tag, "id"));
     }
 
-    [Fact]
-    public void CssBlocks_NestedMediaAndLayers_AreFlattenedWithContext()
-    {
-        const string css = "@layer a, b;\n@layer a { .x, .y:not(.z, .w) { color: red; } @media (m) { .q { top: 0; } } }\n:root { --t: 1; }";
-
-        var blocks = CssBlocks.Flatten(css);
-
-        Assert.Equal([ "@layer a", ".x, .y:not(.z, .w)", "@media (m)", ".q", ":root" ], blocks.Select(block => block.Prelude));
-        var query = blocks.Single(block => block.Prelude == ".q");
-        Assert.Equal(["@layer a", "@media (m)"], query.Context);
-        Assert.Equal([".x", ".y:not(.z, .w)"], blocks[1].Selectors);
-        Assert.Equal("red", blocks[1].ValueOf("color"));
-    }
-
-    [Fact]
-    public void CssBlocks_DeclarationsBeforeNestedRule_AreNotMerged()
-    {
-        var declarations = CssBlocks.Declarations("a: b; .nested { c: d; } e: f");
-
-        Assert.Equal([("a", "b"), ("e", "f")], declarations);
-    }
 }

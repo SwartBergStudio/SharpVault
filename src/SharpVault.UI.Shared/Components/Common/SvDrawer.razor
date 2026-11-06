@@ -1,0 +1,18 @@
+<MudDrawer Open="@Open"
+           OpenChanged="@OpenChanged"
+           Variant="DrawerVariant.Responsive"
+           Breakpoint="Breakpoint.Md"
+           ClipMode="DrawerClipMode.Always"
+           Elevation="0"
+           Class="sv-sidenav">@ChildContent</MudDrawer>
+
+@code {
+    [Parameter]
+    public bool Open { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> OpenChanged { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

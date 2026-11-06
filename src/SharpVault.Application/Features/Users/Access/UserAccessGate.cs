@@ -30,7 +30,8 @@ public sealed partial class UserAccessGate(
                 return UserAccessDecision.Denied;
             }
 
-            if (!IsSignInDue(cached.LastSignInAt, now))
+            if (!IsSignInDue(cached.LastSignInAt, now)
+                && !RoleObservation.IsNewer(cached.IsAdmin, cached.RoleObservedAt, user.IsAdmin, user.TokenIssuedAt))
             {
                 return UserAccessDecision.Allowed;
             }
@@ -49,13 +50,18 @@ public sealed partial class UserAccessGate(
             return UserAccessDecision.Denied;
         }
 
-        if (!IsSignInDue(stored.Value.LastSignInAt, now))
+        if (IsSignInDue(stored.Value.LastSignInAt, now))
         {
-            CacheState(stored.Value);
-            return UserAccessDecision.Allowed;
+            return await RecordSignInAsync(user, stored, now, cancellationToken);
         }
 
-        return await RecordSignInAsync(user, stored, now, cancellationToken);
+        if (RoleObservation.IsNewer(stored.Value.IsAdmin, stored.Value.RoleObservedAt, user.IsAdmin, user.TokenIssuedAt))
+        {
+            return await RecordRoleAsync(user, stored, cancellationToken);
+        }
+
+        CacheState(stored.Value);
+        return UserAccessDecision.Allowed;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "User {UserId} provisioned")]
@@ -63,6 +69,9 @@ public sealed partial class UserAccessGate(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Sign-in recorded for user {UserId}")]
     private static partial void LogSignInRecorded(ILogger logger, Guid userId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Role observation recorded for user {UserId}: admin {IsAdmin}")]
+    private static partial void LogRoleRecorded(ILogger logger, Guid userId, bool isAdmin);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Access denied for locked user {UserId}")]
     private static partial void LogLockedUserDenied(ILogger logger, Guid userId);
@@ -79,10 +88,17 @@ public sealed partial class UserAccessGate(
     private bool IsSignInDue(DateTimeOffset lastSignInAt, DateTimeOffset now) =>
         now - lastSignInAt >= options.Value.SignInRecordInterval;
 
-    private void CacheState(User user) => cache.Set(user.Id, new CachedUserAccess(user.Status, user.LastSignInAt));
+    private void CacheState(User user) =>
+        cache.Set(user.Id, new CachedUserAccess(user.Status, user.LastSignInAt, user.IsAdmin, user.RoleObservedAt));
+
+    private static (bool IsAdmin, DateTimeOffset? ObservedAt) ObserveRole(bool storedIsAdmin, DateTimeOffset? storedAt, SignedInUser user) =>
+        RoleObservation.IsNewer(storedIsAdmin, storedAt, user.IsAdmin, user.TokenIssuedAt)
+            ? (user.IsAdmin, user.TokenIssuedAt)
+            : (storedIsAdmin, storedAt);
 
     private async Task<UserAccessDecision> ProvisionAsync(SignedInUser user, DateTimeOffset now, CancellationToken cancellationToken)
     {
+        var (isAdmin, observedAt) = ObserveRole(false, null, user);
         var newUser = new User
         {
             Id = user.UserId,
@@ -91,6 +107,8 @@ public sealed partial class UserAccessGate(
             Status = UserStatus.Active,
             CreatedAt = now,
             LastSignInAt = now,
+            IsAdmin = isAdmin,
+            RoleObservedAt = observedAt,
         };
 
         var result = await users.AddAsync(newUser, cancellationToken);
@@ -111,6 +129,7 @@ public sealed partial class UserAccessGate(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
+        var (isAdmin, observedAt) = ObserveRole(stored.Value.IsAdmin, stored.Value.RoleObservedAt, user);
         var updated = new User
         {
             Id = stored.Value.Id,
@@ -119,6 +138,8 @@ public sealed partial class UserAccessGate(
             Status = stored.Value.Status,
             CreatedAt = stored.Value.CreatedAt,
             LastSignInAt = now,
+            IsAdmin = isAdmin,
+            RoleObservedAt = observedAt,
         };
 
         var result = await users.ReplaceAsync(updated, stored.ETag, cancellationToken);
@@ -131,6 +152,35 @@ public sealed partial class UserAccessGate(
         await AppendSignInAsync(user, now, cancellationToken);
         CacheState(updated);
         LogSignInRecorded(logger, user.UserId);
+        return UserAccessDecision.Allowed;
+    }
+
+    private async Task<UserAccessDecision> RecordRoleAsync(
+        SignedInUser user,
+        Versioned<User> stored,
+        CancellationToken cancellationToken)
+    {
+        var updated = new User
+        {
+            Id = stored.Value.Id,
+            DisplayName = stored.Value.DisplayName,
+            Email = stored.Value.Email,
+            Status = stored.Value.Status,
+            CreatedAt = stored.Value.CreatedAt,
+            LastSignInAt = stored.Value.LastSignInAt,
+            IsAdmin = user.IsAdmin,
+            RoleObservedAt = user.TokenIssuedAt,
+        };
+
+        var result = await users.ReplaceAsync(updated, stored.ETag, cancellationToken);
+        if (result != StoreWriteResult.Written)
+        {
+            LogSignInWriteConflict(logger, user.UserId);
+            return await ReloadAsync(user.UserId, cancellationToken);
+        }
+
+        CacheState(updated);
+        LogRoleRecorded(logger, user.UserId, user.IsAdmin);
         return UserAccessDecision.Allowed;
     }
 

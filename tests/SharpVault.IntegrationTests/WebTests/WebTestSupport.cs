@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using SharpVault.IntegrationTests.Factories;
+using SharpVault.IntegrationTests.Logging;
 using SharpVault.IntegrationTests.Support;
 
 namespace SharpVault.IntegrationTests.WebTests;
@@ -31,11 +32,16 @@ internal static partial class WebTestSupport
     [GeneratedRegex("<[^>]+\\son[a-z]+\\s*=", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex InlineEventHandlerPattern();
 
-    [GeneratedRegex("<[^>]+\\sstyle\\s*=", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex InlineStylePattern();
-
     [GeneratedRegex("(?:href|src)=\"(?<url>(?!https?:|//)[^\"]+\\.(?:css|js)(?:\\?[^\"]*)?)\"", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex LocalAssetPattern();
+
+    [GeneratedRegex(@"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.",RegexOptions.CultureInvariant)]
+    private static partial Regex JwtShapePattern();
+
+    public static bool ContainsJwt(string text) => JwtShapePattern().IsMatch(text);
+
+    public static bool LogsContainJwt(CapturingLoggerProvider logs) =>
+        logs.Entries.Any(entry => ContainsJwt(entry.Message) || ContainsJwt(entry.Category) || (entry.Exception is not null && ContainsJwt(entry.Exception)));
 
     public static string? ExtractSignOutAntiforgeryToken(string html)
     {
@@ -49,8 +55,8 @@ internal static partial class WebTestSupport
         return token.Success ? WebUtility.HtmlDecode(token.Groups["token"].Value) : null;
     }
 
-    public static bool HasInlineScriptHandlerOrStyle(string html) =>
-        InlineScriptPattern().IsMatch(html) || InlineEventHandlerPattern().IsMatch(html) || InlineStylePattern().IsMatch(html);
+    public static bool HasInlineScriptOrHandler(string html) =>
+        InlineScriptPattern().IsMatch(html) || InlineEventHandlerPattern().IsMatch(html);
 
     public static IReadOnlyList<string> LocalAssetUrls(string html) =>
         [.. LocalAssetPattern().Matches(html).Select(match => WebUtility.HtmlDecode(match.Groups["url"].Value)).Distinct(StringComparer.Ordinal)];
@@ -60,6 +66,8 @@ internal static partial class WebTestSupport
 
     public static string? QueryValue(Uri? location, string name) =>
         location is null ? null : HttpUtility.ParseQueryString(location.Query)[name];
+
+    public const string SignedInStaticPage = "/account/access-denied";
 
     public static string SignInUrl(string returnUrl) => $"/account/sign-in?returnUrl={Uri.EscapeDataString(returnUrl)}";
 

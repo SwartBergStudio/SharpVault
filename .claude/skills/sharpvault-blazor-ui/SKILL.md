@@ -5,14 +5,26 @@ description: SharpVault UI conventions for Blazor and .NET MAUI Blazor Hybrid wi
 
 # SharpVault adaptations (these override the general guide below)
 
-The general Blazor and MAUI guide below is how we work. In SharpVault, these differences apply:
+The general Blazor and MAUI guide below is how we work. Where its examples conflict with this block or with the code, this block and the code win. The examples name components and a CSS-token palette that SharpVault does not use. SharpVault's palette is `Theming/SharpVaultTheme.cs`, and its wrappers are the `Sv*` components. In SharpVault, these differences apply:
 
-- **Projects:** shared components live in `SharpVault.UI.Shared`, the web host is `SharpVault.Web`, the mobile and desktop host is `SharpVault.Maui`.
-- **Every interactive element has a stable `id` attribute** so Playwright Page Objects can select it by `#id`.
-- **Authorization in the UI** uses `AuthorizeView` with the `SharpVault.Admin` and `SharpVault.User` roles. Hiding a button is never the security boundary: the API enforces every rule.
-- **Secret values** are never rendered by default. They appear only after an explicit reveal, and copying uses a clipboard service that clears the clipboard after a timeout.
-- **Idle auto-lock:** the shared layout requires re-authentication after a period of inactivity.
-- **Platform services** (clipboard, secure storage, biometrics) sit behind interfaces in `SharpVault.UI.Shared` with implementations in the Web and MAUI hosts.
+- **Projects:** shared UI lives in `SharpVault.UI.Shared` (a Razor Class Library). The web host is `SharpVault.Web`. The MAUI host (`SharpVault.Maui`) is planned for `feature/maui-app` and is not built.
+- **API contracts:** the UI references only `SharpVault.Dtos` for API types. It never references Application, Domain or Infrastructure. DTOs are not declared in the UI.
+- **MudBlazor 9.11.0** (pinned in `Directory.Packages.props`) is the component library. Only `SharpVault.UI.Shared` references it (`DirectoryPackages_MudBlazor_IsReferencedOnlyByUiShared`).
+- **Wrappers.** Pages and feature components use the `Sv*` wrappers in `Components/Common`: `SvButton`, `SvIconButton`, `SvAlert`, `SvDialog`, `SvTable` with `SvColumn`, `StatePanel`, `StatusChip`, `SecretField`, `EmptyState`, `BusyIndicator` and `SignInLink`. The test `Pages_DoNotUseWrappedMudComponentsDirectly` bans these Mud components outside `Components/Common` and `Components/Base`: MudButton, MudIconButton, MudTextField, MudSelect, MudDialog, MudTable, MudDataGrid, MudAlert, MudSnackbar, MudChip and MudProgress*. Other Mud components (MudText, MudPaper, MudDrawer, MudNavLink and others) are allowed by that test, and layout and pages use some of them today. Removing them is open work (see `docs/PROGRESS.md`). The target is no Mud component outside `Components/Common`, and nothing enforces that yet.
+- **Wrapper ids.** Every wrapper takes a stable kebab-case `Id` (or `IdPrefix`). Most check it with `ComponentIds.EnsureValid`. `EmptyState` and `SignInLink` do not check it yet (open item).
+- **Wrapper parameters.** Wrappers forward only the Mud parameters they need. Never pass `Name` or `Value` to a Mud button. Never put a `style` attribute or a `<style>` element in our markup (see the CSP note).
+- **Palette and CSS.** `Theming/SharpVaultTheme.cs` is the only colour source. `wwwroot/css/app.css` holds no colour tokens and uses `var(--mud-palette-*)`. Use `.razor.css` isolation only where there is a reason. Today there are two, both in the Web project: `ReconnectModal` and `LocalSignIn`.
+- **Component tiers.** `Components/Base` holds `SharpVaultComponentBase`, `LoadableComponentBase<T>`, `DataStateView<TValue>` and `LoadState`. `Components/Common` holds the wrappers. `Components/Brand` holds `VaultDoor`, and `Components/Icons` holds `SvIcons`. `Components/Layout` holds `AppErrorBoundary` and `IdleLock`. Feature folders are `Components/Account`, `Components/Home` and `Components/Users`. `Layout/` holds the shell, and `Pages/` holds the routed pages.
+- **Pages only route and compose.** A page sets its route, attributes and parameters, and places components. It has no code beyond parameter wiring, and it does not inject `HttpClient`, `IJSRuntime`, `IHttpClientFactory` or `TableServiceClient`. `ComponentSourceRulesTests` enforces this (`Pages_OnlyRouteAndCompose_*`).
+- **Loading.** A page that loads data inherits `LoadableComponentBase<T>` and renders through `DataStateView<TValue>`. The four states are Loading, Empty, Error and Loaded. Each `ApiCallStatus` maps to one of them. A sign-in-required answer redirects once with a retry flag. A second sign-in-required answer on a page that already has the flag shows an error and does not loop.
+- **Current user.** `ICurrentUserAccessor` is scoped per circuit. It reads `GET /api/me` and caches only a successful response, keyed on the `oid` claim. Admin decisions in the UI use `CurrentUserDto.IsAdmin` from that response, never the role claims on the Web principal. The admin link is shown only when `IsAdmin` is true, and the Admin Users page shows "Administrators only" without calling the users endpoint (it still reads `/api/me` to learn the role). The API still decides real access (`SideNav_CookiePrincipalClaimsAdminButApiSaysUser_HidesAdminLink`).
+- **Session actions.** `ISessionActions` gives the sign-out form id and action, the access-denied URL, the sign-in URL and whether a path is a sign-in page. `WebSessionActions` implements it in the Web. Components use it and do not hard-code those routes.
+- **Session validation.** `ISessionValidator` decides whether a principal's session is still active. `ApiClientBase` calls it before every API call. The Web's revalidating authentication state provider calls it every minute. The Web implementation is `SessionValidator`.
+- **Static and interactive pages.** `App.razor` gives signed-in requests `InteractiveServer(prerender: false)`. Anonymous requests get static rendering, so no circuit exists before sign-in. Pages marked `[ExcludeFromInteractiveRouting]` are static: AccessDenied, Error, NotFound, SignedOut and SignInError in `Pages/`, and the local picker in the Web. Static pages use dark colours only. The five static files in `Pages/` may use only MudPaper, MudText and MudIcon (`StaticPages_UseOnlyAllowedMudComponents`). The picker also uses MudGrid and MudItem, and no test covers it.
+- **Content Security Policy.** The Web sends `style-src 'self' 'unsafe-inline'`, and that is the only inline allowance. MudBlazor 9.11.0 sets inline `style` attributes at runtime and has no nonce support, so hashes do not work. Narrower forms were tried and failed, with the measurements in `docs/THEME.md`. Scripts stay `'self'`, with no inline script and no `on*` attributes. `'unsafe-inline'` must not appear in any other directive.
+- **Idle lock.** After `IdleLock:Timeout` of inactivity (default 15 minutes, allowed 1 minute to 8 hours) the browser submits the sign-out form. The timeout is configuration only, with no UI.
+- **Secret values** are not built yet. When they are, they must appear only after an explicit reveal, and copying must use a clipboard service that clears the clipboard after a timeout. Platform services will sit behind interfaces in `SharpVault.UI.Shared`, with implementations in the Web and MAUI hosts.
+- **Authorization in the UI** is a convenience only. The API is the security boundary, and every rule is enforced there.
 - **Code style:** follow the `sharpvault-coding-standards` skill. The comments in the examples below explain the guide only. Do not write them in real code.
 
 ---
@@ -38,7 +50,7 @@ Solution/
 │   ├── Pages/                    # Full pages (shared between Blazor & MAUI)
 │   ├── Layouts/                  # Shared layouts
 │   ├── Services/                 # Interfaces & shared service implementations
-│   ├── Models/                   # DTOs, ViewModels, shared state
+│   ├── Models/                   # ViewModels and shared state (no DTOs here; API types come from SharpVault.Dtos)
 │   ├── wwwroot/                  # Static assets (CSS, fonts, images, JS interop)
 │   │   ├── css/
 │   │   │   └── app.css           # Main stylesheet with CSS variables

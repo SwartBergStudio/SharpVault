@@ -1,0 +1,26 @@
+<ConfirmDialog IdPrefix="bin-purge-prompt" Title="Delete forever?" Open="@(Item is not null)" Danger="true" ConfirmText="Delete forever" Busy="Busy" OnConfirm="OnConfirm" OnCancel="OnCancel">
+    @if (Item is not null)
+    {
+        <p id="bin-purge-prompt-message">
+            "@RecycleBinItemText.DisplayName(Item)" will be deleted forever. This cannot be undone.
+            @(Item.Kind == RecycleBinItemKindDto.Folder
+                ? "Everything that was deleted together with this folder is deleted forever too."
+                : "Its history is deleted forever too.")
+            People it is shared with lose access to it for good.
+        </p>
+    }
+</ConfirmDialog>
+
+@code {
+    [Parameter]
+    public RecycleBinItemDto? Item { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public EventCallback OnConfirm { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+}

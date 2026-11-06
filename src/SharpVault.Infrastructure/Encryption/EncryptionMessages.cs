@@ -9,6 +9,7 @@ internal static class EncryptionMessages
     public const string EmptyContextId = "The encryption context needs a non-empty item id and owner id.";
     public const string PlaintextTooLarge = "The value is too large to encrypt.";
     public const string PlaintextNotValidUnicode = "The value is not valid Unicode text.";
+    public const string ForeignSessionType = "The target session was not created by this encryptor.";
     public const string InvalidDataKeyLength = "Data keys must be 32 bytes.";
     public const string UnknownProvider = "Encryption:Provider must be KeyVault or Development.";
     public const string DevelopmentProviderNotAllowed = "The development key wrap provider can only run in the Development environment.";

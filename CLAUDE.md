@@ -16,14 +16,14 @@ Owner: SwartBergStudio (@SwartBergStudio is code owner for every pull request).
 
 ## How work is done: agents and models
 
-Planning and review use the strongest model; writing code and tests uses the smaller, faster models.
+Planning and review use the strongest model; writing code and tests uses the smallest model.
 The main session orchestrates and delegates. It does not write production code itself.
 
 | Agent | Model | Job |
 |---|---|---|
-| `planner` | Opus 5.5 | Writes the plan to `docs/plans/{feature-name}.md` |
-| `implementer` | Sonnet | Implements one plan task at a time |
-| `test-writer` | Sonnet | Writes and runs the tests listed in the plan |
+| `planner` | Opus 5.5 | Writes the plan to `.github/spec/{feature-name}.md` |
+| `implementer` | Haiku | Implements all the tasks of the plan, one agent start to finish |
+| `test-writer` | Haiku | Writes and runs the tests listed in the plan, after the implementer has finished |
 | `reviewer` | Opus 5.5 | Reviews the diff, builds and tests, approves or requests changes |
 | `docs-writer` | Haiku | Updates `docs/` and the README |
 
@@ -31,7 +31,7 @@ For every piece of work:
 
 1. Create the branch `feature/{feature-name}` from `main`.
 2. Ask the `planner` for a plan. Read it and follow it.
-3. Hand each task to an `implementer` (independent tasks in parallel) and the test list to the `test-writer`.
+3. Hand the whole plan to one `implementer`. When it has finished all tasks, hand the test list to one `test-writer`. One agent runs at a time: no parallel agents and no per-agent worktrees.
 4. Ask the `reviewer` to review. Send its findings back to an `implementer` or `test-writer` and repeat until it approves.
 5. Ask the `docs-writer` to update `docs/PROGRESS.md` and any affected docs.
 6. Commit, push and open a pull request to `main`.
@@ -40,15 +40,7 @@ Do not pass a `model` override when delegating: each agent's model is set in `.c
 
 ## Skills
 
-The project skills in `.claude/skills/` describe how we work. Use them instead of similarly named personal skills:
-
-- `sharpvault-coding-standards`: no inline comments, naming, async, logging, security rules
-- `sharpvault-clean-architecture`: Clean Architecture, lean domain, CQRS with SwartBerg.Mediator, Mapster, minimal APIs
-- `sharpvault-table-storage`: Azure Table Storage design and store implementations
-- `sharpvault-entra-auth`: Microsoft Entra ID, app roles, current user, managed identity
-- `sharpvault-integration-testing`: unit, API integration and Playwright E2E tests
-- `sharpvault-blazor-ui`: Blazor and MAUI Hybrid UI in the shared Razor Class Library
-- `sharpvault-security-performance-testing`: threat lists, security tests, regression tests, performance budgets and benchmarks
+The project skills in `.claude/skills/` describe how we work. Use them instead of similarly named personal skills.
 
 ## Definition of done
 
@@ -64,22 +56,23 @@ Work is only done when all of these are true:
 
 ## Tech stack
 
-- .NET 10, C# latest, nullable enabled, warnings as errors.
-- Central package management (`Directory.Packages.props`) and shared `Directory.Build.props`.
-- Clean Architecture: Domain, Application, Infrastructure, Api, UI.Shared (Razor Class Library),
+- Clean Architecture: Domain, Application, Infrastructure, Api, Dtos (API contracts), UI.Shared (Razor Class Library),
   Web (Blazor Web App), Maui (.NET MAUI Blazor Hybrid), AppHost and ServiceDefaults (Aspire).
 - Lean domain models: domain methods are the exception, not the rule.
 - CQRS via SwartBerg.Mediator (namespace `Mediator`, MediatR-compatible interfaces).
   Each Request and its Handler live together in one file per feature.
 - Mapster for DTO mapping, FluentValidation for request validation.
+- DTOs: every DTO lives in `SharpVault.Dtos`. A DTO is a `sealed` class with public `{ get; set; }` properties and no logic (no records, no methods, no framework types). Handlers return `Result<SomeDto>`. Mapster mapping stays in Application. The UI references only `SharpVault.Dtos` for API types.
 - Minimal APIs grouped by feature, with OpenAPI and Scalar.
 - UI is Blazor and Razor only. No React, Vue or JavaScript frameworks. Blazor JS interop (`IJSRuntime.InvokeAsync`) is allowed
   for specific browser methods that .NET cannot call directly (for example `navigator.clipboard.writeText`, or Web Crypto for one-time links),
   wrapped behind a C# interface and kept to small, focused modules.
   All UI lives in `SharpVault.UI.Shared` so Web and MAUI share it.
-  Every interactive element gets a stable `id` attribute for testing.
+  The UI is built on MudBlazor 9.11.0, used only through the `Sv*` wrappers in `Components/Common`. Pages only route and compose, with no code beyond parameter wiring. Feature components live in `Components/{Feature}`.
+  Every interactive element gets a stable `id` attribute for testing. Wrappers check their ids (lowercase kebab-case).
+  Admin decisions in the UI read `IsAdmin` from `GET /api/me`. The API is the security boundary.
+  The Web's Content Security Policy allows inline styles only through `style-src 'unsafe-inline'`, because MudBlazor sets style attributes at runtime. Scripts stay `'self'`, and our markup has no `style` attributes and no inline script.
 - Every `.cs` file starts with the AGPL-3.0 header defined in `.editorconfig`.
-- No inline comments, no commented-out code, no TODOs. See `sharpvault-coding-standards`.
 
 ## Storage
 

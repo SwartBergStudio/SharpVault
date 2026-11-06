@@ -18,4 +18,16 @@ public sealed class AuditEntry
     public string? IpAddress { get; set; }
 
     public string? Reason { get; set; }
+
+    public Guid? OwnerId { get; set; }
+
+    public Guid? SecretId { get; set; }
+
+    public Guid? RecipientId { get; set; }
+
+    public string? SharePermission { get; set; }
+
+    public Guid? TransferId { get; set; }
+
+    public string? ReasonCategory { get; set; }
 }

@@ -32,19 +32,37 @@ public sealed class TableStorageStartupTests(ApiTestFactory factory) : BaseInteg
     }
 
     [Fact]
-    public void Startup_TableSetConfigured_MakesOneStorageCallPerTable()
+    public void Startup_TablesMissing_ListsOnceAndCreatesEach()
     {
+        var names = FreshProbeNames();
         StorageRequests.Clear();
 
-        using var derived = CreateFactoryWithProbeTables();
+        using var derived = CreateFactoryWithProbeTables(names);
         using var client = derived.CreateClient();
 
-        Assert.Equal(2, StorageRequests.Count);
-        Assert.All(StorageRequests.Requests, request =>
+        Assert.Equal(1 + names.Length, StorageRequests.Count);
+        Assert.Equal(1, StorageRequests.Requests.Count(request => request.Method == "GET"));
+        Assert.Equal(names.Length, StorageRequests.Requests.Count(request => request.Method == "POST"));
+        Assert.All(StorageRequests.Requests, request => Assert.False(request.IsEntityQuery));
+        Assert.Empty(StorageRequests.QueriesWithoutPartitionKey());
+    }
+
+    [Fact]
+    public void Startup_TablesAlreadyExist_ListsOnceAndCreatesNone()
+    {
+        var names = FreshProbeNames();
+        using (var first = CreateFactoryWithProbeTables(names))
+        using (var firstClient = first.CreateClient())
         {
-            Assert.Equal("POST", request.Method);
-            Assert.False(request.IsEntityQuery);
-        });
+        }
+
+        StorageRequests.Clear();
+        using var second = CreateFactoryWithProbeTables(names);
+        using var secondClient = second.CreateClient();
+
+        Assert.Equal(1, StorageRequests.Count);
+        Assert.Equal(1, StorageRequests.Requests.Count(request => request.Method == "GET"));
+        Assert.DoesNotContain(StorageRequests.Requests, request => request.Method == "POST");
         Assert.Empty(StorageRequests.QueriesWithoutPartitionKey());
     }
 
@@ -78,31 +96,28 @@ public sealed class TableStorageStartupTests(ApiTestFactory factory) : BaseInteg
     }
 
     [Fact]
-    public void Startup_DefaultTableSet_MakesOneStorageCallPerTable()
+    public void Startup_DefaultTableSet_ListsOnceAndCreatesOnlyMissingTables()
     {
         StorageRequests.Clear();
 
         using var derived = Factory.WithWebHostBuilder(_ => { });
         using var client = derived.CreateClient();
 
-        Assert.Equal(TableNames.All.Count, StorageRequests.Count);
-        Assert.All(StorageRequests.Requests, request =>
-        {
-            Assert.Equal("POST", request.Method);
-            Assert.False(request.IsEntityQuery);
-        });
+        Assert.Equal(1, StorageRequests.Requests.Count(request => request.Method == "GET"));
+        Assert.All(StorageRequests.Requests.Where(request => request.Method == "POST"), request => Assert.False(request.IsEntityQuery));
+        Assert.True(StorageRequests.Requests.Count(request => request.Method == "POST") <= TableNames.All.Count);
         AssertNoQueryWithoutPartitionKey();
     }
 
     [Fact]
-    public void Startup_TableNamesAll_ContainsUsersAndAuditLogInOrder()
+    public void Startup_TableNamesAll_ContainsTheEightTablesInOrder()
     {
-        Assert.Equal([TableNames.Users, TableNames.AuditLog], TableNames.All);
-        Assert.Equal(["Users", "AuditLog"], TableNames.All);
+        Assert.Equal([TableNames.Users, TableNames.AuditLog, TableNames.Vaults, TableNames.SecretAuditLog, TableNames.Maintenance, TableNames.ShareInbox, TableNames.TransferJobs, TableNames.SessionRevocations], TableNames.All);
+        Assert.Equal(["Users", "AuditLog", "Vaults", "SecretAuditLog", "Maintenance", "ShareInbox", "TransferJobs", "SessionRevocations"], TableNames.All);
     }
 
     [Fact]
-    public async Task Startup_DefaultTableSet_CreatesUsersAndAuditLogTables()
+    public async Task Startup_DefaultTableSet_CreatesAllEightTables()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await foreach (var table in Factory.StorageAdminClient.QueryAsync(cancellationToken: cancellationToken))
@@ -119,11 +134,12 @@ public sealed class TableStorageStartupTests(ApiTestFactory factory) : BaseInteg
             names.Add(table.Name);
         }
 
-        Assert.Contains(TableNames.Users, names);
-        Assert.Contains(TableNames.AuditLog, names);
+        Assert.All(TableNames.All, name => Assert.Contains(name, names));
     }
 
-    private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> CreateFactoryWithProbeTables() =>
+    private static string[] FreshProbeNames() => [$"ProbeA{Guid.NewGuid():N}", $"ProbeB{Guid.NewGuid():N}"];
+
+    private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> CreateFactoryWithProbeTables(string[]? names = null) =>
         Factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-            services.AddSingleton(new TableStorageTableSet(ProbeTables))));
+            services.AddSingleton(new TableStorageTableSet(names ?? ProbeTables))));
 }

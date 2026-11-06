@@ -1,0 +1,16 @@
+@typeparam TValue
+
+<MudRadio id="@Id" T="TValue" Value="@Value">@ChildContent</MudRadio>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter]
+    public TValue? Value { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    protected override void OnParametersSet() => ComponentIds.EnsureValid(Id, nameof(Id));
+}

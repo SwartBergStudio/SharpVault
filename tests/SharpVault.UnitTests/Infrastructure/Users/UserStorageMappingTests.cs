@@ -56,6 +56,34 @@ public sealed class UserStorageMappingTests
         Assert.Equal(user.LastSignInAt, roundTripped.LastSignInAt);
     }
 
+    [Fact]
+    public void Adapt_RoleFields_RoundTripThroughTheEntity()
+    {
+        var user = NewUser();
+        user.IsAdmin = true;
+        user.RoleObservedAt = new DateTimeOffset(2026, 2, 3, 4, 5, 6, TimeSpan.Zero);
+        var config = ScannedConfig();
+
+        var entity = user.Adapt<UserTableEntity>(config);
+        var roundTripped = entity.Adapt<User>(config);
+
+        Assert.True(entity.IsAdmin);
+        Assert.Equal(user.RoleObservedAt, entity.RoleObservedAt);
+        Assert.True(roundTripped.IsAdmin);
+        Assert.Equal(user.RoleObservedAt, roundTripped.RoleObservedAt);
+    }
+
+    [Fact]
+    public void Adapt_RowWithoutRoleColumns_IsNotAdminAndNeverObserved()
+    {
+        var entity = new UserTableEntity { RowKey = Guid.NewGuid().ToString("D"), Status = "Active" };
+
+        var user = entity.Adapt<User>(ScannedConfig());
+
+        Assert.False(user.IsAdmin);
+        Assert.Null(user.RoleObservedAt);
+    }
+
     [Theory]
     [InlineData(UserStatus.Active, "Active")]
     [InlineData(UserStatus.Locked, "Locked")]

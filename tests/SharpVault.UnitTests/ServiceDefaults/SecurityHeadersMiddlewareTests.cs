@@ -12,7 +12,7 @@ namespace SharpVault.UnitTests.ServiceDefaults;
 public sealed class SecurityHeadersMiddlewareTests
 {
     private const string ExpectedWebContentSecurityPolicy =
-        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://login.microsoftonline.com; upgrade-insecure-requests";
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://login.microsoftonline.com; upgrade-insecure-requests";
 
     private static readonly Uri IdentityProvider = new("https://login.microsoftonline.com/");
 

@@ -1,0 +1,85 @@
+@typeparam TValue
+
+@switch (State)
+{
+    case LoadState.Loading:
+        @if (Loading is not null)
+        {
+            @Loading
+        }
+        else
+        {
+            <BusyIndicator Id="@($"{IdPrefix}-loading")" Label="Loading" />
+        }
+
+        break;
+    case LoadState.Empty:
+        @if (Empty is not null)
+        {
+            @Empty
+        }
+        else
+        {
+            <EmptyState Id="@($"{IdPrefix}-empty")" Title="@EmptyTitle" Description="@EmptyDescription" />
+        }
+
+        break;
+    case LoadState.Error:
+        @if (Error is not null)
+        {
+            @Error
+        }
+        else
+        {
+            <SvAlert Id="@($"{IdPrefix}-error")" Kind="AlertKind.Danger">@ErrorText</SvAlert>
+            <SvButton Id="@($"{IdPrefix}-retry")" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Refresh" OnClick="@HandleRetryAsync">Try again</SvButton>
+        }
+
+        break;
+    default:
+        @if (Value is not null && ChildContent is not null)
+        {
+            @ChildContent(Value)
+        }
+
+        break;
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public string IdPrefix { get; set; } = string.Empty;
+
+    [Parameter]
+    public LoadState State { get; set; }
+
+    [Parameter]
+    public TValue? Value { get; set; }
+
+    [Parameter]
+    public string? ErrorText { get; set; }
+
+    [Parameter]
+    public string EmptyTitle { get; set; } = "Nothing here yet";
+
+    [Parameter]
+    public string? EmptyDescription { get; set; }
+
+    [Parameter]
+    public EventCallback OnRetry { get; set; }
+
+    [Parameter]
+    public RenderFragment<TValue>? ChildContent { get; set; }
+
+    [Parameter]
+    public RenderFragment? Loading { get; set; }
+
+    [Parameter]
+    public RenderFragment? Empty { get; set; }
+
+    [Parameter]
+    public RenderFragment? Error { get; set; }
+
+    protected override void OnParametersSet() => ComponentIds.EnsureValid(IdPrefix, nameof(IdPrefix));
+
+    private Task HandleRetryAsync() => OnRetry.InvokeAsync();
+}

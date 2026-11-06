@@ -6,12 +6,14 @@ using Mapster;
 using Mediator;
 using SharpVault.Application.Common.Interfaces;
 using SharpVault.Application.Common.Models;
-using SharpVault.Application.Features.Users.Dtos;
+using SharpVault.Dtos.Users;
 
 namespace SharpVault.Application.Features.Users.Queries;
 
 public sealed record ListUsersQuery(int PageSize, string? ContinuationToken) : IRequest<Result<UserPageDto>>
 {
+    public const int UnparsedPageSize = 0;
+
     public const int DefaultPageSize = 50;
 
     public const int MaxPageSize = 100;
@@ -54,6 +56,10 @@ public sealed class ListUsersQueryHandler(IUserStore users)
         var page = await users.ListAsync(request.PageSize, after, cancellationToken);
         var items = page.Users.Adapt<List<UserSummaryDto>>();
 
-        return Result<UserPageDto>.Success(new UserPageDto(items, page.NextAfterUserId?.ToString("D")));
+        return Result<UserPageDto>.Success(new UserPageDto
+        {
+            Users = items,
+            ContinuationToken = page.NextAfterUserId?.ToString("D"),
+        });
     }
 }

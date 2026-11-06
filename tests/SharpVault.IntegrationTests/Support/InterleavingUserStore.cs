@@ -33,4 +33,7 @@ public sealed class InterleavingUserStore(
 
     public Task<UserListPage> ListAsync(int pageSize, Guid? afterUserId, CancellationToken cancellationToken) =>
         inner.ListAsync(pageSize, afterUserId, cancellationToken);
+
+    public Task<IReadOnlyList<User>> ListAdminsAsync(int limit, CancellationToken cancellationToken) =>
+        inner.ListAdminsAsync(limit, cancellationToken);
 }

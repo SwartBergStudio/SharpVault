@@ -1,0 +1,31 @@
+<MudMenu id="@Id"
+         Dense="true">
+    <ActivatorContent Context="menu">
+        <SvIconButton Id="@ActivatorId" Icon="@Icon" Label="@Label" OnClick="@(args => menu.ToggleAsync(args))" />
+    </ActivatorContent>
+    <ChildContent>
+        @ChildContent
+    </ChildContent>
+</MudMenu>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Icon { get; set; } = SvIcons.More;
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private string ActivatorId => $"{Id}-button";
+
+    protected override void OnParametersSet()
+    {
+        ComponentIds.EnsureValid(Id, nameof(Id));
+        ArgumentException.ThrowIfNullOrWhiteSpace(Label);
+    }
+}

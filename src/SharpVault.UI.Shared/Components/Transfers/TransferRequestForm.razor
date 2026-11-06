@@ -1,0 +1,55 @@
+@inherits LoadableComponentBase<UserPageDto>
+@inject ICurrentUserAccessor CurrentUserAccessor
+@inject IAdminUsersApiClient UsersClient
+@inject IAdminTransfersApiClient Transfers
+
+<SvPageTitle Id="transfer-form-heading">New transfer</SvPageTitle>
+
+@if (_forbidden)
+{
+    <StatePanel Id="transfer-form-forbidden" Kind="StatePanelKind.Warning" Icon="@SvIcons.Lock" Title="Administrators only">
+        <ChildContent>
+            <p>Only administrators can request transfers.</p>
+        </ChildContent>
+    </StatePanel>
+}
+else
+{
+    <p>Moving items takes two administrators. You request it here, and a second administrator approves it.</p>
+    <StatusBanner Id="transfer-form-status" Message="@_status" />
+    <DataStateView TValue="UserPageDto" IdPrefix="transfer-form" State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+        <ChildContent>
+            <SvStack Spacing="3">
+                <SvSelect Id="transfer-source" Label="Leaving user" Options="@SourceOptions" Value="@SourceValue" ValueChanged="@SetSourceAsync" Disabled="IsCommandRunning" />
+                <SvSelect Id="transfer-target" Label="Receiving user" Options="@TargetOptions" Value="@TargetValue" ValueChanged="@SetTarget" Disabled="IsCommandRunning" />
+                <SvSelect Id="transfer-category" Label="Reason category" Options="@ReasonCategoryLabels.Options" Value="@_input.Category.ToString()" ValueChanged="@SetCategory" Disabled="IsCommandRunning" />
+                @if (_input.Category == ReasonCategoryDto.Deceased)
+                {
+                    <p id="transfer-form-deceased-note">The source user is not notified.</p>
+                }
+                @if (SourceNeedsLock)
+                {
+                    <SvAlert Id="transfer-form-source-lock" Kind="AlertKind.Warning">This reason needs the source user to be locked first.</SvAlert>
+                    <div>
+                        <SvButton Id="transfer-lock-source" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Lock" Disabled="IsCommandRunning" OnClick="@OpenLockSource">Lock the source user</SvButton>
+                    </div>
+                }
+                @if (_preview is not null)
+                {
+                    <SvSelect Id="transfer-scope" Label="What moves" Options="@ScopeOptions" Value="@_input.Scope.ToString()" ValueChanged="@SetScope" Disabled="IsCommandRunning" />
+                    <TransferPreviewPanel Preview="_preview" ShowFolders="@(_input.Scope == TransferScopeKindDto.SelectedFolders)" SelectedFolderIds="_input.FolderIds" FolderToggled="ToggleFolder" Disabled="IsCommandRunning" />
+                }
+                <SvTextField Id="transfer-reason" Label="Reason" Value="@_input.Reason" ValueChanged="@SetReason" Lines="4" MaxLength="@AdminReasonRules.MaxLength" Required="true" Disabled="IsCommandRunning" HelperText="@ReasonHelp" />
+                @if (_preview is { SecondAdminAvailable: false })
+                {
+                    <SvAlert Id="transfer-form-second-admin" Kind="AlertKind.Warning">Only one administrator is available. Transfers need a second administrator to approve. Assign one in Entra and have them sign in once.</SvAlert>
+                }
+                <div class="d-flex justify-end gap-2">
+                    <SvButton Id="transfer-cancel" Variant="SvButtonVariant.Secondary" Href="@TransferRoutes.Transfers" Disabled="IsCommandRunning">Cancel</SvButton>
+                    <SvButton Id="transfer-submit" Variant="SvButtonVariant.Primary" Busy="IsCommandRunning" Disabled="@(IsCommandRunning || _preview is { SecondAdminAvailable: false })" OnClick="@HandleSubmitAsync">Request transfer</SvButton>
+                </div>
+            </SvStack>
+        </ChildContent>
+    </DataStateView>
+    <LockUserDialog Open="_lockOpen" InitialCategory="_input.Category" Busy="IsCommandRunning" OnConfirm="ConfirmLockAsync" OnCancel="CancelLock" />
+}

@@ -1,0 +1,732 @@
+// SharpVault - Copyright (c) SwartBergStudio.
+// Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
+
+using Bunit;
+using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
+using SharpVault.Dtos.Directory;
+using SharpVault.Dtos.Sharing;
+using SharpVault.UI.Shared.Components.Base;
+using SharpVault.UI.Shared.Components.Sharing;
+using SharpVault.UI.Shared.Components.Vault;
+using SharpVault.UI.Shared.Services;
+using SharpVault.UI.Shared.Services.Clients;
+
+namespace SharpVault.UnitTests.UiShared.Sharing;
+
+public sealed class SharePanelTests : SharingDialogTestHost
+{
+    private readonly Guid _itemId = Guid.NewGuid();
+    private readonly Guid _adaId = Guid.NewGuid();
+    private readonly Guid _graceId = Guid.NewGuid();
+
+    public SharePanelTests()
+    {
+        GrantsClient.ListSecretGrantsAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Grants(Grant(_adaId, "Ada Lovelace"), Grant(_graceId, "Grace Hopper")));
+        GrantsClient.ListFolderGrantsAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Grants(Grant(_adaId, "Ada Lovelace")));
+    }
+
+    private string CurrentUri => Services.GetRequiredService<NavigationManager>().Uri;
+
+    private IRenderedComponent<SharePanel> RenderPanel(SharedItemKindDto kind = SharedItemKindDto.Secret) =>
+        Render<SharePanel>(parameters => parameters
+            .Add(panel => panel.OwnerId, Owner.UserId)
+            .Add(panel => panel.Kind, kind)
+            .Add(panel => panel.ItemId, _itemId));
+
+    private static DirectoryUserDto NewPerson(string name = "Grace Hopper") =>
+        new() { Id = Guid.NewGuid(), DisplayName = name, Email = "grace@example.test" };
+
+    private int ListCalls() =>
+        GrantsClient.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IShareGrantsApiClient.ListSecretGrantsAsync));
+
+    private async Task OpenAddAndPickAsync(IRenderedComponent<SharePanel> cut, DirectoryUserDto found)
+    {
+        DirectoryClient.SearchUsersAsync("gra", Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(ApiResponse<DirectoryUserListDto>.Success(new DirectoryUserListDto { Items = [found] })));
+        await cut.WaitForElement("#share-add").ClickAsync();
+        Provider.WaitForElement("#recipient-search-input").Input("gra");
+        await Provider.Find("#recipient-search-form").SubmitAsync();
+        await Provider.WaitForElement($"#recipient-result-{found.Id:D}").ClickAsync();
+        Provider.WaitForElement("#recipient-selected");
+    }
+
+    private void ReturnsCreate(ApiResponse<ShareGrantDto> response) =>
+        GrantsClient.CreateSecretGrantAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CreateShareGrantRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(response));
+
+    private void ReturnsChange(ApiResponse<ShareGrantDto> response) =>
+        GrantsClient.ChangeSecretGrantAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<ChangeShareGrantRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(response));
+
+    private void ReturnsRevoke(ApiResponse<bool> response) =>
+        GrantsClient.RevokeSecretGrantAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(response));
+
+    private TaskCompletionSource<ApiResponse<bool>> GatedRevoke()
+    {
+        var gate = new TaskCompletionSource<ApiResponse<bool>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        GrantsClient.RevokeSecretGrantAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(gate.Task);
+        return gate;
+    }
+
+    private void ExpectNoChangeCalls() =>
+        GrantsClient.DidNotReceiveWithAnyArgs().ChangeSecretGrantAsync(default, default, default, default!, default!, Xunit.TestContext.Current.CancellationToken);
+
+    private void ExpectNoRevokeCalls() =>
+        GrantsClient.DidNotReceiveWithAnyArgs().RevokeSecretGrantAsync(default, default, default, Xunit.TestContext.Current.CancellationToken);
+
+    [Fact]
+    public void Render_Loading_ShowsBusyAndNoAddUntilLoaded()
+    {
+        var gate = new TaskCompletionSource<ApiResponse<ShareGrantListDto>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        GrantsClient.ListSecretGrantsAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(gate.Task);
+
+        var cut = RenderPanel();
+
+        Assert.NotEmpty(cut.FindAll("#share-grants-loading"));
+        Assert.Empty(cut.FindAll("#share-add"));
+        Assert.Empty(cut.FindAll("#share-grants"));
+        gate.SetResult(ApiResponse<ShareGrantListDto>.Success(new ShareGrantListDto { Items = [Grant(_adaId, "Ada Lovelace")] }));
+        cut.WaitForElement($"#share-grant-name-{_adaId:D}");
+        Assert.Empty(cut.FindAll("#share-grants-loading"));
+        Assert.NotEmpty(cut.FindAll("#share-add"));
+    }
+
+    [Fact]
+    public void Render_Empty_HasHintAndAddButton()
+    {
+        GrantsClient.ListSecretGrantsAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(_ => Grants());
+
+        var cut = RenderPanel();
+
+        cut.WaitForElement("#share-grants-empty");
+        Assert.Contains("Not shared with anyone", cut.Find("#share-grants-empty").TextContent, StringComparison.Ordinal);
+        Assert.Contains("Select Add person", cut.Find("#share-grants-empty").TextContent, StringComparison.Ordinal);
+        Assert.NotEmpty(cut.FindAll("#share-add"));
+    }
+
+    [Theory]
+    [InlineData(ApiCallStatus.Failed, LoadableComponentBase<ShareGrantListDto>.GenericErrorText)]
+    [InlineData(ApiCallStatus.NotFound, LoadableComponentBase<ShareGrantListDto>.NotFoundText)]
+    [InlineData(ApiCallStatus.RateLimited, LoadableComponentBase<ShareGrantListDto>.RateLimitedText)]
+    [InlineData(ApiCallStatus.ConfigurationMismatch, LoadableComponentBase<ShareGrantListDto>.ConfigurationMismatchText)]
+    public void Render_LoadFails_ShowsTextWithRetryAndNoAdd(ApiCallStatus status, string expected)
+    {
+        GrantsClient.ListSecretGrantsAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(new ApiResponse<ShareGrantListDto>(status, null)));
+
+        var cut = RenderPanel();
+
+        cut.WaitForElement("#share-grants-error");
+        Assert.Contains(expected, cut.Find("#share-grants-error").TextContent, StringComparison.Ordinal);
+        Assert.NotEmpty(cut.FindAll("#share-grants-retry"));
+        Assert.Empty(cut.FindAll("#share-add"));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void Render_LoadThrows_ShowsGenericErrorWithoutTheExceptionMessage()
+    {
+        const string leaked = "storage-key-should-not-show";
+        GrantsClient.ListSecretGrantsAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ApiResponse<ShareGrantListDto>>>(_ => throw new InvalidOperationException(leaked));
+
+        var cut = RenderPanel();
+
+        cut.WaitForElement("#share-grants-error");
+        Assert.DoesNotContain(leaked, cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(leaked, LogText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Render_Retry_LoadsAgainAndShowsTheList()
+    {
+        var calls = 0;
+        GrantsClient.ListSecretGrantsAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(_ => ++calls == 1 ? Task.FromResult(ApiResponse<ShareGrantListDto>.Failed()) : Grants(Grant(_adaId, "Ada Lovelace")));
+        var cut = RenderPanel();
+
+        await cut.WaitForElement("#share-grants-retry").ClickAsync();
+
+        cut.WaitForElement($"#share-grant-name-{_adaId:D}");
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public void Render_CanChangeFalse_ShowsTextAndNoRevokeOrSelect()
+    {
+        GrantsClient.ListSecretGrantsAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Grants(Grant(_adaId, "Ada Lovelace", SharePermissionDto.Edit, canChange: false)));
+
+        var cut = RenderPanel();
+
+        cut.WaitForElement($"#share-grant-permission-{_adaId:D}");
+        Assert.Equal(PermissionLabels.Label(SharePermissionDto.Edit), cut.Find($"#share-grant-permission-{_adaId:D}").TextContent);
+        Assert.Equal("span", cut.Find($"#share-grant-permission-{_adaId:D}").TagName.ToLowerInvariant());
+        Assert.Empty(cut.FindAll($"#share-grant-revoke-{_adaId:D}"));
+    }
+
+    [Fact]
+    public void Render_MixedCanChange_OnlyChangeableRowsGetControls()
+    {
+        GrantsClient.ListSecretGrantsAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Grants(Grant(_adaId, "Ada Lovelace", canChange: false), Grant(_graceId, "Grace Hopper")));
+
+        var cut = RenderPanel();
+
+        cut.WaitForElement($"#share-grant-revoke-{_graceId:D}");
+        Assert.Empty(cut.FindAll($"#share-grant-revoke-{_adaId:D}"));
+        Assert.Equal("select", cut.Find($"#share-grant-permission-{_graceId:D}").TagName.ToLowerInvariant());
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void Render_NamesAndEmailsWithMarkup_AreEncoded()
+    {
+        const string hostile = "<img src=x onerror=alert(1)>";
+        var grant = Grant(_adaId, hostile);
+        grant.RecipientEmail = "<script>alert(2)</script>@example.test";
+        grant.GrantedByDisplayName = "<b>Boss</b>";
+        GrantsClient.ListSecretGrantsAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(_ => Grants(grant));
+
+        var cut = RenderPanel();
+
+        cut.WaitForElement($"#share-grant-name-{_adaId:D}");
+        Assert.Equal(hostile, cut.Find($"#share-grant-name-{_adaId:D}").TextContent);
+        Assert.Equal("<b>Boss</b>", cut.Find($"#share-grant-by-{_adaId:D}").TextContent);
+        Assert.Empty(cut.FindAll("#share-panel img"));
+        Assert.Empty(cut.FindAll("#share-panel script"));
+        Assert.Empty(cut.FindAll("#share-panel b"));
+    }
+
+    [Fact]
+    public void Render_FolderKind_ListsFolderGrantsOnly()
+    {
+        var cut = RenderPanel(SharedItemKindDto.Folder);
+
+        cut.WaitForElement($"#share-grant-name-{_adaId:D}");
+        GrantsClient.Received(1).ListFolderGrantsAsync(Owner.UserId, _itemId, Arg.Any<CancellationToken>());
+        GrantsClient.DidNotReceiveWithAnyArgs().ListSecretGrantsAsync(default, default, Xunit.TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public void Render_CustomIdPrefix_PrefixesEveryId()
+    {
+        var cut = Render<SharePanel>(parameters => parameters
+            .Add(panel => panel.OwnerId, Owner.UserId)
+            .Add(panel => panel.Kind, SharedItemKindDto.Secret)
+            .Add(panel => panel.ItemId, _itemId)
+            .Add(panel => panel.IdPrefix, "other"));
+
+        cut.WaitForElement($"#other-grant-name-{_adaId:D}");
+        Assert.NotEmpty(cut.FindAll("#other-add"));
+        Assert.Empty(cut.FindAll("#share-add"));
+    }
+
+    [Fact]
+    public void Render_InvalidIdPrefix_Throws()
+    {
+        Assert.ThrowsAny<Exception>(() => Render<SharePanel>(parameters => parameters
+            .Add(panel => panel.OwnerId, Owner.UserId)
+            .Add(panel => panel.Kind, SharedItemKindDto.Secret)
+            .Add(panel => panel.ItemId, _itemId)
+            .Add(panel => panel.IdPrefix, "Bad Prefix\"")));
+    }
+
+    [Fact]
+    public void Render_DoesNotSearchTheDirectoryUntilTheDialogIsUsed()
+    {
+        RenderPanel().WaitForElement("#share-add");
+
+        DirectoryClient.DidNotReceiveWithAnyArgs().SearchUsersAsync(default!, Xunit.TestContext.Current.CancellationToken);
+        Assert.Empty(Provider.FindAll("#share-dialog-confirm"));
+    }
+
+    [Theory]
+    [InlineData(ApiCallStatus.SignInRequired, "/account/sign-in")]
+    [InlineData(ApiCallStatus.AccessDenied, "/account/access-denied")]
+    [Trait("Category", "Security")]
+    public async Task Search_SessionStatus_RedirectsWithoutResultsOrErrors(ApiCallStatus status, string expectedPath)
+    {
+        DirectoryClient.SearchUsersAsync("gra", Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(new ApiResponse<DirectoryUserListDto>(status, null)));
+        var cut = RenderPanel();
+        await cut.WaitForElement("#share-add").ClickAsync();
+        Provider.WaitForElement("#recipient-search-input").Input("gra");
+
+        await Provider.Find("#recipient-search-form").SubmitAsync();
+
+        cut.WaitForAssertion(() => Assert.Contains(expectedPath, CurrentUri, StringComparison.Ordinal));
+        Assert.Empty(Provider.FindAll("#recipient-error"));
+        Assert.Empty(Provider.FindAll("#recipient-results"));
+    }
+
+    [Fact]
+    public async Task Search_RateLimited_ShowsTheMessageInsideTheDialog()
+    {
+        DirectoryClient.SearchUsersAsync("gra", Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(ApiResponse<DirectoryUserListDto>.RateLimited()));
+        var cut = RenderPanel();
+        await cut.WaitForElement("#share-add").ClickAsync();
+        Provider.WaitForElement("#recipient-search-input").Input("gra");
+
+        await Provider.Find("#recipient-search-form").SubmitAsync();
+
+        Assert.Contains(LoadableComponentBase<DirectoryUserListDto>.RateLimitedText, Provider.WaitForElement("#recipient-error").TextContent, StringComparison.Ordinal);
+        Assert.Empty(cut.FindAll("#share-status"));
+    }
+
+    [Fact]
+    public async Task Add_Success_ReloadsShowsStatusAndClosesTheDialog()
+    {
+        var found = NewPerson();
+        ReturnsCreate(ApiResponse<ShareGrantDto>.Success(Grant(found.Id, found.DisplayName)));
+        var cut = RenderPanel();
+        await OpenAddAndPickAsync(cut, found);
+
+        await Provider.Find("#share-dialog-confirm").ClickAsync();
+
+        cut.WaitForAssertion(() => Assert.Contains(SharedItemStatusText.Shared, cut.Find("#share-status").TextContent, StringComparison.Ordinal));
+        cut.WaitForAssertion(() => Assert.Empty(Provider.FindAll("#share-dialog-confirm")));
+        Assert.Equal(2, ListCalls());
+        await WaitForClosedDialogsToSettleAsync();
+    }
+
+    [Theory]
+    [InlineData(SharePermissionDto.View)]
+    [InlineData(SharePermissionDto.Edit)]
+    [InlineData(SharePermissionDto.Manage)]
+    public async Task Add_ChosenPermission_IsSentOnTheFolderRoute(SharePermissionDto permission)
+    {
+        var found = NewPerson();
+        GrantsClient.CreateFolderGrantAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CreateShareGrantRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(ApiResponse<ShareGrantDto>.Success(Grant(found.Id, found.DisplayName, permission))));
+        var cut = RenderPanel(SharedItemKindDto.Folder);
+        await OpenAddAndPickAsync(cut, found);
+        Provider.Find("#share-dialog-permission").Change(permission.ToString());
+
+        await Provider.Find("#share-dialog-confirm").ClickAsync();
+
+        cut.WaitForAssertion(() => GrantsClient.Received(1).CreateFolderGrantAsync(
+            Owner.UserId,
+            _itemId,
+            Arg.Is<CreateShareGrantRequestDto>(request => request.RecipientId == found.Id && request.Permission == permission),
+            Arg.Any<CancellationToken>()));
+        await GrantsClient.DidNotReceiveWithAnyArgs().CreateSecretGrantAsync(default, default, default!, Xunit.TestContext.Current.CancellationToken);
+        await WaitForClosedDialogsToSettleAsync();
+    }
+
+    [Theory]
+    [InlineData(ApiCallStatus.Invalid, "That person cannot receive shares.", "That person cannot receive shares.")]
+    [InlineData(ApiCallStatus.Invalid, null, VaultStatusText.InvalidFallbackText)]
+    [InlineData(ApiCallStatus.NotFound, null, LoadableComponentBase<ShareGrantDto>.NotFoundText)]
+    [InlineData(ApiCallStatus.RateLimited, null, LoadableComponentBase<ShareGrantDto>.RateLimitedText)]
+    [InlineData(ApiCallStatus.Failed, null, VaultStatusText.FailedText)]
+    public async Task Add_RecipientUnavailable_ShowsMessageInDialogAndKeepsItOpen(ApiCallStatus status, string? detail, string expected)
+    {
+        var found = NewPerson();
+        ReturnsCreate(new ApiResponse<ShareGrantDto>(status, null, detail));
+        var cut = RenderPanel();
+        await OpenAddAndPickAsync(cut, found);
+
+        await Provider.Find("#share-dialog-confirm").ClickAsync();
+
+        Provider.WaitForAssertion(() => Assert.Contains(expected, Provider.Find("#share-dialog-error").TextContent, StringComparison.Ordinal));
+        Assert.Empty(cut.FindAll("#share-status"));
+        Assert.Equal(1, ListCalls());
+        Assert.False(Provider.Find("#share-dialog-confirm").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public async Task Add_Conflict_ReloadsClosesTheDialogAndShowsConflictText()
+    {
+        var found = NewPerson();
+        ReturnsCreate(ApiResponse<ShareGrantDto>.Conflict());
+        var cut = RenderPanel();
+        await OpenAddAndPickAsync(cut, found);
+
+        await Provider.Find("#share-dialog-confirm").ClickAsync();
+
+        cut.WaitForAssertion(() => Assert.Contains(VaultStatusText.ConflictText, cut.Find("#share-status").TextContent, StringComparison.Ordinal));
+        cut.WaitForAssertion(() => Assert.Empty(Provider.FindAll("#share-dialog-confirm")));
+        Assert.Equal(2, ListCalls());
+        await WaitForClosedDialogsToSettleAsync();
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task Add_Throws_ShowsFailedTextAndNeverTheExceptionMessage()
+    {
+        const string leaked = "table-row-key-leak";
+        var found = NewPerson();
+        GrantsClient.CreateSecretGrantAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CreateShareGrantRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ApiResponse<ShareGrantDto>>>(_ => throw new InvalidOperationException(leaked));
+        var cut = RenderPanel();
+        await OpenAddAndPickAsync(cut, found);
+
+        await Provider.Find("#share-dialog-confirm").ClickAsync();
+
+        Provider.WaitForAssertion(() => Assert.Contains(VaultStatusText.FailedText, Provider.Find("#share-dialog-error").TextContent, StringComparison.Ordinal));
+        Assert.DoesNotContain(leaked, Provider.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(leaked, cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(leaked, LogText, StringComparison.Ordinal);
+        Assert.False(Provider.Find("#share-dialog-confirm").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task Add_SignInRequired_RedirectsAndShowsNoDialogError()
+    {
+        var found = NewPerson();
+        ReturnsCreate(ApiResponse<ShareGrantDto>.SignInRequired());
+        var cut = RenderPanel();
+        await OpenAddAndPickAsync(cut, found);
+
+        await Provider.Find("#share-dialog-confirm").ClickAsync();
+
+        cut.WaitForAssertion(() => Assert.Contains("/account/sign-in", CurrentUri, StringComparison.Ordinal));
+        Assert.Empty(Provider.FindAll("#share-dialog-error"));
+        Assert.Empty(cut.FindAll("#share-status"));
+        Assert.Equal(1, ListCalls());
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task Add_AccessDenied_InvalidatesAndNavigatesToAccessDenied()
+    {
+        var found = NewPerson();
+        ReturnsCreate(ApiResponse<ShareGrantDto>.AccessDenied());
+        var cut = RenderPanel();
+        await OpenAddAndPickAsync(cut, found);
+
+        await Provider.Find("#share-dialog-confirm").ClickAsync();
+
+        cut.WaitForAssertion(() => Assert.EndsWith("/account/access-denied", CurrentUri, StringComparison.Ordinal));
+        Accessor.Received().Invalidate();
+        Assert.Empty(Provider.FindAll("#share-dialog-error"));
+    }
+
+    [Fact]
+    public async Task Add_ConfirmClickedWhileRunning_SendsOneRequest()
+    {
+        var found = NewPerson();
+        var gate = new TaskCompletionSource<ApiResponse<ShareGrantDto>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        GrantsClient.CreateSecretGrantAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CreateShareGrantRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(gate.Task);
+        var cut = RenderPanel();
+        await OpenAddAndPickAsync(cut, found);
+
+        var first = Provider.Find("#share-dialog-confirm").ClickAsync();
+        Provider.WaitForAssertion(() => Assert.True(Provider.Find("#share-dialog-confirm").HasAttribute("disabled")));
+        await Provider.Find("#share-dialog-confirm").ClickAsync();
+        await Provider.Find("#share-dialog-confirm").ClickAsync();
+
+        await GrantsClient.Received(1).CreateSecretGrantAsync(Owner.UserId, _itemId, Arg.Any<CreateShareGrantRequestDto>(), Arg.Any<CancellationToken>());
+        gate.SetResult(ApiResponse<ShareGrantDto>.Success(Grant(found.Id, found.DisplayName)));
+        await first;
+        cut.WaitForAssertion(() => Assert.Contains(SharedItemStatusText.Shared, cut.Find("#share-status").TextContent, StringComparison.Ordinal));
+        await WaitForClosedDialogsToSettleAsync();
+    }
+
+    [Fact]
+    public async Task Add_CancelAndReopen_StartsWithNoSelectionAndNoOldError()
+    {
+        var found = NewPerson();
+        ReturnsCreate(ApiResponse<ShareGrantDto>.Invalid("Not allowed."));
+        var cut = RenderPanel();
+        await OpenAddAndPickAsync(cut, found);
+        await Provider.Find("#share-dialog-confirm").ClickAsync();
+        Provider.WaitForElement("#share-dialog-error");
+
+        await Provider.Find("#share-dialog-cancel").ClickAsync();
+        cut.WaitForAssertion(() => Assert.Empty(Provider.FindAll("#share-dialog-confirm")));
+        await WaitForClosedDialogsToSettleAsync();
+        await cut.Find("#share-add").ClickAsync();
+
+        Provider.WaitForElement("#share-dialog-confirm");
+        Assert.Empty(Provider.FindAll("#share-dialog-error"));
+        Assert.Empty(Provider.FindAll("#recipient-selected"));
+        Assert.True(Provider.Find("#share-dialog-confirm").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void Change_Success_UsesTheConcurrencyTokenReloadsAndShowsStatus()
+    {
+        ReturnsChange(ApiResponse<ShareGrantDto>.Success(Grant(_graceId, "Grace Hopper", SharePermissionDto.Manage)));
+        var cut = RenderPanel();
+
+        cut.WaitForElement($"#share-grant-permission-{_graceId:D}").Change(nameof(SharePermissionDto.Manage));
+
+        cut.WaitForAssertion(() => Assert.Contains(SharedItemStatusText.PermissionChanged, cut.Find("#share-status").TextContent, StringComparison.Ordinal));
+        GrantsClient.Received(1).ChangeSecretGrantAsync(
+            Owner.UserId,
+            _itemId,
+            _graceId,
+            "etag-" + _graceId.ToString("N"),
+            Arg.Is<ChangeShareGrantRequestDto>(request => request.Permission == SharePermissionDto.Manage),
+            Arg.Any<CancellationToken>());
+        Assert.Equal(2, ListCalls());
+    }
+
+    [Fact]
+    public void Change_OnAFolder_UsesTheFolderRoute()
+    {
+        GrantsClient.ChangeFolderGrantAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<ChangeShareGrantRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(ApiResponse<ShareGrantDto>.Success(Grant(_adaId, "Ada Lovelace", SharePermissionDto.Edit))));
+        var cut = RenderPanel(SharedItemKindDto.Folder);
+
+        cut.WaitForElement($"#share-grant-permission-{_adaId:D}").Change(nameof(SharePermissionDto.Edit));
+
+        cut.WaitForAssertion(() => GrantsClient.Received(1).ChangeFolderGrantAsync(Owner.UserId, _itemId, _adaId, "etag-" + _adaId.ToString("N"), Arg.Any<ChangeShareGrantRequestDto>(), Arg.Any<CancellationToken>()));
+        ExpectNoChangeCalls();
+    }
+
+    [Theory]
+    [InlineData(nameof(SharePermissionDto.View))]
+    [InlineData("99")]
+    [InlineData("Owner")]
+    [InlineData("")]
+    public void Change_SameOrUnknownValue_SendsNothing(string value)
+    {
+        var cut = RenderPanel();
+
+        cut.WaitForElement($"#share-grant-permission-{_graceId:D}").Change(value);
+
+        ExpectNoChangeCalls();
+        Assert.Equal(1, ListCalls());
+    }
+
+    [Fact]
+    public void Change_Conflict_ReloadsAndShowsConflictText()
+    {
+        ReturnsChange(ApiResponse<ShareGrantDto>.Conflict());
+        var cut = RenderPanel();
+
+        cut.WaitForElement($"#share-grant-permission-{_graceId:D}").Change(nameof(SharePermissionDto.Edit));
+
+        cut.WaitForAssertion(() => Assert.Contains(VaultStatusText.ConflictText, cut.Find("#share-status").TextContent, StringComparison.Ordinal));
+        Assert.Equal(2, ListCalls());
+    }
+
+    [Theory]
+    [InlineData(ApiCallStatus.NotFound, LoadableComponentBase<ShareGrantDto>.NotFoundText)]
+    [InlineData(ApiCallStatus.RateLimited, LoadableComponentBase<ShareGrantDto>.RateLimitedText)]
+    [InlineData(ApiCallStatus.Failed, VaultStatusText.FailedText)]
+    public void Change_OtherFailures_ShowTextAndReload(ApiCallStatus status, string expected)
+    {
+        ReturnsChange(new ApiResponse<ShareGrantDto>(status, null));
+        var cut = RenderPanel();
+
+        cut.WaitForElement($"#share-grant-permission-{_graceId:D}").Change(nameof(SharePermissionDto.Edit));
+
+        cut.WaitForAssertion(() => Assert.Contains(expected, cut.Find("#share-status").TextContent, StringComparison.Ordinal));
+        Assert.Equal(2, ListCalls());
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void Change_Throws_ShowsFailedTextAndNoExceptionMessage()
+    {
+        const string leaked = "etag-internals";
+        GrantsClient.ChangeSecretGrantAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<ChangeShareGrantRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ApiResponse<ShareGrantDto>>>(_ => throw new InvalidOperationException(leaked));
+        var cut = RenderPanel();
+
+        cut.WaitForElement($"#share-grant-permission-{_graceId:D}").Change(nameof(SharePermissionDto.Edit));
+
+        cut.WaitForAssertion(() => Assert.Contains(VaultStatusText.FailedText, cut.Find("#share-status").TextContent, StringComparison.Ordinal));
+        Assert.DoesNotContain(leaked, cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(leaked, LogText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void Change_SignInRequired_RedirectsWithoutReloadOrStatus()
+    {
+        ReturnsChange(ApiResponse<ShareGrantDto>.SignInRequired());
+        var cut = RenderPanel();
+
+        cut.WaitForElement($"#share-grant-permission-{_graceId:D}").Change(nameof(SharePermissionDto.Edit));
+
+        cut.WaitForAssertion(() => Assert.Contains("/account/sign-in", CurrentUri, StringComparison.Ordinal));
+        Assert.Empty(cut.FindAll("#share-status"));
+        Assert.Equal(1, ListCalls());
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task Revoke_ShowsWarningNamingTheRecipientEncoded()
+    {
+        const string hostile = "<b>Eve</b>";
+        GrantsClient.ListSecretGrantsAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Grants(Grant(_adaId, hostile)));
+        var cut = RenderPanel();
+
+        await cut.WaitForElement($"#share-grant-revoke-{_adaId:D}").ClickAsync();
+
+        var text = Provider.WaitForElement("#share-revoke-prompt-text");
+        Assert.Equal(SharedItemStatusText.RevokeWarning(hostile), text.TextContent);
+        Assert.Empty(text.QuerySelectorAll("b"));
+        ExpectNoRevokeCalls();
+        await Provider.Find("#share-revoke-prompt-cancel").ClickAsync();
+        await WaitForClosedDialogsToSettleAsync();
+    }
+
+    [Fact]
+    public async Task Revoke_Cancel_SendsNothingAndClosesThePrompt()
+    {
+        var cut = RenderPanel();
+        await cut.WaitForElement($"#share-grant-revoke-{_adaId:D}").ClickAsync();
+
+        await Provider.WaitForElement("#share-revoke-prompt-cancel").ClickAsync();
+
+        cut.WaitForAssertion(() => Assert.Empty(Provider.FindAll("#share-revoke-prompt-confirm")));
+        ExpectNoRevokeCalls();
+        Assert.Empty(cut.FindAll("#share-status"));
+        await WaitForClosedDialogsToSettleAsync();
+    }
+
+    [Fact]
+    public async Task Revoke_ClickedRecipient_IsTheOnlyOneRevoked()
+    {
+        ReturnsRevoke(ApiResponse<bool>.Success(true));
+        var cut = RenderPanel();
+        await cut.WaitForElement($"#share-grant-revoke-{_graceId:D}").ClickAsync();
+
+        await Provider.WaitForElement("#share-revoke-prompt-confirm").ClickAsync();
+
+        cut.WaitForAssertion(() => Assert.Contains(SharedItemStatusText.Revoked, cut.Find("#share-status").TextContent, StringComparison.Ordinal));
+        await GrantsClient.Received(1).RevokeSecretGrantAsync(Owner.UserId, _itemId, _graceId, Arg.Any<CancellationToken>());
+        await GrantsClient.DidNotReceive().RevokeSecretGrantAsync(Owner.UserId, _itemId, _adaId, Arg.Any<CancellationToken>());
+        Assert.Equal(2, ListCalls());
+        await WaitForClosedDialogsToSettleAsync();
+    }
+
+    [Fact]
+    public async Task Revoke_OnAFolder_UsesTheFolderRoute()
+    {
+        GrantsClient.RevokeFolderGrantAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(ApiResponse<bool>.Success(true)));
+        var cut = RenderPanel(SharedItemKindDto.Folder);
+        await cut.WaitForElement($"#share-grant-revoke-{_adaId:D}").ClickAsync();
+
+        await Provider.WaitForElement("#share-revoke-prompt-confirm").ClickAsync();
+
+        await GrantsClient.Received(1).RevokeFolderGrantAsync(Owner.UserId, _itemId, _adaId, Arg.Any<CancellationToken>());
+        ExpectNoRevokeCalls();
+        await WaitForClosedDialogsToSettleAsync();
+    }
+
+    [Fact]
+    public async Task Revoke_DoubleClick_SendsOneRequest()
+    {
+        var gate = GatedRevoke();
+        var cut = RenderPanel();
+        await cut.WaitForElement($"#share-grant-revoke-{_adaId:D}").ClickAsync();
+
+        var first = Provider.WaitForElement("#share-revoke-prompt-confirm").ClickAsync();
+        Provider.WaitForAssertion(() => Assert.True(Provider.Find("#share-revoke-prompt-confirm").HasAttribute("disabled")));
+        await Provider.Find("#share-revoke-prompt-confirm").ClickAsync();
+        await Provider.Find("#share-revoke-prompt-confirm").ClickAsync();
+
+        await GrantsClient.Received(1).RevokeSecretGrantAsync(Owner.UserId, _itemId, _adaId, Arg.Any<CancellationToken>());
+        gate.SetResult(ApiResponse<bool>.Success(true));
+        await first;
+        cut.WaitForAssertion(() => Assert.Contains(SharedItemStatusText.Revoked, cut.Find("#share-status").TextContent, StringComparison.Ordinal));
+        await GrantsClient.Received(1).RevokeSecretGrantAsync(Owner.UserId, _itemId, _adaId, Arg.Any<CancellationToken>());
+        await WaitForClosedDialogsToSettleAsync();
+    }
+
+    [Fact]
+    public async Task Revoke_DialogIgnoresEscapeWhileBusy()
+    {
+        var gate = GatedRevoke();
+        var cut = RenderPanel();
+        await cut.WaitForElement($"#share-grant-revoke-{_adaId:D}").ClickAsync();
+        var first = Provider.WaitForElement("#share-revoke-prompt-confirm").ClickAsync();
+        Provider.WaitForAssertion(() => Assert.True(Provider.Find("#share-revoke-prompt-confirm").HasAttribute("disabled")));
+
+        await PressEscapeAsync();
+        await PollAsync(() => Provider.FindAll("#share-revoke-prompt-confirm").Count > 0);
+
+        Assert.NotEmpty(Provider.FindAll("#share-revoke-prompt-confirm"));
+        Assert.Equal(SharedItemStatusText.RevokeWarning("Ada Lovelace"), Provider.Find("#share-revoke-prompt-text").TextContent);
+        gate.SetResult(ApiResponse<bool>.Success(true));
+        await first;
+        cut.WaitForAssertion(() => Assert.Contains(SharedItemStatusText.Revoked, cut.Find("#share-status").TextContent, StringComparison.Ordinal));
+        await GrantsClient.Received(1).RevokeSecretGrantAsync(Owner.UserId, _itemId, _adaId, Arg.Any<CancellationToken>());
+        await WaitForClosedDialogsToSettleAsync();
+    }
+
+    [Theory]
+    [InlineData(ApiCallStatus.NotFound, LoadableComponentBase<bool>.NotFoundText)]
+    [InlineData(ApiCallStatus.Conflict, VaultStatusText.ConflictText)]
+    [InlineData(ApiCallStatus.RateLimited, LoadableComponentBase<bool>.RateLimitedText)]
+    [InlineData(ApiCallStatus.Failed, VaultStatusText.FailedText)]
+    public async Task Revoke_Failure_ClosesPromptShowsTextAndReloads(ApiCallStatus status, string expected)
+    {
+        ReturnsRevoke(new ApiResponse<bool>(status, false));
+        var cut = RenderPanel();
+        await cut.WaitForElement($"#share-grant-revoke-{_adaId:D}").ClickAsync();
+
+        await Provider.WaitForElement("#share-revoke-prompt-confirm").ClickAsync();
+
+        cut.WaitForAssertion(() => Assert.Contains(expected, cut.Find("#share-status").TextContent, StringComparison.Ordinal));
+        cut.WaitForAssertion(() => Assert.Empty(Provider.FindAll("#share-revoke-prompt-confirm")));
+        Assert.Equal(2, ListCalls());
+        await WaitForClosedDialogsToSettleAsync();
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task Revoke_Throws_ClosesPromptAndShowsFailedWithoutTheMessage()
+    {
+        const string leaked = "grant-row-internals";
+        GrantsClient.RevokeSecretGrantAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ApiResponse<bool>>>(_ => throw new InvalidOperationException(leaked));
+        var cut = RenderPanel();
+        await cut.WaitForElement($"#share-grant-revoke-{_adaId:D}").ClickAsync();
+
+        await Provider.WaitForElement("#share-revoke-prompt-confirm").ClickAsync();
+
+        cut.WaitForAssertion(() => Assert.Contains(VaultStatusText.FailedText, cut.Find("#share-status").TextContent, StringComparison.Ordinal));
+        cut.WaitForAssertion(() => Assert.Empty(Provider.FindAll("#share-revoke-prompt-confirm")));
+        Assert.DoesNotContain(leaked, cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(leaked, LogText, StringComparison.Ordinal);
+        await WaitForClosedDialogsToSettleAsync();
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task Revoke_SignInRequired_RedirectsAndShowsNoRevokedStatus()
+    {
+        ReturnsRevoke(ApiResponse<bool>.SignInRequired());
+        var cut = RenderPanel();
+        await cut.WaitForElement($"#share-grant-revoke-{_adaId:D}").ClickAsync();
+
+        await Provider.WaitForElement("#share-revoke-prompt-confirm").ClickAsync();
+
+        cut.WaitForAssertion(() => Assert.Contains("/account/sign-in", CurrentUri, StringComparison.Ordinal));
+        Assert.Empty(cut.FindAll("#share-status"));
+        Assert.Equal(1, ListCalls());
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task Revoke_AccessDenied_InvalidatesAndNavigatesToAccessDenied()
+    {
+        ReturnsRevoke(ApiResponse<bool>.AccessDenied());
+        var cut = RenderPanel();
+        await cut.WaitForElement($"#share-grant-revoke-{_adaId:D}").ClickAsync();
+
+        await Provider.WaitForElement("#share-revoke-prompt-confirm").ClickAsync();
+
+        cut.WaitForAssertion(() => Assert.EndsWith("/account/access-denied", CurrentUri, StringComparison.Ordinal));
+        Accessor.Received().Invalidate();
+        Assert.Empty(cut.FindAll("#share-status"));
+    }
+}

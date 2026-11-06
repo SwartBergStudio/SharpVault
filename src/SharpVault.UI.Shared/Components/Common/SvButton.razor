@@ -1,0 +1,60 @@
+<MudButton id="@Id"
+           Variant="@MudVariant"
+           Color="@MudColor"
+           StartIcon="@Icon"
+           ButtonType="@ButtonType"
+           Href="@Href"
+           Disabled="@(Disabled || Busy)"
+           OnClick="@OnClick"
+           aria-busy="@(Busy ? "true" : null)">
+    @if (Busy)
+    {
+        <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="me-2" aria-hidden="true" />
+    }
+    @ChildContent
+</MudButton>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public SvButtonVariant Variant { get; set; }
+
+    [Parameter]
+    public string? Icon { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    [Parameter]
+    public string? Href { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public ButtonType ButtonType { get; set; } = ButtonType.Button;
+
+    private Variant MudVariant => Variant switch
+    {
+        SvButtonVariant.Primary or SvButtonVariant.Danger => MudBlazor.Variant.Filled,
+        SvButtonVariant.Secondary => MudBlazor.Variant.Outlined,
+        _ => MudBlazor.Variant.Text,
+    };
+
+    private Color MudColor => Variant switch
+    {
+        SvButtonVariant.Primary or SvButtonVariant.Secondary => Color.Primary,
+        SvButtonVariant.Danger => Color.Error,
+        _ => Color.Default,
+    };
+
+    protected override void OnParametersSet() => ComponentIds.EnsureValid(Id, nameof(Id));
+}

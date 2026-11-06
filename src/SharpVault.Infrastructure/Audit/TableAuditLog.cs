@@ -12,11 +12,17 @@ namespace SharpVault.Infrastructure.Audit;
 public sealed class TableAuditLog(TableServiceClient tableServiceClient) : IAuditLog
 {
     private readonly TableClient _table = tableServiceClient.GetTableClient(TableNames.AuditLog);
+    private readonly TableClient _secretIndex = tableServiceClient.GetTableClient(TableNames.SecretAuditLog);
 
     public async Task AppendAsync(AuditEntry entry, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(entry);
 
         await _table.AddEntityAsync(entry.Adapt<AuditLogTableEntity>(), cancellationToken);
+
+        if (entry.OwnerId is not null && entry.SecretId is not null)
+        {
+            await _secretIndex.AddEntityAsync(entry.Adapt<SecretAuditLogTableEntity>(), cancellationToken);
+        }
     }
 }

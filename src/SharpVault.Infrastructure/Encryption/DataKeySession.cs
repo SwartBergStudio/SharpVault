@@ -122,6 +122,38 @@ public sealed partial class DataKeySession : IDataKeySession
         }
     }
 
+    public byte[] ReEncryptTo(EncryptionContext source, IDataKeySession target, EncryptionContext targetContext, byte[] envelope)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        EnvelopeAssociatedData.EnsureValid(source, nameof(source));
+        ArgumentNullException.ThrowIfNull(target);
+        EnvelopeAssociatedData.EnsureValid(targetContext, nameof(targetContext));
+        ArgumentNullException.ThrowIfNull(envelope);
+
+        if (target is not DataKeySession targetSession)
+        {
+            throw new ArgumentException(EncryptionMessages.ForeignSessionType, nameof(target));
+        }
+
+        ObjectDisposedException.ThrowIf(targetSession._disposed, targetSession);
+
+        var length = ReadPlaintextLength(source, envelope);
+        var reEncrypted = new byte[EnvelopeFormat.Overhead + length];
+        var body = reEncrypted.AsSpan(EnvelopeFormat.HeaderSize, length);
+
+        try
+        {
+            Open(source, envelope, body);
+            targetSession.Seal(targetContext, reEncrypted, body);
+            return reEncrypted;
+        }
+        catch
+        {
+            CryptographicOperations.ZeroMemory(reEncrypted);
+            throw;
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed)

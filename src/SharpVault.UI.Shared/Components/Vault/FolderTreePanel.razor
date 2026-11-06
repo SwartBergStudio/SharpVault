@@ -1,0 +1,73 @@
+@inherits LoadableComponentBase<FolderListDto>
+@inject IVaultFoldersApiClient FoldersClient
+@inject NavigationManager Nav
+
+<SvPaper Class="pa-3">
+    <div class="d-flex align-center justify-space-between mb-2">
+        <SvText Id="folder-tree-heading" Kind="SvTextKind.Heading" HtmlTag="h2">Folders</SvText>
+        <SvButton Id="vault-new-folder" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Add" OnClick="@OpenCreateRoot">New folder</SvButton>
+    </div>
+    <nav aria-label="Folders">
+        <ul class="vault-tree-root">
+            <li>
+                <FolderTreeRow>
+                    <Lead><span class="vault-tree-spacer" aria-hidden="true"></span></Lead>
+                    <ChildContent>
+                        <SvLink Id="folder-tree-all" Href="@VaultRoutes.Vault" Selected="@IsAllSelected">All items</SvLink>
+                    </ChildContent>
+                </FolderTreeRow>
+            </li>
+            <li>
+                <FolderTreeRow>
+                    <Lead><span class="vault-tree-spacer" aria-hidden="true"></span></Lead>
+                    <ChildContent>
+                        <SvLink Id="folder-tree-unfiled" Href="@VaultRoutes.Unfiled" Selected="@Unfiled">Unfiled</SvLink>
+                    </ChildContent>
+                </FolderTreeRow>
+            </li>
+        </ul>
+        <DataStateView TValue="FolderListDto" IdPrefix="folder-tree" EmptyTitle="No folders yet" EmptyDescription="Select New folder to group your items." State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+            <ChildContent>
+                <FolderTreeList Nodes="@_nodes" SelectedFolderId="@SelectedFolderId" Expanded="@_expanded" OnToggle="@ToggleAsync" OnAction="@HandleActionAsync" />
+            </ChildContent>
+        </DataStateView>
+    </nav>
+</SvPaper>
+
+<FolderEditorDialog Open="@_editorOpen"
+                    Mode="@_editorMode"
+                    InitialName="@EditorInitialName"
+                    InitialParentId="@_editorParentId"
+                    Folders="@AllFolders"
+                    FolderId="@_target?.Id"
+                    ExcludeSubtreeOf="@_target?.Id"
+                    Busy="@IsCommandRunning"
+                    ErrorText="@_dialogError"
+                    OnSave="@SaveEditorAsync"
+                    OnCancel="@CloseDialogs" />
+
+<FolderDeleteDialog Open="@(_deleting is not null)"
+                    FolderName="@DeletingName"
+                    Busy="@IsCommandRunning"
+                    ErrorText="@_dialogError"
+                    OnConfirm="@DeleteAsync"
+                    OnCancel="@CloseDialogs" />
+
+<FolderSharingDialog Open="@(_sharing is not null && CurrentUser is not null)"
+                     OwnerId="@(CurrentUser?.UserId ?? Guid.Empty)"
+                     FolderId="@(_sharing?.Id ?? Guid.Empty)"
+                     FolderName="@SharingName"
+                     OnClose="@CloseDialogs" />
+
+@code {
+    [Parameter]
+    public Guid? SelectedFolderId { get; set; }
+
+    [Parameter]
+    public bool Unfiled { get; set; }
+
+    [Parameter]
+    public EventCallback OnChanged { get; set; }
+
+    private bool IsAllSelected => SelectedFolderId is null && !Unfiled;
+}

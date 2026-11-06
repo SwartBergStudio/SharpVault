@@ -1,0 +1,23 @@
+@inject AuthenticationStateProvider AuthenticationState
+@inject NavigationManager Navigation
+
+@if (_showHero)
+{
+    <HomeHero />
+}
+
+@code {
+    private bool _showHero;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationState.GetAuthenticationStateAsync();
+        if (state.User.Identity?.IsAuthenticated == true)
+        {
+            Navigation.NavigateTo(VaultRoutes.Vault, replace: true);
+            return;
+        }
+
+        _showHero = true;
+    }
+}

@@ -1,0 +1,71 @@
+<SvDialog IdPrefix="file-shared" Title="@($"File {ItemName}")" Open="@Open" Busy="@Busy" OnCancel="@OnCancel">
+    <ChildContent>
+        <SvStack Spacing="3">
+            @if (Loading)
+            {
+                <BusyIndicator Id="file-shared-loading" Label="Loading your folders" />
+            }
+            else
+            {
+                <FolderPicker Id="file-shared-folder-select" Label="Folder" Folders="@Folders" Value="@_selected" ValueChanged="@SelectFolder" />
+            }
+            @if (ErrorText is not null)
+            {
+                <SvAlert Id="file-shared-error" Kind="AlertKind.Danger">@ErrorText</SvAlert>
+            }
+        </SvStack>
+    </ChildContent>
+    <Footer>
+        <SvButton Id="file-shared-cancel" Variant="SvButtonVariant.Secondary" Disabled="@Busy" OnClick="@OnCancel">Cancel</SvButton>
+        <SvButton Id="file-shared-confirm" Variant="SvButtonVariant.Primary" Busy="@Busy" Disabled="@(Loading || !FoldersLoaded)" OnClick="@HandleConfirmAsync">File</SvButton>
+    </Footer>
+</SvDialog>
+
+@code {
+    private Guid? _selected;
+    private bool _wasOpen;
+
+    [Parameter]
+    public bool Open { get; set; }
+
+    [Parameter]
+    public string ItemName { get; set; } = string.Empty;
+
+    [Parameter]
+    public Guid? CurrentFolderId { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<FolderDto> Folders { get; set; } = [];
+
+    [Parameter]
+    public bool Loading { get; set; }
+
+    [Parameter]
+    public bool FoldersLoaded { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public string? ErrorText { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid?> OnConfirm { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen)
+        {
+            _selected = CurrentFolderId;
+        }
+
+        _wasOpen = Open;
+    }
+
+    private void SelectFolder(Guid? folderId) => _selected = folderId;
+
+    private Task HandleConfirmAsync() => OnConfirm.InvokeAsync(_selected);
+}

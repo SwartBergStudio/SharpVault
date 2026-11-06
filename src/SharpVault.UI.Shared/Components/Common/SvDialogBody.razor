@@ -1,0 +1,21 @@
+<div @ref="_ref" class="sv-dialog__body" tabindex="-1" @onkeydown="HandleKeyDownAsync">@ChildContent</div>
+
+@code {
+    private ElementReference _ref;
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public EventCallback<KeyboardEventArgs> OnKeyDown { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await _ref.FocusAsync();
+        }
+    }
+
+    private Task HandleKeyDownAsync(KeyboardEventArgs args) => OnKeyDown.InvokeAsync(args);
+}

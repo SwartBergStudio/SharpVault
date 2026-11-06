@@ -1,0 +1,52 @@
+@typeparam TItem
+
+<CascadingValue Value="this" IsFixed="true">@Columns</CascadingValue>
+<MudTable T="TItem"
+          id="@Id"
+          Items="@Items"
+          Dense="true"
+          Hover="true"
+          Elevation="0"
+          Outlined="true"
+          NoRecordsContent="@EmptyContent">
+    <HeaderContent>
+        @foreach (var column in _columns)
+        {
+            <MudTh>@column.Header</MudTh>
+        }
+    </HeaderContent>
+    <RowTemplate>
+        @foreach (var column in _columns)
+        {
+            <MudTd DataLabel="@column.Header">@column.Render(context)</MudTd>
+        }
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private readonly List<SvColumn<TItem>> _columns = [];
+
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter]
+    public IEnumerable<TItem>? Items { get; set; }
+
+    [Parameter]
+    public RenderFragment? Columns { get; set; }
+
+    [Parameter]
+    public RenderFragment? EmptyContent { get; set; }
+
+    internal void Register(SvColumn<TItem> column) => _columns.Add(column);
+
+    protected override void OnParametersSet() => ComponentIds.EnsureValid(Id, nameof(Id));
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender && _columns.Count > 0)
+        {
+            StateHasChanged();
+        }
+    }
+}

@@ -3,7 +3,7 @@
 
 using SharpVault.Application.Common.Interfaces;
 using SharpVault.Application.Features.Users.Access;
-using SharpVault.ServiceDefaults.Identity;
+using SharpVault.Authentication.Identity;
 
 namespace SharpVault.Api.Security;
 

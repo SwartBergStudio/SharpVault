@@ -1,3 +1,6 @@
+@inject IOptions<IdleLockOptions> IdleOptions
+@inject ISessionActions SessionActions
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -10,15 +13,41 @@
     <base href="/" />
     <ResourcePreloader />
     <link rel="icon" type="image/svg+xml" href="@Assets["_content/SharpVault.UI.Shared/brand/favicon.svg"]" />
+    <link rel="stylesheet" href="@Assets["_content/MudBlazor/MudBlazor.min.css"]" />
     <link rel="stylesheet" href="@Assets["_content/SharpVault.UI.Shared/css/app.css"]" />
     <link rel="stylesheet" href="@Assets["SharpVault.Web.styles.css"]" />
-    <HeadOutlet />
+    <HeadOutlet @rendermode="PageRenderMode" />
 </head>
 
 <body>
-    <Routes />
+    <Routes @rendermode="PageRenderMode" />
     <ReconnectModal />
+    @if (IsSignedInStaticPage)
+    {
+        <script id="idle-boot" type="module" src="@Assets["_content/SharpVault.UI.Shared/js/idle-boot.js"]" data-idle-form="@SessionActions.SignOutFormId" data-idle-timeout-ms="@IdleTimeoutMilliseconds" data-idle-session="@HttpContext.User.FindFirst(SessionClaims.ExpiresAt)?.Value"></script>
+    }
+    else
+    {
+        <script id="clipboard-boot" type="module" src="@Assets["_content/SharpVault.UI.Shared/js/clipboard.js"]"></script>
+    }
     <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="@Assets["_content/MudBlazor/MudBlazor.min.js"]"></script>
 </body>
 
 </html>
+
+@code {
+    private static readonly InteractiveServerRenderMode InteractiveMode = new(prerender: false);
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private bool IsSignedInStaticPage => PageRenderMode is null && HttpContext.User.Identity?.IsAuthenticated == true;
+
+    private long IdleTimeoutMilliseconds => (long)IdleOptions.Value.Timeout.TotalMilliseconds;
+
+    private IComponentRenderMode? PageRenderMode =>
+        HttpContext.AcceptsInteractiveRouting() && HttpContext.User.Identity?.IsAuthenticated == true
+            ? InteractiveMode
+            : null;
+}

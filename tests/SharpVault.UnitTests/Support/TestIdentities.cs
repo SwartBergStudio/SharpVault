@@ -2,7 +2,7 @@
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
 using System.Security.Claims;
-using SharpVault.ServiceDefaults.Identity;
+using SharpVault.Authentication.Identity;
 
 namespace SharpVault.UnitTests.Support;
 
