@@ -21,7 +21,8 @@ public static class SharpVaultUiRegistration
 
     public static IServiceCollection AddSharpVaultUi(
         this IServiceCollection services,
-        Action<IServiceProvider, HttpClient> configureApiClient)
+        Action<IServiceProvider, HttpClient> configureApiClient,
+        Action<IHttpClientBuilder>? configureApiClientBuilder = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configureApiClient);
@@ -33,17 +34,17 @@ public static class SharpVaultUiRegistration
             options.SnackbarConfiguration.PreventDuplicates = true;
             options.SnackbarConfiguration.ClearAfterNavigation = true;
         });
-        services.AddHttpClient<IMeApiClient, MeApiClient>(configureApiClient);
-        services.AddHttpClient<IAdminUsersApiClient, AdminUsersApiClient>(configureApiClient);
-        services.AddHttpClient<IVaultSecretsApiClient, VaultSecretsApiClient>(configureApiClient);
-        services.AddHttpClient<ISecretHistoryApiClient, SecretHistoryApiClient>(configureApiClient);
-        services.AddHttpClient<IVaultFoldersApiClient, VaultFoldersApiClient>(configureApiClient);
-        services.AddHttpClient<IRecycleBinApiClient, RecycleBinApiClient>(configureApiClient);
-        services.AddHttpClient<ISharedItemsApiClient, SharedItemsApiClient>(configureApiClient);
-        services.AddHttpClient<IShareGrantsApiClient, ShareGrantsApiClient>(configureApiClient);
-        services.AddHttpClient<IDirectoryApiClient, DirectoryApiClient>(configureApiClient);
-        services.AddHttpClient<IAdminTransfersApiClient, AdminTransfersApiClient>(configureApiClient);
-        services.AddHttpClient<ITransferNoticesApiClient, TransferNoticesApiClient>(configureApiClient);
+        AddApiClient<IMeApiClient, MeApiClient>(services, configureApiClient, configureApiClientBuilder);
+        AddApiClient<IAdminUsersApiClient, AdminUsersApiClient>(services, configureApiClient, configureApiClientBuilder);
+        AddApiClient<IVaultSecretsApiClient, VaultSecretsApiClient>(services, configureApiClient, configureApiClientBuilder);
+        AddApiClient<ISecretHistoryApiClient, SecretHistoryApiClient>(services, configureApiClient, configureApiClientBuilder);
+        AddApiClient<IVaultFoldersApiClient, VaultFoldersApiClient>(services, configureApiClient, configureApiClientBuilder);
+        AddApiClient<IRecycleBinApiClient, RecycleBinApiClient>(services, configureApiClient, configureApiClientBuilder);
+        AddApiClient<ISharedItemsApiClient, SharedItemsApiClient>(services, configureApiClient, configureApiClientBuilder);
+        AddApiClient<IShareGrantsApiClient, ShareGrantsApiClient>(services, configureApiClient, configureApiClientBuilder);
+        AddApiClient<IDirectoryApiClient, DirectoryApiClient>(services, configureApiClient, configureApiClientBuilder);
+        AddApiClient<IAdminTransfersApiClient, AdminTransfersApiClient>(services, configureApiClient, configureApiClientBuilder);
+        AddApiClient<ITransferNoticesApiClient, TransferNoticesApiClient>(services, configureApiClient, configureApiClientBuilder);
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton(VaultUiSettings.Default);
         services.TryAddScoped<IClipboard, BrowserClipboard>();
@@ -66,5 +67,16 @@ public static class SharpVaultUiRegistration
         services.RemoveAll<RoutedAssemblies>();
         services.AddSingleton(new RoutedAssemblies(assemblies));
         return services;
+    }
+
+    private static void AddApiClient<TClient, TImplementation>(
+        IServiceCollection services,
+        Action<IServiceProvider, HttpClient> configureApiClient,
+        Action<IHttpClientBuilder>? configureApiClientBuilder)
+        where TClient : class
+        where TImplementation : class, TClient
+    {
+        var builder = services.AddHttpClient<TClient, TImplementation>(configureApiClient);
+        configureApiClientBuilder?.Invoke(builder);
     }
 }

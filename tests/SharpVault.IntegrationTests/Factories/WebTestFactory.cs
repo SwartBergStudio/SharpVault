@@ -55,12 +55,13 @@ public sealed class WebTestFactory : WebApplicationFactory<WebApp::Program>
         builder.ConfigureTestServices(services =>
         {
             TestIdentityProvider.ConfigureWeb(services);
+            services.AddSingleton<IStartupFilter, LoopbackStartupFilter>();
             services.AddSingleton<IStartupFilter, TestCookieSignInStartupFilter>();
             services.AddSingleton(FakeTokenAcquisition.Create());
             if (_api is not null)
             {
                 var api = _api;
-                services.UsePrimaryHandler(() => api.Server.CreateHandler());
+                services.UsePrimaryHandler(() => api.Server.CreateHandler(context => context.Connection.RemoteIpAddress = TestAddresses.WebHost));
             }
             else
             {

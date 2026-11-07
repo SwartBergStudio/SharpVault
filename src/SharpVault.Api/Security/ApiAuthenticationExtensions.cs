@@ -11,6 +11,7 @@ using SharpVault.Application.Features.Users.Access;
 using SharpVault.Authentication.Identity;
 using SharpVault.Authentication.Local;
 using SharpVault.Authentication.Mode;
+using SharpVault.Authentication.WebGateway;
 
 namespace SharpVault.Api.Security;
 
@@ -64,7 +65,9 @@ public static class ApiAuthenticationExtensions
         builder.Services.AddOptions<TenancyOptions>()
             .Bind(builder.Configuration.GetSection(TenancyOptions.SectionName))
             .ValidateOnStart();
+        builder.AddWebGateway();
         builder.Services.AddHttpContextAccessor();
+        builder.Services.AddSingleton<ClientAddressResolver>();
         builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
         builder.Services.AddScoped<IRequestMetadata, HttpContextRequestMetadata>();
         builder.Services.AddSingleton<IAuthorizationHandler, SharpVaultAccessHandler>();

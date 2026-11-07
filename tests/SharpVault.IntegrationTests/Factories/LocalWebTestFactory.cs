@@ -63,7 +63,7 @@ public sealed class LocalWebTestFactory : WebApplicationFactory<WebApp::Program>
             if (_api is not null)
             {
                 var api = _api;
-                services.UsePrimaryHandler(() => api.Server.CreateHandler());
+                services.UsePrimaryHandler(() => api.Server.CreateHandler(context => context.Connection.RemoteIpAddress = TestAddresses.WebHost));
                 return;
             }
 

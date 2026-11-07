@@ -10,6 +10,7 @@ using System.Text.Json;
 using SharpVault.Dtos;
 using SharpVault.Dtos.Users;
 using SharpVault.UI.Shared.Services.Auth;
+using SharpVault.UI.Shared.Services.Clients;
 
 namespace SharpVault.Web.Security;
 
@@ -38,7 +39,7 @@ public sealed partial class ApiSharedSessionClient(
                 return SharedSessionState.Unknown;
             }
 
-            using var request = BuildRequest(HttpMethod.Post, ApiRoutes.MeSessionCheck, body, token.Value);
+            using var request = BuildRequest(HttpMethod.Post, ApiRoutes.MeSessionCheck, body, token.Value, principal);
             using var response = await httpClient.SendAsync(request, cancellationToken);
             return await ReadCheckAsync(response, cancellationToken);
         }
@@ -69,7 +70,7 @@ public sealed partial class ApiSharedSessionClient(
                 return;
             }
 
-            using var request = BuildRequest(HttpMethod.Post, ApiRoutes.MeSessionRevoke, body, token.Value);
+            using var request = BuildRequest(HttpMethod.Post, ApiRoutes.MeSessionRevoke, body, token.Value, principal);
             using var response = await httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
@@ -82,13 +83,14 @@ public sealed partial class ApiSharedSessionClient(
         }
     }
 
-    private static HttpRequestMessage BuildRequest(HttpMethod method, string route, SessionReferenceRequestDto body, string bearer)
+    private static HttpRequestMessage BuildRequest(HttpMethod method, string route, SessionReferenceRequestDto body, string bearer, ClaimsPrincipal principal)
     {
         var request = new HttpRequestMessage(method, route.TrimStart('/'))
         {
             Content = JsonContent.Create(body, options: JsonSerializerOptions.Web),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, bearer);
+        request.Options.Set(ApiRequestOptions.Principal, principal);
         return request;
     }
 

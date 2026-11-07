@@ -32,6 +32,7 @@ app.UseExceptionHandler(WebRoutes.Error, createScopeForErrors: true);
 app.UseLocalSignInGuard();
 app.UseStatusCodePagesWithReExecute(WebRoutes.NotFound, createScopeForStatusCodePages: true);
 app.UseAuthentication();
+app.UseClientAddressCapture();
 app.UseAuthorization();
 app.UseAntiforgery();
 app.UseOutputCache();

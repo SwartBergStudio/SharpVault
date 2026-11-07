@@ -5,12 +5,15 @@ using System.Net;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using SharpVault.Api.Security;
 using SharpVault.Application.Common.Interfaces;
 using SharpVault.Application.Features.Users.Access;
 using SharpVault.Authentication.Identity;
+using SharpVault.Authentication.WebGateway;
 using SharpVault.UnitTests.Support;
 
 namespace SharpVault.UnitTests.Api.Security;
@@ -33,7 +36,12 @@ public sealed class SharpVaultAccessHandlerTests
     public SharpVaultAccessHandlerTests()
     {
         _gate.CheckAsync(Arg.Any<SignedInUser>(), Arg.Any<CancellationToken>()).Returns(UserAccessDecision.Allowed);
-        _handler = new SharpVaultAccessHandler(_gate, _guestPolicy, TestIdentities.Settings, _logger);
+        _handler = new SharpVaultAccessHandler(
+            _gate,
+            _guestPolicy,
+            TestIdentities.Settings,
+            new ClientAddressResolver(Options.Create(new WebGatewayOptions()), TimeProvider.System, NullLogger<ClientAddressResolver>.Instance),
+            _logger);
     }
 
     [Fact]

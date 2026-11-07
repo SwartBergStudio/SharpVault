@@ -49,6 +49,8 @@ public class E2EHost : IAsyncLifetime
 
     public string WebUrl { get; private set; } = string.Empty;
 
+    public string StorageConnectionString => _azurite.GetConnectionString();
+
     public async ValueTask InitializeAsync()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

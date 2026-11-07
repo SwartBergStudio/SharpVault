@@ -12,6 +12,7 @@ public sealed partial class SharpVaultAccessHandler(
     IUserAccessGate gate,
     IGuestAccessPolicy guestPolicy,
     EntraApplicationSettings entra,
+    ClientAddressResolver resolver,
     ILogger<SharpVaultAccessHandler> logger) : AuthorizationHandler<SharpVaultAccessRequirement>
 {
     private static readonly object DecisionKey = new();
@@ -65,7 +66,7 @@ public sealed partial class SharpVaultAccessHandler(
             identity.UserId,
             identity.DisplayName,
             identity.Email,
-            httpContext?.Connection.RemoteIpAddress?.ToString(),
+            httpContext is null ? null : resolver.Resolve(httpContext),
             identity.IsAdmin,
             identity.TokenIssuedAt);
         var decision = await gate.CheckAsync(user, cancellationToken);
