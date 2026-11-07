@@ -4,6 +4,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using NSubstitute;
@@ -165,5 +166,51 @@ public sealed class ServiceRegistrationTests
             .ToList();
 
         Assert.Empty(offenders);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void AddSharpVaultUi_NoBuilderCallback_SendsNoProofHeaders()
+    {
+        using var provider = Registered().BuildServiceProvider();
+        var factory = provider.GetRequiredService<IHttpMessageHandlerFactory>();
+
+        foreach (var clientType in ApiClientInterfaces())
+        {
+            var chain = HandlerChainTypes(factory.CreateHandler(clientType.Name));
+
+            Assert.All(chain, type => Assert.True(IsFrameworkHandler(type), type.FullName));
+        }
+    }
+
+    [Fact]
+    public void AddSharpVaultUi_BuilderCallback_RunsForEveryApiClientInterface()
+    {
+        var configured = new List<string>();
+        var services = new ServiceCollection();
+
+        services.AddSharpVaultUi((_, client) => client.BaseAddress = BaseAddress, builder => configured.Add(builder.Name));
+
+        Assert.Equal(
+            ApiClientInterfaces().Select(type => type.Name).Order(StringComparer.Ordinal),
+            configured.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
+    }
+
+    private static IEnumerable<Type> ApiClientInterfaces() =>
+        typeof(IMeApiClient).Assembly.GetTypes()
+            .Where(type => type.IsInterface && type.Namespace == typeof(IMeApiClient).Namespace && type.Name.EndsWith("ApiClient", StringComparison.Ordinal));
+
+    private static bool IsFrameworkHandler(Type type) =>
+        type.Namespace is "System.Net.Http" || (type.Namespace?.StartsWith("Microsoft.Extensions.Http", StringComparison.Ordinal) ?? false);
+
+    private static List<Type> HandlerChainTypes(HttpMessageHandler handler)
+    {
+        var types = new List<Type>();
+        for (HttpMessageHandler? current = handler; current is not null; current = (current as DelegatingHandler)?.InnerHandler)
+        {
+            types.Add(current.GetType());
+        }
+
+        return types;
     }
 }

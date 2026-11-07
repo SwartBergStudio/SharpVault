@@ -435,6 +435,50 @@ public sealed class AppHostModelTests
         return directory?.FullName ?? throw new InvalidOperationException("The repository root could not be located.");
     }
 
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task RunMode_GivesBothHostsTheSameWebGatewayKey()
+    {
+        var builder = await CreateBuilderAsync();
+        var parameter = Assert.Single(builder.Resources.OfType<ParameterResource>(), resource => resource.Name == AppHostResourceNames.WebGatewayKey);
+        var api = Find<ProjectResource>(builder, ApiName);
+        var web = Find<ProjectResource>(builder, WebName);
+
+        var apiVariables = await RunEnvironmentCallbacksAsync(api);
+        var webVariables = await RunEnvironmentCallbacksAsync(web);
+
+        Assert.Same(parameter, apiVariables[AppHostResourceNames.WebGatewayKeyVariable]);
+        Assert.Same(parameter, webVariables[AppHostResourceNames.WebGatewayKeyVariable]);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task PublishMode_SetsNoWebGatewayKey()
+    {
+        var outputPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var builder = await CreateBuilderAsync(
+                ["--operation", "publish", "--publisher", "manifest", "--output-path", outputPath]);
+            var api = Find<ProjectResource>(builder, ApiName);
+            var web = Find<ProjectResource>(builder, WebName);
+
+            var apiVariables = await RunEnvironmentCallbacksAsync(api);
+            var webVariables = await RunEnvironmentCallbacksAsync(web);
+
+            Assert.False(apiVariables.ContainsKey(AppHostResourceNames.WebGatewayKeyVariable));
+            Assert.False(webVariables.ContainsKey(AppHostResourceNames.WebGatewayKeyVariable));
+            Assert.DoesNotContain(builder.Resources, resource => resource is ParameterResource parameter && parameter.Name == AppHostResourceNames.WebGatewayKey);
+        }
+        finally
+        {
+            if (Directory.Exists(outputPath))
+            {
+                Directory.Delete(outputPath, recursive: true);
+            }
+        }
+    }
+
     private static async Task<IDistributedApplicationTestingBuilder> CreateBuilderAsync() =>
         await CreateBuilderAsync([]);
 

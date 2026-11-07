@@ -372,4 +372,31 @@ public sealed class ProductionHostingTests(ProductionApiTestFactory factory)
 
         Assert.Null(response.HeaderValue("Access-Control-Allow-Origin"));
     }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void Production_NoWebGatewayKey_ApiStopsAtStartup()
+    {
+        using var derived = factory.WithWebHostBuilder(builder => builder.UseSetting("WebGateway:Key", string.Empty));
+
+        var exception = Record.Exception(() => derived.CreateClient());
+
+        Assert.NotNull(exception);
+        Assert.Contains("WebGateway:Key is required", exception.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void Production_ShortWebGatewayKey_StopsWithoutEchoingTheKey()
+    {
+        const string shortKey = "short-gateway-key";
+        using var derived = factory.WithWebHostBuilder(builder => builder.UseSetting("WebGateway:Key", shortKey));
+
+        var exception = Record.Exception(() => derived.CreateClient());
+
+        Assert.NotNull(exception);
+        Assert.Contains("WebGateway:Key must be at least 32 characters", exception.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(shortKey, exception.ToString(), StringComparison.Ordinal);
+        Assert.False(factory.Logs.ContainsText(shortKey));
+    }
 }

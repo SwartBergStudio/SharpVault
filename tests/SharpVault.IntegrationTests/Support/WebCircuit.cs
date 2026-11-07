@@ -3,6 +3,7 @@
 
 extern alias WebApp;
 
+using System.Net;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
@@ -54,6 +55,17 @@ public sealed class WebCircuit : IDisposable
         ArgumentNullException.ThrowIfNull(user);
 
         return For(web.Services, TestCookiePrincipal.Create(user));
+    }
+
+    public static WebCircuit For(WebTestFactory web, TestUser user, string browserAddress)
+    {
+        ArgumentNullException.ThrowIfNull(web);
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(browserAddress);
+
+        var principal = TestCookiePrincipal.Create(user);
+        ClientAddressClaim.AddTo(principal, IPAddress.Parse(browserAddress));
+        return For(web.Services, principal);
     }
 
     public static WebCircuit For(IServiceProvider services, ClaimsPrincipal principal)

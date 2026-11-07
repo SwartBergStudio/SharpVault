@@ -46,6 +46,18 @@ public sealed class ApiClientBaseTests : IDisposable
 
     public void Dispose() => _handler.Dispose();
 
+    private sealed class PrincipalRecordingHandler(List<ClaimsPrincipal?> seen) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            seen.Add(request.Options.TryGetValue(ApiRequestOptions.Principal, out var principal) ? principal : null);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(ProfileJson, System.Text.Encoding.UTF8, "application/json"),
+            });
+        }
+    }
+
     private ProbeClient Client(string baseAddress = "https://api.example.test/") =>
         new(new HttpClient(_handler) { BaseAddress = new Uri(baseAddress) }, _tokens, _authentication, _session, _logger);
 
@@ -97,6 +109,19 @@ public sealed class ApiClientBaseTests : IDisposable
         Assert.Equal("Bearer", request.AuthorizationScheme);
         Assert.Equal(Token, request.AuthorizationParameter);
         await _tokens.Received(1).GetAccessTokenAsync(_principal, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task SendAsync_Always_SetsThePrincipalOption()
+    {
+        var seen = new List<ClaimsPrincipal?>();
+        var recording = new PrincipalRecordingHandler(seen);
+        var client = new ProbeClient(new HttpClient(recording) { BaseAddress = new Uri("https://api.example.test/") }, _tokens, _authentication, _session, _logger);
+
+        await client.ReadAsync(Route, TestContext.Current.CancellationToken);
+
+        Assert.Same(_principal, Assert.Single(seen));
     }
 
     [Fact]

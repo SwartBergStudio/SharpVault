@@ -11,6 +11,7 @@ using System.Text.Json;
 using NSubstitute;
 using SharpVault.Dtos.Users;
 using SharpVault.UI.Shared.Services.Auth;
+using SharpVault.UI.Shared.Services.Clients;
 using WebApp::SharpVault.Web.Security;
 
 namespace SharpVault.UnitTests.Web;
@@ -142,6 +143,42 @@ public sealed class ApiSharedSessionClientTests
 
         Assert.Equal(HttpMethod.Post, handler.LastMethod);
         Assert.EndsWith(RevokePath, handler.LastUri?.ToString() ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task CheckAsync_Always_SetsThePrincipalOption()
+    {
+        var principal = Principal();
+        ClaimsPrincipal? seen = null;
+        var handler = new StubHandler(request =>
+        {
+            seen = request.Options.TryGetValue(ApiRequestOptions.Principal, out var option) ? option : null;
+            return Response(HttpStatusCode.OK, "{\"isActive\":true}");
+        });
+        var client = new ApiSharedSessionClient(new HttpClient(handler) { BaseAddress = new Uri(BaseAddress) }, _tokens, _logger);
+
+        await client.CheckAsync(principal, TestContext.Current.CancellationToken);
+
+        Assert.Same(principal, seen);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task RevokeAsync_Always_SetsThePrincipalOption()
+    {
+        var principal = Principal();
+        ClaimsPrincipal? seen = null;
+        var handler = new StubHandler(request =>
+        {
+            seen = request.Options.TryGetValue(ApiRequestOptions.Principal, out var option) ? option : null;
+            return Response(HttpStatusCode.OK, "{\"isActive\":false}");
+        });
+        var client = new ApiSharedSessionClient(new HttpClient(handler) { BaseAddress = new Uri(BaseAddress) }, _tokens, _logger);
+
+        await client.RevokeAsync(principal, TestContext.Current.CancellationToken);
+
+        Assert.Same(principal, seen);
     }
 
     [Fact]

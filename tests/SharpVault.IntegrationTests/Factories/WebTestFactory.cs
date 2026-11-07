@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Web;
+using SharpVault.Authentication.WebGateway;
 using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Logging;
 using SharpVault.IntegrationTests.Support;
@@ -66,7 +67,14 @@ public sealed class WebTestFactory : WebApplicationFactory<WebApp::Program>
                 var api = _api;
                 var openFault = OpenFault;
                 services.UsePrimaryHandler(() => new ApiOpenFaultHandler(
-                    api.Server.CreateHandler(context => context.Connection.RemoteIpAddress = TestAddresses.WebHost),
+                    api.Server.CreateHandler(context =>
+                    {
+                        context.Connection.RemoteIpAddress = TestAddresses.WebHost;
+                        if (context.Request.Headers.ContainsKey(WebGatewayHeaders.Time) && !context.Request.Headers.ContainsKey(WebGatewayHeaders.ClientIp))
+                        {
+                            context.Request.Headers[WebGatewayHeaders.ClientIp] = string.Empty;
+                        }
+                    }),
                     openFault));
             }
             else
