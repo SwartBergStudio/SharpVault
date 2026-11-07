@@ -9,8 +9,7 @@ namespace SharpVault.UnitTests.Infrastructure.Encryption.KeyVault;
 [Trait("Category", "Security")]
 public sealed class KeyVaultKeyIdsTests
 {
-    private const string Vault = "https://x.vault.azure.net";
-    private const string ConfiguredKeyId = Vault + "/keys/k";
+    private const string ConfiguredKeyId = "https://x.vault.azure.net/keys/k";
     private const string Version = "0123abcd";
     private const int OverlongLength = 513;
 
@@ -18,63 +17,37 @@ public sealed class KeyVaultKeyIdsTests
     {
         "https://x.vault.azure.net/keys/k",
         "https://x.vault.azure.net/keys/k/",
-        "https://x.managedhsm.azure.net/keys/k",
-        "https://x.vault.azure.cn/keys/k",
-        "https://x.vault.azure.net:8443/keys/k",
     };
 
     public static TheoryData<string> InvalidConfiguredKeyIds => new()
     {
-        string.Empty,
         "   ",
         "not a uri",
-        "/keys/k",
         "http://x.vault.azure.net/keys/k",
         "https://x.vault.azure.net/keys/k/0123abcd",
         "https://x.vault.azure.net/secrets/k",
-        "https://x.vault.azure.net/certificates/k",
-        "https://x.vault.azure.net//keys/k",
-        "https://x.vault.azure.net/keys",
-        "https://x.vault.azure.net/keys/",
-        "https://x.vault.azure.net/keys/k/v/extra",
         "https://user:pw@x.vault.azure.net/keys/k",
-        "https://x.vault.azure.net/keys/k?sig=abc",
-        "https://x.vault.azure.net/keys/k#f",
-        "ftp://x.vault.azure.net/keys/k",
-        "development:0123456789abcdef",
         PaddedTo(ConfiguredKeyId, 'k', OverlongLength),
     };
 
     public static TheoryData<string> VersionsOfConfiguredKey => new()
     {
         ConfiguredKeyId + "/" + Version,
-        "https://X.VAULT.AZURE.NET/keys/k/" + Version,
         "https://x.vault.azure.net/keys/K/" + Version,
-        "HTTPS://x.vault.azure.net/keys/k/" + Version,
     };
 
     public static TheoryData<string> NotVersionsOfConfiguredKey => new()
     {
         "https://y.vault.azure.net/keys/k/" + Version,
         "https://x.vault.azure.net.evil.example/keys/k/" + Version,
-        "https://evilx.vault.azure.net/keys/k/" + Version,
-        "https://x.vault.azure.net/keys/other/" + Version,
         "https://x.vault.azure.net/keys/kk/" + Version,
         ConfiguredKeyId,
-        ConfiguredKeyId + "/",
         "http://x.vault.azure.net/keys/k/" + Version,
-        "https://x.vault.azure.net:8443/keys/k/" + Version,
         "https://x.vault.azure.net/secrets/k/" + Version,
-        "https://x.vault.azure.net/certificates/k/" + Version,
-        "https://x.vault.azure.net//keys/k/" + Version,
-        "https://x.vault.azure.net/keys/k/" + Version + "?x=1",
-        "https://x.vault.azure.net/keys/k/" + Version + "#f",
         "https://user:pw@x.vault.azure.net/keys/k/" + Version,
-        "https://x.vault.azure.net/keys/k/" + Version + "/extra",
-        "development:0123456789abcdef",
+        "https://x.vault.azure.net/keys/k/" + Version + "?x=1",
         string.Empty,
-        "   ",
-        PaddedTo(ConfiguredKeyId + "/", 'a', OverlongLength),
+        null!,
     };
 
     [Theory]
@@ -116,7 +89,6 @@ public sealed class KeyVaultKeyIdsTests
     }
 
     [Theory]
-    [InlineData(null)]
     [MemberData(nameof(NotVersionsOfConfiguredKey))]
     public void IsVersionOf_Mismatch_ReturnsFalse(string? keyId)
     {

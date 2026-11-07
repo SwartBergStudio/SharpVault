@@ -50,6 +50,7 @@ public sealed class ServerIdleLimitTests(IdleLimitHost host)
         await using var session = await host.OpenSessionAsync();
         var active = await session.NewPageAsync();
         var silent = await session.NewPageAsync();
+        await active.BringToFrontAsync();
         await silent.RouteAsync(IdleMonitorScriptPattern, route => route.AbortAsync());
         session.Errors.IgnoreConsoleErrorsContaining(BlockedRequestConsoleText);
         session.Errors.IgnoreConsoleErrorsContaining(FailedResourceConsoleText);

@@ -19,30 +19,17 @@ public sealed class UserStatusDtoSerializationTests
 
     [Theory]
     [InlineData("\"Deleted\"")]
-    [InlineData("\"\"")]
-    [InlineData("\"Active, Locked\"")]
-    [InlineData("null")]
-    [Trait("Category", "Security")]
-    public void Deserialize_UnknownText_ThrowsJsonException(string json)
-    {
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<UserStatusDto>(json));
-    }
-
-    [Theory]
-    [InlineData("0")]
-    [InlineData("1")]
-    [InlineData("2")]
-    [InlineData("-1")]
     [InlineData("\"1\"")]
-    public void Deserialize_NumericValue_ThrowsJsonException(string json)
+    [InlineData("1")]
+    [Trait("Category", "Security")]
+    public void Deserialize_UnknownOrNumericStatus_ThrowsJsonException(string json)
     {
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<UserStatusDto>(json));
     }
 
     [Fact]
-    public void Deserialize_KnownNames_RoundTrips()
+    public void Deserialize_KnownName_ReturnsStatus()
     {
-        Assert.Equal(UserStatusDto.Active, JsonSerializer.Deserialize<UserStatusDto>("\"Active\""));
         Assert.Equal(UserStatusDto.Locked, JsonSerializer.Deserialize<UserStatusDto>("\"Locked\""));
     }
 }

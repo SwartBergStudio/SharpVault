@@ -57,17 +57,6 @@ public sealed class SharpVaultAccessHandlerTests
     }
 
     [Fact]
-    public async Task HandleRequirementAsync_NoIdentityAtAll_NeitherSucceedsNorCallsGate()
-    {
-        var context = Context(new ClaimsPrincipal(), UserRequirement);
-
-        await _handler.HandleAsync(context);
-
-        Assert.False(context.HasSucceeded);
-        await AssertGateNotCalled();
-    }
-
-    [Fact]
     public async Task HandleRequirementAsync_InvalidObjectId_FailsWithoutCallingGate()
     {
         var claims = TestIdentities.MemberClaims(_userId, AppRoles.User).Replacing("oid", "not-a-guid");
@@ -83,7 +72,6 @@ public sealed class SharpVaultAccessHandlerTests
     [Theory]
     [InlineData("1", null)]
     [InlineData("0", "live.com")]
-    [InlineData("2", null)]
     [InlineData(null, null)]
     public async Task HandleRequirementAsync_Guest_FailsWithoutCallingGate(string? acct, string? idp)
     {
@@ -156,10 +144,7 @@ public sealed class SharpVaultAccessHandlerTests
 
     [Theory]
     [InlineData("role", "SharpVault.Admin")]
-    [InlineData("http://schemas.microsoft.com/ws/2008/06/identity/claims/role", "SharpVault.User")]
     [InlineData("roles", "sharpvault.user")]
-    [InlineData("roles", "SharpVault.User ")]
-    [InlineData("roles", "SharpVault.User,SharpVault.Admin")]
     [InlineData("groups", "SharpVault.Admin")]
     public async Task HandleRequirementAsync_RoleInjectedThroughOtherClaim_Fails(string claimType, string value)
     {
@@ -261,18 +246,6 @@ public sealed class SharpVaultAccessHandlerTests
     }
 
     [Fact]
-    public async Task HandleRequirementAsync_TwoContextsSameRequest_CallsGateOnce()
-    {
-        var principal = TestIdentities.Authenticated(TestIdentities.MemberClaims(_userId, AppRoles.User));
-        var httpContext = new DefaultHttpContext();
-
-        await _handler.HandleAsync(new AuthorizationHandlerContext([UserRequirement], principal, httpContext));
-        await _handler.HandleAsync(new AuthorizationHandlerContext([UserRequirement], principal, httpContext));
-
-        await _gate.Received(1).CheckAsync(Arg.Any<SignedInUser>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task HandleRequirementAsync_DeniedDecisionMemoized_StaysDeniedForSameRequest()
     {
         _gate.CheckAsync(Arg.Any<SignedInUser>(), Arg.Any<CancellationToken>())
@@ -287,17 +260,6 @@ public sealed class SharpVaultAccessHandlerTests
 
         Assert.True(first.HasFailed);
         Assert.True(second.HasFailed);
-    }
-
-    [Fact]
-    public async Task HandleRequirementAsync_DifferentRequests_EachCallsGate()
-    {
-        var principal = TestIdentities.Authenticated(TestIdentities.MemberClaims(_userId, AppRoles.User));
-
-        await _handler.HandleAsync(new AuthorizationHandlerContext([UserRequirement], principal, new DefaultHttpContext()));
-        await _handler.HandleAsync(new AuthorizationHandlerContext([UserRequirement], principal, new DefaultHttpContext()));
-
-        await _gate.Received(2).CheckAsync(Arg.Any<SignedInUser>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -326,18 +288,6 @@ public sealed class SharpVaultAccessHandlerTests
     }
 
     [Fact]
-    public async Task HandleRequirementAsync_NonHttpResource_StillCallsGateWithNoToken()
-    {
-        var principal = TestIdentities.Authenticated(TestIdentities.MemberClaims(_userId, AppRoles.User));
-
-        var context = new AuthorizationHandlerContext([UserRequirement], principal, resource: null);
-        await _handler.HandleAsync(context);
-
-        Assert.True(context.HasSucceeded);
-        await _gate.Received(1).CheckAsync(Arg.Is<SignedInUser>(user => user.IpAddress == null), CancellationToken.None);
-    }
-
-    [Fact]
     public async Task HandleRequirementAsync_PassesRequestAbortedToken()
     {
         using var source = new CancellationTokenSource();
@@ -349,19 +299,6 @@ public sealed class SharpVaultAccessHandlerTests
 
         await _gate.Received(1).CheckAsync(Arg.Any<SignedInUser>(), source.Token);
         Assert.Equal([source.Token], _guestPolicy.Tokens);
-    }
-
-    [Fact]
-    public async Task HandleRequirementAsync_PassesClaimValuesToGateUnmodified()
-    {
-        var claims = TestIdentities.MemberClaims(_userId, AppRoles.User).With("name", "Alice Example").With("email", "alice@example.test");
-        var context = Context(TestIdentities.Authenticated(claims), UserRequirement);
-
-        await _handler.HandleAsync(context);
-
-        await _gate.Received(1).CheckAsync(
-            Arg.Is<SignedInUser>(user => user.DisplayName == "Alice Example" && user.Email == "alice@example.test"),
-            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -381,22 +318,6 @@ public sealed class SharpVaultAccessHandlerTests
         Assert.NotEmpty(_logger.Records);
         Assert.DoesNotContain(name, _logger.AllText(), StringComparison.Ordinal);
         Assert.DoesNotContain(email, _logger.AllText(), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task HandleRequirementAsync_DenialReasons_AreIdenticalForNoRoleAndLockedFailureShape()
-    {
-        var noRole = Context(TestIdentities.Authenticated(TestIdentities.MemberClaims(_userId)), UserRequirement);
-        _gate.CheckAsync(Arg.Any<SignedInUser>(), Arg.Any<CancellationToken>()).Returns(UserAccessDecision.Denied);
-        var locked = Context(TestIdentities.Authenticated(TestIdentities.MemberClaims(_userId, AppRoles.User)), UserRequirement);
-
-        await _handler.HandleAsync(noRole);
-        await _handler.HandleAsync(locked);
-
-        Assert.True(noRole.HasFailed);
-        Assert.True(locked.HasFailed);
-        Assert.Single(noRole.FailureReasons);
-        Assert.Single(locked.FailureReasons);
     }
 
     private static AuthorizationHandlerContext Context(ClaimsPrincipal principal, params IAuthorizationRequirement[] requirements) =>

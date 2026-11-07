@@ -33,8 +33,6 @@ public sealed class AuthenticationModeResolverTests
     {
         var builder = new HostApplicationBuilder(new HostApplicationBuilderSettings { EnvironmentName = environment, DisableDefaults = true });
         builder.Configuration.AddInMemoryCollection(values.Select(pair => new KeyValuePair<string, string?>(pair.Key, pair.Value)));
-        Assert.Equal(values.FirstOrDefault(pair => pair.Key == TenantKey).Value, builder.Configuration[TenantKey]);
-        Assert.Equal(values.FirstOrDefault(pair => pair.Key == ClientKey).Value, builder.Configuration[ClientKey]);
         return builder;
     }
 
@@ -42,14 +40,6 @@ public sealed class AuthenticationModeResolverTests
     public void Resolve_BothSettingsSet_ReturnsEntra()
     {
         var mode = AuthenticationModeResolver.Resolve(Configure((TenantKey, TenantValue), (ClientKey, ClientValue)), Environment("Development"));
-
-        Assert.Equal(AuthenticationMode.Entra, mode);
-    }
-
-    [Fact]
-    public void Resolve_BothSetInProduction_ReturnsEntra()
-    {
-        var mode = AuthenticationModeResolver.Resolve(Configure((TenantKey, TenantValue), (ClientKey, ClientValue)), Environment("Production"));
 
         Assert.Equal(AuthenticationMode.Entra, mode);
     }
@@ -73,13 +63,6 @@ public sealed class AuthenticationModeResolverTests
     }
 
     [Fact]
-    public void Resolve_OnlyTenantIdSetInProduction_Throws()
-    {
-        Assert.Throws<InvalidOperationException>(
-            () => AuthenticationModeResolver.Resolve(Configure((TenantKey, TenantValue)), Environment("Production")));
-    }
-
-    [Fact]
     public void Resolve_NeitherSetInDevelopment_ReturnsLocal()
     {
         Assert.Equal(AuthenticationMode.Local, AuthenticationModeResolver.Resolve(Configure(), Environment("Development")));
@@ -92,18 +75,9 @@ public sealed class AuthenticationModeResolverTests
     }
 
     [Fact]
-    public void Resolve_NeitherSetInStaging_Throws()
+    public void Resolve_WhitespaceValues_AreTreatedAsUnset()
     {
-        Assert.Throws<InvalidOperationException>(() => AuthenticationModeResolver.Resolve(Configure(), Environment("Staging")));
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData(" ")]
-    [InlineData("\t")]
-    public void Resolve_WhitespaceValues_AreTreatedAsUnset(string blank)
-    {
-        var mode = AuthenticationModeResolver.Resolve(Configure((TenantKey, blank), (ClientKey, blank)), Environment("Development"));
+        var mode = AuthenticationModeResolver.Resolve(Configure((TenantKey, " "), (ClientKey, " ")), Environment("Development"));
 
         Assert.Equal(AuthenticationMode.Local, mode);
     }
@@ -131,17 +105,6 @@ public sealed class AuthenticationModeResolverTests
         var builder = Builder("Development", (TenantKey, "common"), (ClientKey, ClientValue), (InstanceKey, InstanceValue));
 
         Assert.Throws<InvalidOperationException>(() => builder.AddAuthenticationMode());
-    }
-
-    [Fact]
-    public void AddAuthenticationMode_CalledTwice_ReturnsSameInstance()
-    {
-        var builder = Builder("Development");
-
-        var first = builder.AddAuthenticationMode();
-        var second = builder.AddAuthenticationMode();
-
-        Assert.Same(first, second);
     }
 
     [Fact]

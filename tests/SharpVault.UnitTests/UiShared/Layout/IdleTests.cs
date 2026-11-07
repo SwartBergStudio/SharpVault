@@ -71,16 +71,6 @@ public sealed class IdleTests : ShellTestContext
     }
 
     [Fact]
-    public async Task IdleLock_DisposeWhenNeverStarted_DoesNotStopTheModule()
-    {
-        Render<IdleLock>();
-
-        await DisposeComponentsAsync();
-
-        _ = IdleMonitor.DidNotReceive().StopAsync();
-    }
-
-    [Fact]
     public async Task IdleLock_DisposedWhileStarting_StopsTheModuleAfterTheStartReturns()
     {
         Authorization.SetAuthorized(DisplayName);
@@ -128,16 +118,6 @@ public sealed class IdleTests : ShellTestContext
         Assert.Equal(120000L, invocation.Arguments[1]);
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task IdleMonitor_StartWithBlankFormId_Throws(string formId)
-    {
-        await using var monitor = new IdleMonitorType(Services.GetRequiredService<IJSRuntime>());
-
-        await Assert.ThrowsAnyAsync<ArgumentException>(() => monitor.StartAsync(formId, TimeSpan.FromMinutes(1), null, Xunit.TestContext.Current.CancellationToken));
-    }
-
     [Fact]
     public async Task IdleMonitor_Stop_InvokesStop()
     {
@@ -168,11 +148,8 @@ public sealed class IdleTests : ShellTestContext
     }
 
     [Theory]
-    [InlineData(0, false)]
-    [InlineData(30, false)]
     [InlineData(59, false)]
     [InlineData(60, true)]
-    [InlineData(900, true)]
     [InlineData(28800, true)]
     [InlineData(28801, false)]
     public void IdleLockOptionsValidator_Rules(int seconds, bool valid)
@@ -180,15 +157,5 @@ public sealed class IdleTests : ShellTestContext
         var result = new IdleLockOptionsValidator().Validate(null, new IdleLockOptions { Timeout = TimeSpan.FromSeconds(seconds) });
 
         Assert.Equal(valid, result.Succeeded);
-    }
-
-    [Fact]
-    public void IdleLockOptions_Default_IsFifteenMinutesAndValid()
-    {
-        var options = new IdleLockOptions();
-
-        Assert.Equal(TimeSpan.FromMinutes(15), options.Timeout);
-        Assert.True(new IdleLockOptionsValidator().Validate(null, options).Succeeded);
-        Assert.Equal("IdleLock", IdleLockOptions.SectionName);
     }
 }

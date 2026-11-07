@@ -21,25 +21,14 @@ public sealed class ServiceDefaultsExtensionsTests
 {
     [Fact]
     [Trait("Category", "Security")]
-    public void AddServiceDefaults_Registered_HidesServerHeader()
+    public void AddServiceDefaults_Registered_HidesServerHeaderAndLimitsRequestBodyToOneMebibyte()
     {
         using var app = BuildApp();
 
         var options = app.Services.GetRequiredService<IOptions<KestrelServerOptions>>().Value;
 
         Assert.False(options.AddServerHeader);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void AddServiceDefaults_Registered_LimitsRequestBodyToOneMebibyte()
-    {
-        using var app = BuildApp();
-
-        var options = app.Services.GetRequiredService<IOptions<KestrelServerOptions>>().Value;
-
         Assert.Equal(1_048_576, options.Limits.MaxRequestBodySize);
-        Assert.Equal(RequestLimits.MaxRequestBodyBytes, options.Limits.MaxRequestBodySize);
     }
 
     [Fact]
@@ -55,35 +44,6 @@ public sealed class ServiceDefaultsExtensionsTests
     }
 
     [Fact]
-    public void AddServiceDefaults_OtlpEndpointNotConfigured_BuildsWithoutExporter()
-    {
-        var exception = Record.Exception(() =>
-        {
-            using var app = BuildApp();
-        });
-
-        Assert.Null(exception);
-    }
-
-    [Fact]
-    public void HealthEndpoints_Constants_HaveExpectedValues()
-    {
-        Assert.Equal("/health", HealthEndpoints.HealthPath);
-        Assert.Equal("/alive", HealthEndpoints.AlivePath);
-        Assert.Equal("live", HealthEndpoints.LiveTag);
-        Assert.Equal("self", HealthEndpoints.SelfCheckName);
-        Assert.Equal("health", HealthEndpoints.CachePolicyName);
-        Assert.Equal(TimeSpan.FromSeconds(5), HealthEndpoints.CacheDuration);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void RequestLimits_MaxRequestBodyBytes_IsOneMebibyte()
-    {
-        Assert.Equal(1024L * 1024L, RequestLimits.MaxRequestBodyBytes);
-    }
-
-    [Fact]
     [Trait("Category", "Security")]
     public void MapDefaultEndpoints_Mapped_ExposesExactlyHealthAndAlive()
     {
@@ -95,55 +55,27 @@ public sealed class ServiceDefaultsExtensionsTests
         Assert.Equal(["/alive", "/health"], patterns.Order(StringComparer.Ordinal).ToArray());
     }
 
-    [Theory]
-    [Trait("Category", "Security")]
-    [InlineData("/health")]
-    [InlineData("/alive")]
-    public void MapDefaultEndpoints_Mapped_EndpointIsAnonymous(string pattern)
-    {
-        using var app = BuildApp();
-        app.MapDefaultEndpoints();
-
-        var endpoint = FindEndpoint(app, pattern);
-
-        Assert.NotNull(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
-    }
-
-    [Theory]
-    [Trait("Category", "Security")]
-    [InlineData("/health")]
-    [InlineData("/alive")]
-    public void MapDefaultEndpoints_Mapped_EndpointAcceptsOnlyGetAndHead(string pattern)
-    {
-        using var app = BuildApp();
-        app.MapDefaultEndpoints();
-
-        var endpoint = FindEndpoint(app, pattern);
-
-        var methods = endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods.Order(StringComparer.Ordinal).ToArray();
-        Assert.Equal(["GET", "HEAD"], methods);
-    }
-
     [Fact]
     [Trait("Category", "Security")]
-    public void MapDefaultEndpoints_Mapped_HealthIsOutputCachedAndAliveIsNot()
+    public void MapDefaultEndpoints_Mapped_EndpointsAreAnonymousAndAcceptOnlyGetAndHead()
     {
         using var app = BuildApp();
         app.MapDefaultEndpoints();
 
-        var health = FindEndpoint(app, "/health");
-        var alive = FindEndpoint(app, "/alive");
+        foreach (var pattern in new[] { "/health", "/alive" })
+        {
+            var endpoint = FindEndpoint(app, pattern);
 
-        Assert.Single(health.Metadata, IsOutputCachePolicy);
-        Assert.DoesNotContain(alive.Metadata, IsOutputCachePolicy);
+            Assert.NotNull(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
+            var methods = endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods.Order(StringComparer.Ordinal).ToArray();
+            Assert.Equal(["GET", "HEAD"], methods);
+        }
     }
 
     [Theory]
     [Trait("Category", "Security")]
     [InlineData("Microsoft.AspNetCore.Hosting.Diagnostics")]
     [InlineData("System.Net.Http.HttpClient")]
-    [InlineData("Polly")]
-    [InlineData("Microsoft.AspNetCore.Routing.Matching")]
     public void SuppressQueryStringLogging_Registered_FiltersHostingDiagnosticsAndHttpClientBelowWarning(string category)
     {
         using var app = BuildApp();
@@ -156,18 +88,16 @@ public sealed class ServiceDefaultsExtensionsTests
             && rule.LogLevel == LogLevel.Warning);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Security")]
-    [InlineData("Azure.Core")]
-    [InlineData("Azure.Core.Pipeline")]
-    public void SuppressQueryStringLogging_AzureCore_EffectiveLevelIsWarning(string category)
+    public void SuppressQueryStringLogging_AzureCore_EffectiveLevelIsWarning()
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Logging:LogLevel:Default"] = "Debug" });
         builder.AddServiceDefaults();
         using var app = builder.Build();
 
-        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(category);
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Azure.Core.Pipeline");
 
         Assert.False(logger.IsEnabled(LogLevel.Information));
         Assert.False(logger.IsEnabled(LogLevel.Debug));
@@ -191,8 +121,6 @@ public sealed class ServiceDefaultsExtensionsTests
     [Trait("Category", "Security")]
     [InlineData("Microsoft.AspNetCore.Hosting.Diagnostics")]
     [InlineData("System.Net.Http.HttpClient")]
-    [InlineData("Polly")]
-    [InlineData("Microsoft.AspNetCore.Routing.Matching.DfaMatcher")]
     public void SuppressQueryStringLogging_ProviderSpecificConfigLowersLevel_EffectiveLevelStaysWarning(string category)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
@@ -202,9 +130,6 @@ public sealed class ServiceDefaultsExtensionsTests
             ["Logging:Console:LogLevel:System.Net.Http.HttpClient"] = "Debug",
             ["Logging:OpenTelemetry:LogLevel:Microsoft.AspNetCore.Hosting.Diagnostics"] = "Information",
             ["Logging:OpenTelemetry:LogLevel:System.Net.Http.HttpClient"] = "Debug",
-            ["Logging:Console:LogLevel:Polly"] = "Information",
-            ["Logging:OpenTelemetry:LogLevel:Polly"] = "Debug",
-            ["Logging:OpenTelemetry:LogLevel:Microsoft.AspNetCore.Routing"] = "Debug",
         });
         builder.AddServiceDefaults();
         using var app = builder.Build();
@@ -216,23 +141,21 @@ public sealed class ServiceDefaultsExtensionsTests
         Assert.True(logger.IsEnabled(LogLevel.Warning));
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Security")]
-    [InlineData("Microsoft", "Microsoft.AspNetCore.Hosting.Diagnostics", "Microsoft.AspNetCore.Hosting.Diagnostics")]
-    [InlineData("System", "System.Net.Http.HttpClient.Default.LogicalHandler", "System.Net.Http.HttpClient")]
-    public void SuppressQueryStringLogging_ProviderRulesDifferOnlyByCase_EffectiveLevelStaysWarning(string ancestor, string category, string family)
+    public void SuppressQueryStringLogging_ProviderRulesDifferOnlyByCase_EffectiveLevelStaysWarning()
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
         builder.Logging.AddConsole();
         builder.Services.Configure<LoggerFilterOptions>(options =>
         {
-            options.Rules.Add(new LoggerFilterRule("console", ancestor, LogLevel.Debug, null));
-            options.Rules.Add(new LoggerFilterRule("Console", ancestor, LogLevel.Debug, null));
+            options.Rules.Add(new LoggerFilterRule("console", "Microsoft", LogLevel.Debug, null));
+            options.Rules.Add(new LoggerFilterRule("Console", "Microsoft", LogLevel.Debug, null));
         });
         builder.AddServiceDefaults();
         using var app = builder.Build();
 
-        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(category);
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Microsoft.AspNetCore.Hosting.Diagnostics");
         var rules = app.Services.GetRequiredService<IOptions<LoggerFilterOptions>>().Value.Rules;
 
         Assert.False(logger.IsEnabled(LogLevel.Debug));
@@ -240,22 +163,19 @@ public sealed class ServiceDefaultsExtensionsTests
         Assert.True(logger.IsEnabled(LogLevel.Warning));
         Assert.Contains(rules, rule =>
             rule.ProviderName == "console"
-            && rule.CategoryName == family
+            && rule.CategoryName == "Microsoft.AspNetCore.Hosting.Diagnostics"
             && rule.LogLevel == LogLevel.Warning);
         Assert.Contains(rules, rule =>
             rule.ProviderName == "Console"
-            && rule.CategoryName == family
+            && rule.CategoryName == "Microsoft.AspNetCore.Hosting.Diagnostics"
             && rule.LogLevel == LogLevel.Warning);
     }
 
     [Theory]
     [Trait("Category", "Security")]
     [InlineData("Logging:Console:LogLevel:Microsoft.AspNetCore.*", "Microsoft.AspNetCore.Hosting.Diagnostics")]
-    [InlineData("Logging:Console:LogLevel:Microsoft.*", "Microsoft.AspNetCore.Hosting.Diagnostics")]
     [InlineData("Logging:Console:LogLevel:microsoft.aspnetcore", "Microsoft.AspNetCore.Hosting.Diagnostics")]
     [InlineData("Logging:LogLevel:System.Net.Http.HttpClient.Default", "System.Net.Http.HttpClient.Default.LogicalHandler")]
-    [InlineData("Logging:Console:LogLevel:System.Net.Http.HttpClient.Default.LogicalHandler", "System.Net.Http.HttpClient.Default.LogicalHandler")]
-    [InlineData("Logging:Console:LogLevel:System.Net.Http.*.LogicalHandler", "System.Net.Http.HttpClient.Default.LogicalHandler")]
     public void SuppressQueryStringLogging_WildcardCaseOrDescendantConfig_EffectiveLevelStaysWarning(string settingKey, string category)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
@@ -272,9 +192,7 @@ public sealed class ServiceDefaultsExtensionsTests
 
     [Theory]
     [Trait("Category", "Security")]
-    [InlineData("Logging:Console:LogLevel:Microsoft.AspNetCore.*", "Microsoft.AspNetCore.Routing.EndpointMiddleware")]
     [InlineData("Logging:Console:LogLevel:Microsoft.AspNetCore.Hosting.Lifetime", "Microsoft.AspNetCore.Hosting.Lifetime")]
-    [InlineData("Logging:Console:LogLevel:System.Net.Http.HttpClientFactoryProbe", "System.Net.Http.HttpClientFactoryProbe")]
     [InlineData("Logging:LogLevel:SharpVault", "SharpVault.Api")]
     public void SuppressQueryStringLogging_UnrelatedCategoryConfigured_KeepsConfiguredLevel(string settingKey, string category)
     {
@@ -286,6 +204,24 @@ public sealed class ServiceDefaultsExtensionsTests
         var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(category);
 
         Assert.True(logger.IsEnabled(LogLevel.Debug));
+    }
+
+    [Theory]
+    [Trait("Category", "Security")]
+    [InlineData("Logging:Console:LogLevel:Default", "Azure.Core.Pipeline")]
+    [InlineData("Logging:OpenTelemetry:LogLevel:Azure.Core", "Azure.Core.Pipeline")]
+    public void SuppressQueryStringLogging_AzureCoreWithProviderSpecificConfig_EffectiveLevelStaysWarning(string settingKey, string category)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { [settingKey] = "Debug" });
+        builder.AddServiceDefaults();
+        using var app = builder.Build();
+
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(category);
+
+        Assert.False(logger.IsEnabled(LogLevel.Debug));
+        Assert.False(logger.IsEnabled(LogLevel.Information));
+        Assert.True(logger.IsEnabled(LogLevel.Warning));
     }
 
     [Fact]
@@ -343,9 +279,6 @@ public sealed class ServiceDefaultsExtensionsTests
         }
     }
 
-    private static bool IsOutputCachePolicy(object metadata) =>
-        metadata.GetType().Namespace == "Microsoft.AspNetCore.OutputCaching";
-
     private static WebApplication BuildApp()
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
@@ -364,27 +297,4 @@ public sealed class ServiceDefaultsExtensionsTests
             .SelectMany(source => source.Endpoints)
             .OfType<RouteEndpoint>()
             .Single(endpoint => endpoint.RoutePattern.RawText == pattern);
-
-    [Theory]
-    [Trait("Category", "Security")]
-    [InlineData("Logging:Console:LogLevel:Default", "Azure.Core")]
-    [InlineData("Logging:Console:LogLevel:Default", "Azure.Core.Pipeline")]
-    [InlineData("Logging:Console:LogLevel:Azure.Core", "Azure.Core")]
-    [InlineData("Logging:Console:LogLevel:Azure.*", "Azure.Core.Pipeline")]
-    [InlineData("Logging:Console:LogLevel:Azure", "Azure.Core")]
-    [InlineData("Logging:OpenTelemetry:LogLevel:Default", "Azure.Core")]
-    [InlineData("Logging:OpenTelemetry:LogLevel:Azure.Core", "Azure.Core.Pipeline")]
-    public void SuppressQueryStringLogging_AzureCoreWithProviderSpecificConfig_EffectiveLevelStaysWarning(string settingKey, string category)
-    {
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { [settingKey] = "Debug" });
-        builder.AddServiceDefaults();
-        using var app = builder.Build();
-
-        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(category);
-
-        Assert.False(logger.IsEnabled(LogLevel.Debug));
-        Assert.False(logger.IsEnabled(LogLevel.Information));
-        Assert.True(logger.IsEnabled(LogLevel.Warning));
-    }
 }

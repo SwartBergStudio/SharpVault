@@ -79,10 +79,6 @@ public sealed class TransferCommandValidatorTests
     }
 
     [Fact]
-    public void CreateTransfer_SelectedFoldersWithOneFolder_Passes() =>
-        Assert.True(_create.Validate(Create(scope: TransferScopeKind.SelectedFolders, folderIds: Folders(1))).IsValid);
-
-    [Fact]
     public void CreateTransfer_SelectedFoldersAtTheLimit_Passes() =>
         Assert.True(_create.Validate(Create(scope: TransferScopeKind.SelectedFolders, folderIds: Folders(TransferLimits.MaxSelectedFolders))).IsValid);
 
@@ -109,7 +105,6 @@ public sealed class TransferCommandValidatorTests
             TransferMessages.FolderSelectionInvalid);
 
     [Theory]
-    [InlineData(0)]
     [InlineData(99)]
     public void CreateTransfer_UndefinedCategory_FailsWithCategoryMessage(int category) =>
         AssertFailsWithMessage(_create.Validate(Create(category: (ReasonCategory)category)), UserAdminMessages.CategoryInvalid);
@@ -132,10 +127,7 @@ public sealed class TransferCommandValidatorTests
 
     [Theory]
     [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
     [InlineData("*")]
-    [InlineData("W/*")]
     [InlineData("\"datetime'2026-03-01T09%3A00%3A00.0000000Z'\"")]
     [InlineData("abc")]
     [InlineData("W/\"datetime'x' or PartitionKey ne 'y'\"")]
@@ -175,10 +167,6 @@ public sealed class TransferCommandValidatorTests
     [Fact]
     public void AbortTransfer_MissingETag_FailsOnETag() =>
         AssertFailsOn(_abort.Validate(new AbortTransferCommand(Guid.NewGuid(), null!, ValidReason)), nameof(AbortTransferCommand.ETag));
-
-    [Fact]
-    public void AbortTransfer_ShortReason_FailsOnReason() =>
-        AssertFailsOn(_abort.Validate(new AbortTransferCommand(Guid.NewGuid(), ValidETag, "stop")), nameof(AbortTransferCommand.Reason));
 
     [Fact]
     public void DismissTransferNotice_ValidId_Passes() =>

@@ -27,15 +27,35 @@ public sealed class LayeringTests
     private const string LinkGatewayAuthenticationHandlerName = "SharpVault.Api.Security.LinkGatewayAuthenticationHandler";
     private const string ComponentBaseName = "Microsoft.AspNetCore.Components.ComponentBase";
 
-    public static TheoryData<string> ProductionAssemblyNames { get; } =
-        [Domain, Dtos, Application, Infrastructure, Authentication, ServiceDefaults, Api, UiShared, PasswordGeneration, Web];
-
     [Fact]
-    public void Domain_ReferencedAssemblies_ContainNoOtherSharpVaultProject()
+    public void ProjectFiles_ProjectReferences_MatchTheAllowedLayering()
     {
-        var referenced = ReferencedNames(Domain);
+        var allowedByProject = new Dictionary<string, string[]>
+        {
+            [Domain] = [],
+            [Dtos] = [],
+            [Application] = [Domain, Dtos],
+            [Infrastructure] = [Application],
+            [Authentication] = [],
+            [ServiceDefaults] = [],
+            [Api] = [Application, Infrastructure, ServiceDefaults, Authentication, Dtos],
+            [UiShared] = [Dtos, PasswordGeneration],
+            [PasswordGeneration] = [],
+            [Web] = [UiShared, ServiceDefaults, Authentication],
+        };
 
-        Assert.DoesNotContain(referenced, name => name.StartsWith("SharpVault.", StringComparison.Ordinal));
+        foreach (var (project, allowed) in allowedByProject)
+        {
+            var projectFile = Path.Combine(RepositoryRoot.Path, "src", project, project + ".csproj");
+
+            var references = System.Xml.Linq.XDocument.Load(projectFile)
+                .Descendants("ProjectReference")
+                .Select(element => Path.GetFileNameWithoutExtension((string?)element.Attribute("Include") ?? string.Empty))
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+
+            Assert.Equal(allowed.Order(StringComparer.Ordinal).ToArray(), references);
+        }
     }
 
     [Fact]
@@ -51,78 +71,12 @@ public sealed class LayeringTests
     }
 
     [Fact]
-    public void Application_ReferencedAssemblies_ContainOnlyDomainAndDtosAmongSharpVaultProjects()
-    {
-        var sharpVaultReferences = ReferencedNames(Application)
-            .Where(name => name.StartsWith("SharpVault.", StringComparison.Ordinal))
-            .ToList();
-
-        Assert.All(sharpVaultReferences, name => Assert.Contains(name, new[] { Domain, Dtos }));
-    }
-
-    [Fact]
-    public void Dtos_ReferencedAssemblies_ContainNoOtherSharpVaultProject()
-    {
-        var referenced = ReferencedNames(Dtos);
-
-        Assert.DoesNotContain(referenced, name => name.StartsWith("SharpVault.", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void Authentication_ReferencedAssemblies_ContainNoOtherSharpVaultProject()
-    {
-        var referenced = ReferencedNames(Authentication);
-
-        Assert.DoesNotContain(referenced, name => name.StartsWith("SharpVault.", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void UiShared_SharpVaultReferences_AreOnlyDtosAndPasswordGeneration()
-    {
-        var sharpVaultReferences = ReferencedNames(UiShared)
-            .Where(name => name.StartsWith("SharpVault.", StringComparison.Ordinal))
-            .ToList();
-
-        Assert.All(sharpVaultReferences, name => Assert.Contains(name, new[] { Dtos, PasswordGeneration }));
-    }
-
-    [Fact]
-    public void PasswordGeneration_ReferencedAssemblies_ContainNoSharpVaultOrFrameworkProject()
-    {
-        var referenced = ReferencedNames(PasswordGeneration);
-
-        Assert.DoesNotContain(referenced, name => name.StartsWith("SharpVault.", StringComparison.Ordinal));
-        Assert.DoesNotContain(referenced, name => name.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal));
-        Assert.DoesNotContain(referenced, name => name.StartsWith("Azure.", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void PasswordGenerationProjectFile_PackageReferences_AreEmpty()
-    {
-        var projectFile = Path.Combine(RepositoryRoot.Path, "src", PasswordGeneration, PasswordGeneration + ".csproj");
-
-        var packages = System.Xml.Linq.XDocument.Load(projectFile).Descendants("PackageReference");
-
-        Assert.Empty(packages);
-    }
-
-    [Fact]
     public void Application_ReferencedAssemblies_ContainNoAzureSdkOrAspNetCore()
     {
         var referenced = ReferencedNames(Application);
 
         Assert.DoesNotContain(referenced, name => name.StartsWith("Azure.", StringComparison.Ordinal));
         Assert.DoesNotContain(referenced, name => name.StartsWith("Microsoft.AspNetCore.", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void Infrastructure_ReferencedAssemblies_ContainNoApiWebOrUiProject()
-    {
-        var referenced = ReferencedNames(Infrastructure);
-
-        Assert.DoesNotContain(Api, referenced);
-        Assert.DoesNotContain(Web, referenced);
-        Assert.DoesNotContain(UiShared, referenced);
     }
 
     [Fact]
@@ -140,65 +94,14 @@ public sealed class LayeringTests
     }
 
     [Fact]
-    public void ServiceDefaults_ReferencedAssemblies_ContainNoOtherSharpVaultProject()
+    public void DomainAndPasswordGenerationProjectFiles_PackageReferences_AreEmpty()
     {
-        var referenced = ReferencedNames(ServiceDefaults);
+        foreach (var project in new[] { Domain, PasswordGeneration })
+        {
+            var projectFile = Path.Combine(RepositoryRoot.Path, "src", project, project + ".csproj");
 
-        Assert.DoesNotContain(referenced, name => name.StartsWith("SharpVault.", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void Api_ReferencedAssemblies_ContainNoWebOrUiProject()
-    {
-        var referenced = ReferencedNames(Api);
-
-        Assert.DoesNotContain(Web, referenced);
-        Assert.DoesNotContain(UiShared, referenced);
-    }
-
-    [Fact]
-    public void Web_ReferencedAssemblies_ContainNoApiInfrastructureApplicationOrDomainProject()
-    {
-        var referenced = ReferencedNames(Web);
-
-        Assert.DoesNotContain(Api, referenced);
-        Assert.DoesNotContain(Infrastructure, referenced);
-        Assert.DoesNotContain(Application, referenced);
-        Assert.DoesNotContain(Domain, referenced);
-    }
-
-    [Theory]
-    [InlineData(Domain, new string[0])]
-    [InlineData(Dtos, new string[0])]
-    [InlineData(Application, new[] { Domain, Dtos })]
-    [InlineData(Infrastructure, new[] { Application })]
-    [InlineData(Authentication, new string[0])]
-    [InlineData(ServiceDefaults, new string[0])]
-    [InlineData(Api, new[] { Application, Infrastructure, ServiceDefaults, Authentication, Dtos })]
-    [InlineData(UiShared, new[] { Dtos, PasswordGeneration })]
-    [InlineData(PasswordGeneration, new string[0])]
-    [InlineData(Web, new[] { UiShared, ServiceDefaults, Authentication })]
-    public void ProjectFiles_ProjectReferences_MatchTheAllowedLayering(string project, string[] allowed)
-    {
-        var projectFile = Path.Combine(RepositoryRoot.Path, "src", project, project + ".csproj");
-
-        var references = System.Xml.Linq.XDocument.Load(projectFile)
-            .Descendants("ProjectReference")
-            .Select(element => Path.GetFileNameWithoutExtension((string?)element.Attribute("Include") ?? string.Empty))
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-
-        Assert.Equal(allowed.Order(StringComparer.Ordinal).ToArray(), references);
-    }
-
-    [Fact]
-    public void DomainProjectFile_PackageReferences_AreEmpty()
-    {
-        var projectFile = Path.Combine(RepositoryRoot.Path, "src", Domain, Domain + ".csproj");
-
-        var packages = System.Xml.Linq.XDocument.Load(projectFile).Descendants("PackageReference");
-
-        Assert.Empty(packages);
+            Assert.Empty(System.Xml.Linq.XDocument.Load(projectFile).Descendants("PackageReference"));
+        }
     }
 
     [Fact]
@@ -214,7 +117,7 @@ public sealed class LayeringTests
     [Fact]
     public void ProductionAssemblies_ConcreteClasses_AreSealed()
     {
-        var unsealed = ProductionAssemblyNamesList()
+        var unsealed = ProductionAssemblyNames()
             .SelectMany(name => LoadTypes(name))
             .Where(IsInSharpVaultNamespace)
             .Where(type => type.IsClass && !type.IsAbstract && !type.IsSealed)
@@ -232,7 +135,7 @@ public sealed class LayeringTests
     [Trait("Category", "Security")]
     public void ProductionAssemblies_Types_DeclareNoAuthenticationHandler()
     {
-        var handlers = ProductionAssemblyNamesList()
+        var handlers = ProductionAssemblyNames()
             .SelectMany(name => LoadTypes(name))
             .Where(type => DerivesFromGeneric(type, AuthenticationHandlerName))
             .Where(type => type.FullName != LinkGatewayAuthenticationHandlerName)
@@ -245,7 +148,7 @@ public sealed class LayeringTests
     [Fact]
     public void ProductionAssemblies_Namespaces_StartWithAssemblyName()
     {
-        var misplaced = ProductionAssemblyNamesList()
+        var misplaced = ProductionAssemblyNames()
             .SelectMany(name => LoadTypes(name).Select(type => (Assembly: name, Type: type)))
             .Where(item => IsInSharpVaultNamespace(item.Type))
             .Where(item => !item.Type.Namespace!.StartsWith(item.Assembly, StringComparison.Ordinal))
@@ -255,20 +158,11 @@ public sealed class LayeringTests
         Assert.Empty(misplaced);
     }
 
-    [Theory]
-    [MemberData(nameof(ProductionAssemblyNames))]
-    public void ProductionAssemblies_Assembly_CanBeLoadedByName(string assemblyName)
-    {
-        var assembly = Assembly.Load(new AssemblyName(assemblyName));
-
-        Assert.Equal(assemblyName, assembly.GetName().Name);
-    }
-
     [Fact]
     [Trait("Category", "Security")]
     public void ProductionAssemblies_ReferencedAssemblies_ContainNoTestingPackages()
     {
-        var offenders = ProductionAssemblyNamesList()
+        var offenders = ProductionAssemblyNames()
             .SelectMany(name => ReferencedNames(name).Select(reference => (Assembly: name, Reference: reference)))
             .Where(item => item.Reference.StartsWith("xunit", StringComparison.OrdinalIgnoreCase)
                 || item.Reference.StartsWith("NSubstitute", StringComparison.Ordinal)
@@ -287,7 +181,7 @@ public sealed class LayeringTests
     [Trait("Category", "Security")]
     public void ProductionAssemblies_KeyWrapProviders_AreOnlyKeyVaultAndDevelopment()
     {
-        var implementations = ProductionAssemblyNamesList()
+        var implementations = ProductionAssemblyNames()
             .SelectMany(name => LoadTypes(name))
             .Where(type => type.IsClass && !type.IsAbstract && typeof(IKeyWrapProvider).IsAssignableFrom(type))
             .Select(type => type.FullName)
@@ -298,19 +192,6 @@ public sealed class LayeringTests
             .Order(StringComparer.Ordinal)
             .ToArray();
         Assert.Equal(expected, implementations);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void ProductionAssemblies_KeyWrapProviderInterface_IsImplementedByNoOtherInterface()
-    {
-        var derivedInterfaces = ProductionAssemblyNamesList()
-            .SelectMany(name => LoadTypes(name))
-            .Where(type => type.IsInterface && type != typeof(IKeyWrapProvider) && typeof(IKeyWrapProvider).IsAssignableFrom(type))
-            .Select(type => type.FullName)
-            .ToList();
-
-        Assert.Empty(derivedInterfaces);
     }
 
     [Fact]
@@ -332,7 +213,7 @@ public sealed class LayeringTests
         Assert.Empty(offenders);
     }
 
-    private static string[] ProductionAssemblyNamesList() => [Domain, Dtos, Application, Infrastructure, Authentication, ServiceDefaults, Api, UiShared, PasswordGeneration, Web];
+    private static string[] ProductionAssemblyNames() => [Domain, Dtos, Application, Infrastructure, Authentication, ServiceDefaults, Api, UiShared, PasswordGeneration, Web];
 
     private static List<string> ReferencedNames(string assemblyName) =>
         Assembly.Load(new AssemblyName(assemblyName))

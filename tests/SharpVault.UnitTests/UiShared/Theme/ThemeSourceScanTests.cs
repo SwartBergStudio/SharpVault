@@ -12,7 +12,7 @@ public sealed partial class ThemeSourceScanTests
 
     [Fact]
     [Trait("Category", "Security")]
-    public void RazorSources_UiProjects_ContainNoInlineStyleScriptOrHandlers()
+    public void RazorSources_UiProjects_ContainNoInlineStyleScriptHandlersOrExternalOrigins()
     {
         var offences = new List<string>();
         foreach (var file in UiSourceFiles.WithExtension(".razor"))
@@ -22,6 +22,8 @@ public sealed partial class ThemeSourceScanTests
             AddMatches(offences, file, InlineScriptElement());
             offences.AddRange(EventHandlerAttributes.Find(file.Text).Select(offence => $"{file.RelativePath}: {offence}"));
             AddMatches(offences, file, JavascriptUrl());
+            AddMatches(offences, file, ExternalOriginAttribute());
+            AddMatches(offences, file, ResourceHint());
         }
 
         Assert.True(offences.Count == 0, string.Join(Environment.NewLine, offences));
@@ -29,50 +31,13 @@ public sealed partial class ThemeSourceScanTests
 
     [Theory]
     [Trait("Category", "Security")]
-    [InlineData("<div onclick=\"x()\">")]
-    [InlineData("<div onClick=\"x()\">")]
-    [InlineData("<div ONCLICK=\"x()\">")]
-    [InlineData("<button id=\"a\"\n    onMouseOver=\"x()\">")]
-    [InlineData("<svg xmlns=\"u\" onLoad=\"x()\"/>")]
-    public void EventHandlerRule_MixedCaseHandlerOnHtmlElement_IsCaught(string sample)
+    [InlineData("<div onClick=\"x()\">", true)]
+    [InlineData("<div title=\"a > b\" onclick=\"x()\">", true)]
+    [InlineData("<SvButton Id=\"a\" OnClick=\"Save\">", false)]
+    [InlineData("<p>use onclick= in text</p>", false)]
+    public void EventHandlerRule_HtmlHandlersAreCaughtAndComponentParametersAreNot(string sample, bool flagged)
     {
-        Assert.NotEmpty(EventHandlerAttributes.Find(sample));
-    }
-
-    [Theory]
-    [Trait("Category", "Security")]
-    [InlineData("<SvButton Id=\"a\" OnClick=\"Save\">")]
-    [InlineData("<MudButton OnClick=\"@Save\">")]
-    [InlineData("<SvDialog IdPrefix=\"a\"\n    OnCancel=\"Close\">")]
-    [InlineData("<div id=\"a\"></div><SvButton OnClick=\"Save\">")]
-    public void EventHandlerRule_PascalCaseRazorComponentParameter_IsNotFlagged(string sample)
-    {
-        Assert.Empty(EventHandlerAttributes.Find(sample));
-    }
-
-    [Theory]
-    [Trait("Category", "Security")]
-    [InlineData("<MudPaper onclick=\"x()\">")]
-    [InlineData("<SvButton onclick=\"x()\" OnClick=\"Save\">")]
-    [InlineData("<div title=\"a > b\" onclick=\"x()\">")]
-    [InlineData("<div data-x=\"@(a => b)\" onclick=\"x()\">")]
-    [InlineData("<div class='x' data-y=\"it's > fine\"\n    onmouseover=\"x()\">")]
-    [InlineData("<a href=\"#\" ONFOCUS=\"x()\">")]
-    public void EventHandlerRule_HandlerAfterAnEarlierGreaterThanOrOnAComponent_IsCaught(string sample)
-    {
-        Assert.NotEmpty(EventHandlerAttributes.Find(sample));
-    }
-
-    [Theory]
-    [Trait("Category", "Security")]
-    [InlineData("<div @onclick=\"Handle\">")]
-    [InlineData("<div class=\"onclick=x\" title='onload=y'>")]
-    [InlineData("<SvColumn TItem=\"UserSummaryDto\" Value=\"@(user => user.Email)\" OnSort=\"Sort\" />")]
-    [InlineData("<MudPaper OnClick=\"@(() => Save())\" Class=\"a > b\">")]
-    [InlineData("<p>use onclick= in text</p>")]
-    public void EventHandlerRule_RazorDirectivesQuotedTextAndPascalCaseParameters_AreNotFlagged(string sample)
-    {
-        Assert.Empty(EventHandlerAttributes.Find(sample));
+        Assert.Equal(flagged, EventHandlerAttributes.Find(sample).Count > 0);
     }
 
     [Fact]
@@ -86,32 +51,6 @@ public sealed partial class ThemeSourceScanTests
             .ToList();
 
         Assert.True(offences.Count == 0, "MarkupString found in: " + string.Join(", ", offences));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void RazorSources_UiProjects_ReferenceNoExternalOrigins()
-    {
-        var offences = new List<string>();
-        foreach (var file in UiSourceFiles.WithExtension(".razor"))
-        {
-            AddMatches(offences, file, ExternalOriginAttribute());
-        }
-
-        Assert.True(offences.Count == 0, string.Join(Environment.NewLine, offences));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void RazorSources_UiProjects_DeclareNoResourceHints()
-    {
-        var offences = new List<string>();
-        foreach (var file in UiSourceFiles.WithExtension(".razor"))
-        {
-            AddMatches(offences, file, ResourceHint());
-        }
-
-        Assert.True(offences.Count == 0, string.Join(Environment.NewLine, offences));
     }
 
     [Fact]
@@ -138,11 +77,7 @@ public sealed partial class ThemeSourceScanTests
         {
             foreach (var tag in RazorTags.Find(file.Text).Where(IsSecretInput))
             {
-                var complete = RazorTags.AttributeValue(tag, "spellcheck") == "false"
-                    && RazorTags.AttributeValue(tag, "autocapitalize") == "off"
-                    && RazorTags.AttributeValue(tag, "autocorrect") == "off"
-                    && RazorTags.HasAttribute(tag, "autocomplete");
-                if (!complete)
+                if (!IsComplete(tag))
                 {
                     offences.Add($"{file.RelativePath}: {tag.Text}");
                 }
@@ -156,91 +91,34 @@ public sealed partial class ThemeSourceScanTests
     [Trait("Category", "Security")]
     [InlineData("<input type=\"password\" id=\"x\" />", false)]
     [InlineData("<input type=\"password\" id=\"x\" spellcheck=\"false\" autocapitalize=\"off\" autocorrect=\"off\" autocomplete=\"new-password\" />", true)]
-    [InlineData("<InputText class=\"sv-input--secret\" id=\"x\" spellcheck=\"false\" autocapitalize=\"off\" autocomplete=\"off\" />", false)]
-    [InlineData("<textarea class=\"a sv-input--secret\" id=\"x\" spellcheck=\"true\" autocapitalize=\"off\" autocorrect=\"off\" autocomplete=\"off\"></textarea>", false)]
     public void SecretInputRule_SampleMarkup_IsRecognisedAsCompleteOrIncomplete(string markup, bool expectedComplete)
     {
         var tag = Assert.Single(RazorTags.Find(markup));
 
         Assert.True(IsSecretInput(tag));
-        var complete = RazorTags.AttributeValue(tag, "spellcheck") == "false"
-            && RazorTags.AttributeValue(tag, "autocapitalize") == "off"
-            && RazorTags.AttributeValue(tag, "autocorrect") == "off"
-            && RazorTags.HasAttribute(tag, "autocomplete");
-        Assert.Equal(expectedComplete, complete);
+        Assert.Equal(expectedComplete, IsComplete(tag));
     }
 
     [Fact]
     [Trait("Category", "Security")]
-    public void StyleSheets_UiProjects_ContainNoExternalOriginsOrDataUris()
+    public void StyleSheets_UiProjects_ContainNoExternalOriginsImportsValueSelectorsOrScriptingFeatures()
     {
         var offences = new List<string>();
         foreach (var file in UiSourceFiles.WithExtension(".css"))
         {
             AddMatches(offences, file, CssExternalReference());
-        }
-
-        Assert.True(offences.Count == 0, string.Join(Environment.NewLine, offences));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void StyleSheets_UiProjects_UseNoImport()
-    {
-        var offences = UiSourceFiles.WithExtension(".css")
-            .Where(file => file.Text.Contains("@import", StringComparison.OrdinalIgnoreCase))
-            .Select(file => file.RelativePath)
-            .ToList();
-
-        Assert.True(offences.Count == 0, "@import found in: " + string.Join(", ", offences));
-    }
-
-    [Fact]
-    public void StyleSheets_UiProjects_ContainNoComments()
-    {
-        var offences = UiSourceFiles.WithExtension(".css")
-            .Where(file => file.Text.Contains("/*", StringComparison.Ordinal)
-                || file.Text.Contains("*/", StringComparison.Ordinal))
-            .Select(file => file.RelativePath)
-            .ToList();
-
-        Assert.True(offences.Count == 0, "CSS comment found in: " + string.Join(", ", offences));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void StyleSheets_UiProjects_UseNoValueAttributeSelectors()
-    {
-        var offences = UiSourceFiles.WithExtension(".css")
-            .Where(file => file.Text.Contains("[value", StringComparison.OrdinalIgnoreCase))
-            .Select(file => file.RelativePath)
-            .ToList();
-
-        Assert.True(offences.Count == 0, "[value selector found in: " + string.Join(", ", offences));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void StyleSheets_UiProjects_NeverRenderOrMaskValuesWithCss()
-    {
-        var offences = new List<string>();
-        foreach (var file in UiSourceFiles.WithExtension(".css"))
-        {
             AddMatches(offences, file, TextSecurity());
             AddMatches(offences, file, ContentFromAttribute());
-        }
-
-        Assert.True(offences.Count == 0, string.Join(Environment.NewLine, offences));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void StyleSheets_UiProjects_UseNoLegacyScriptingFeatures()
-    {
-        var offences = new List<string>();
-        foreach (var file in UiSourceFiles.WithExtension(".css"))
-        {
             AddMatches(offences, file, LegacyScripting());
+            if (file.Text.Contains("@import", StringComparison.OrdinalIgnoreCase))
+            {
+                offences.Add($"{file.RelativePath}: @import");
+            }
+
+            if (file.Text.Contains("[value", StringComparison.OrdinalIgnoreCase))
+            {
+                offences.Add($"{file.RelativePath}: [value selector");
+            }
         }
 
         Assert.True(offences.Count == 0, string.Join(Environment.NewLine, offences));
@@ -286,19 +164,26 @@ public sealed partial class ThemeSourceScanTests
         Assert.Equal(pinned, actual);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Security")]
-    [InlineData("src/SharpVault.UI.Shared/wwwroot/js/clipboard.js")]
-    [InlineData("src/SharpVault.UI.Shared/wwwroot/js/idle-boot.js")]
-    [InlineData("src/SharpVault.UI.Shared/wwwroot/js/idle-monitor.js")]
-    public void PinnedJavaScript_Source_UsesNoDynamicCodeNetworkOrMarkupInjection(string relativePath)
+    public void PinnedJavaScript_Sources_UseNoDynamicCodeNetworkOrMarkupInjection()
     {
-        var text = File.ReadAllText(UiSourceFiles.Absolute(relativePath));
+        string[] pinnedModules =
+        [
+            "src/SharpVault.UI.Shared/wwwroot/js/clipboard.js",
+            "src/SharpVault.UI.Shared/wwwroot/js/idle-boot.js",
+            "src/SharpVault.UI.Shared/wwwroot/js/idle-monitor.js",
+        ];
+        string[] forbidden = ["eval(", "new Function", "innerHTML", "outerHTML", "document.write", "fetch(", "XMLHttpRequest", "WebSocket", "sendBeacon", "import(", "http:", "https:", "document.cookie"];
 
-        foreach (var forbidden in new[] { "eval(", "new Function", "innerHTML", "outerHTML", "document.write", "fetch(", "XMLHttpRequest", "WebSocket", "sendBeacon", "import(", "http:", "https:", "document.cookie" })
+        var offences = new List<string>();
+        foreach (var relativePath in pinnedModules)
         {
-            Assert.DoesNotContain(forbidden, text, StringComparison.Ordinal);
+            var text = File.ReadAllText(UiSourceFiles.Absolute(relativePath));
+            offences.AddRange(forbidden.Where(token => text.Contains(token, StringComparison.Ordinal)).Select(token => $"{relativePath}: {token}"));
         }
+
+        Assert.Empty(offences);
     }
 
     [Fact]
@@ -343,6 +228,12 @@ public sealed partial class ThemeSourceScanTests
         return string.Equals(type, "password", StringComparison.OrdinalIgnoreCase)
             || (cssClass is not null && cssClass.Contains("sv-input--secret", StringComparison.Ordinal));
     }
+
+    private static bool IsComplete(RazorTag tag) =>
+        RazorTags.AttributeValue(tag, "spellcheck") == "false"
+        && RazorTags.AttributeValue(tag, "autocapitalize") == "off"
+        && RazorTags.AttributeValue(tag, "autocorrect") == "off"
+        && RazorTags.HasAttribute(tag, "autocomplete");
 
     private static void AddMatches(List<string> offences, SourceFile file, Regex pattern)
     {

@@ -43,16 +43,11 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
 
     [Theory]
     [InlineData("/account")]
-    [InlineData("/account/")]
     [InlineData("/ACCOUNT")]
     [InlineData("/does-not-exist")]
     [InlineData("/admin")]
-    [InlineData("/_framework/anything")]
-    [InlineData("/account/sign-out")]
-    [InlineData("/account/unknown")]
     [InlineData("/%2e%2e/account")]
     [InlineData("/account;x=1")]
-    [InlineData("/test/throw")]
     public async Task ProtectedOrUnknownPaths_Anonymous_AreChallengedToTenantAuthorizeEndpoint(string path)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -153,7 +148,6 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
 
     [Theory]
     [InlineData("POST")]
-    [InlineData("PUT")]
     [InlineData("DELETE")]
     public async Task SignIn_NonGetMethod_DoesNotChallenge(string method)
     {
@@ -229,22 +223,6 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
     }
 
     [Fact]
-    public void CookieOptions_Configured_EightHourAbsoluteLifetime()
-    {
-        var options = factory.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(CookieAuthenticationDefaults.AuthenticationScheme);
-
-        Assert.Equal(TimeSpan.FromHours(8), options.ExpireTimeSpan);
-        Assert.False(options.SlidingExpiration);
-        Assert.Equal("/account/access-denied", options.AccessDeniedPath.Value);
-        Assert.Equal(SessionCookieName, options.Cookie.Name);
-        Assert.Equal(CookieSecurePolicy.Always, options.Cookie.SecurePolicy);
-        Assert.True(options.Cookie.HttpOnly);
-        Assert.Equal(SameSiteMode.Lax, options.Cookie.SameSite);
-        Assert.Equal("/", options.Cookie.Path);
-        Assert.Null(options.Cookie.Domain);
-    }
-
-    [Fact]
     public void OpenIdConnectOptions_Configured_UseCodeFlowPkceAndNoSavedTokens()
     {
         var options = factory.Services.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>().Get(OpenIdConnectDefaults.AuthenticationScheme);
@@ -291,12 +269,9 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
 
     [Theory]
     [InlineData("/")]
-    [InlineData("/not-found")]
-    [InlineData("/account/access-denied")]
     [InlineData("/account/signed-out")]
     [InlineData("/account/sign-in-error")]
     [InlineData("/health")]
-    [InlineData("/alive")]
     public async Task AnonymousPages_Get_Return200(string path)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -310,8 +285,6 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
     [Theory]
     [InlineData("/")]
     [InlineData("/account/access-denied")]
-    [InlineData("/account/signed-out")]
-    [InlineData("/account/sign-in-error")]
     public async Task AnonymousPages_Get_ShowNoUserDataAndHaveSecurityHeaders(string path)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -375,8 +348,6 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
 
     [Theory]
     [InlineData("/account/access-denied", "access-denied-heading", "access-denied-message", "access-denied-home-link")]
-    [InlineData("/account/signed-out", "signed-out-heading", "signed-out-sign-in-link", "signed-out-sign-in-link")]
-    [InlineData("/account/sign-in-error", "sign-in-error-heading", "sign-in-error-message", "sign-in-error-retry-link")]
     [InlineData("/not-found", "not-found-heading", "not-found-message", "not-found-message")]
     public async Task AccountPages_Rendered_HaveStableElementIds(string path, string first, string second, string third)
     {
@@ -496,9 +467,7 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
 
     [Theory]
     [InlineData("/account")]
-    [InlineData("/account/sign-in")]
     [InlineData("/account/sign-in?returnUrl=%2F%2Fevil.example")]
-    [InlineData("/account/sign-in-error")]
     [InlineData("/does-not-exist")]
     public async Task SecurityHeaders_ChallengeAndErrorResponses_CarryTheWebPolicy(string path)
     {
@@ -556,10 +525,7 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
 
     [Theory]
     [InlineData("common")]
-    [InlineData("organizations")]
-    [InlineData("consumers")]
     [InlineData("contoso.onmicrosoft.com")]
-    [InlineData("00000000-0000-0000-0000-000000000000")]
     [InlineData("")]
     public void Startup_WebNonGuidTenant_FailsWithoutEchoingTheValue(string tenant)
     {

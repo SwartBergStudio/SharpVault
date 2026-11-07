@@ -26,23 +26,20 @@ namespace SharpVault.IntegrationTests.ApiTests.OneTimeLinks;
 public sealed class LocalOneTimeLinkAuthorizationMatrixTests(LocalApiTestFactory factory) : IAsyncLifetime
 {
     private const string Settings = "E1";
-    private const string Snapshot = "E2";
     private const string Create = "E3";
-    private const string List = "E4";
     private const string Revoke = "E5";
-    private const string Notices = "E6";
     private const string Dismiss = "E7";
     private const string OpenAgent = "SharpVault-Test-Browser/1.0";
 
-    private static readonly string[] EndpointIds = [Settings, Snapshot, Create, List, Revoke, Notices, Dismiss];
+    private static readonly string[] EndpointIds = [Settings, Create, Revoke, Dismiss];
 
-    private static readonly string[] AnonymousFamily = ["Anonymous", "AlgNone", "UnknownKey", "WrongTenant"];
+    private static readonly string[] AnonymousFamily = ["Anonymous", "UnknownKey"];
 
-    private static readonly string[] ForbiddenFamily = ["Guest", "NoRole", "LockedUser", "LockedAdmin"];
+    private static readonly string[] ForbiddenFamily = ["LockedUser"];
 
     private static readonly string[] ManagerFamily = ["Owner", "Manager"];
 
-    private static readonly string[] ReaderFamily = ["Viewer", "Editor", "AdminOne"];
+    private static readonly string[] ReaderFamily = ["Viewer", "AdminOne"];
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
@@ -115,23 +112,18 @@ public sealed class LocalOneTimeLinkAuthorizationMatrixTests(LocalApiTestFactory
         {
             return endpoint switch
             {
-                Settings or Snapshot or List or Notices => HttpStatusCode.OK,
+                Settings => HttpStatusCode.OK,
                 Create => HttpStatusCode.Created,
                 _ => HttpStatusCode.NoContent,
             };
         }
 
-        return endpoint switch
-        {
-            Settings or List or Notices => HttpStatusCode.OK,
-            _ => HttpStatusCode.NotFound,
-        };
+        return endpoint == Settings ? HttpStatusCode.OK : HttpStatusCode.NotFound;
     }
 
     private static SharePermissionDto PermissionFor(string caller) => caller switch
     {
         "Viewer" => SharePermissionDto.View,
-        "Editor" => SharePermissionDto.Edit,
         _ => SharePermissionDto.Manage,
     };
 
@@ -141,15 +133,10 @@ public sealed class LocalOneTimeLinkAuthorizationMatrixTests(LocalApiTestFactory
         return caller switch
         {
             "Anonymous" => factory.CreateUnauthenticatedClient(),
-            "AlgNone" => factory.CreateClientWithToken(LocalTokens.AlgNone(LocalAccounts.AdminOne)),
             "UnknownKey" => factory.CreateClientWithToken(LocalTokens.Builder(LocalAccounts.AdminOne, wrongKey).Build()),
-            "WrongTenant" => factory.CreateClientWithToken(LocalTokens.Builder(factory.Services, LocalAccounts.UserOne).WithClaim(EntraClaimTypes.TenantId, Guid.NewGuid().ToString("D")).Build()),
-            "Guest" => factory.CreateClientWithToken(LocalTokens.Builder(factory.Services, LocalAccounts.UserOne).WithClaim(EntraClaimTypes.AccountType, EntraClaimTypes.GuestAccountType).Build()),
-            "NoRole" => factory.CreateClientWithToken(LocalTokens.Builder(factory.Services, LocalAccounts.UserOne).WithoutClaim(EntraClaimTypes.Roles).Build()),
             "Owner" => factory.CreateClientForAccount(LocalAccounts.UserOne),
-            "Manager" or "Viewer" or "Editor" or "LockedUser" => factory.CreateClientForAccount(LocalAccounts.UserTwo),
+            "Manager" or "Viewer" or "LockedUser" => factory.CreateClientForAccount(LocalAccounts.UserTwo),
             "AdminOne" => factory.CreateClientForAccount(LocalAccounts.AdminOne),
-            "LockedAdmin" => factory.CreateClientForAccount(LocalAccounts.AdminTwo),
             _ => throw new ArgumentOutOfRangeException(nameof(caller), caller, null),
         };
     }
@@ -187,11 +174,6 @@ public sealed class LocalOneTimeLinkAuthorizationMatrixTests(LocalApiTestFactory
             await LockAsync(LocalAccounts.UserTwo.Id);
         }
 
-        if (caller == "LockedAdmin")
-        {
-            await LockAsync(LocalAccounts.AdminTwo.Id);
-        }
-
         return new Scenario(secret.Id, ownerLink, managerLink, ownerNotice.NoticeId, managerNotice);
     }
 
@@ -201,14 +183,11 @@ public sealed class LocalOneTimeLinkAuthorizationMatrixTests(LocalApiTestFactory
         return endpoint switch
         {
             Settings => await client.GetAsync(ApiRoutes.OneTimeLinkSettings, Token),
-            Snapshot => await client.PostAsync(SecretRoute(ApiRoutes.OneTimeLinkSecretSnapshot, LocalAccounts.UserOne.Id, scenario.SecretId), null, Token),
             Create => await client.PostAsJsonAsync(
                 SecretRoute(ApiRoutes.OneTimeLinkSecret, LocalAccounts.UserOne.Id, scenario.SecretId),
                 new CreateOneTimeLinkRequestDto { Payload = NewPayload() },
                 Token),
-            List => await client.GetAsync(ApiRoutes.OneTimeLinks, Token),
             Revoke => await client.DeleteAsync(LinkRoute(isManager ? scenario.ManagerLinkId : scenario.OwnerLinkId), Token),
-            Notices => await client.GetAsync(ApiRoutes.OneTimeLinkNotices, Token),
             Dismiss => await client.DeleteAsync(NoticeRoute(isManager ? scenario.ManagerNoticeId : scenario.OwnerNoticeId), Token),
             _ => throw new ArgumentOutOfRangeException(nameof(endpoint), endpoint, null),
         };

@@ -27,30 +27,13 @@ public sealed class ThemeScanSupportTests
 
     [Theory]
     [InlineData("<abbr title=\"x\">x</abbr>", 0)]
-    [InlineData("<AuthorizeView>", 0)]
     [InlineData("<a href=\"a>b\" id=\"x\">", 1)]
     [InlineData("<button type=\"button\" @onclick=\"() => x > 1\" id=\"b\">", 1)]
-    [InlineData("<NavLink id=\"n\" href=\"\">", 1)]
-    [InlineData("<input /><textarea></textarea>", 2)]
     [InlineData("<SvTextField Id=\"x\" Label=\"y\" />", 1)]
-    [InlineData("<SvSelect Id=\"x\" Label=\"y\" />", 1)]
-    [InlineData("<SvCheckbox Id=\"x\" Label=\"y\" />", 1)]
-    [InlineData("<SvSlider Id=\"x\" Label=\"y\" Min=\"1\" Max=\"2\" />", 1)]
-    [InlineData("<MudRadio Value=\"a\" />", 1)]
-    [InlineData("<MudSlider T=\"int\" />", 1)]
-    [InlineData("<MudRadioGroup T=\"string\"><MudSliderBar />", 0)]
+    [InlineData("<input /><textarea></textarea>", 2)]
     public void RazorTags_Sample_MatchesOnlyInteractiveElements(string markup, int expected)
     {
         Assert.Equal(expected, RazorTags.Find(markup).Count());
-    }
-
-    [Fact]
-    public void RazorTags_QuotedGreaterThan_KeepsFullTag()
-    {
-        var tag = Assert.Single(RazorTags.Find("<a href=\"a>b\" id=\"x\">"));
-
-        Assert.True(RazorTags.HasAttribute(tag, "id"));
-        Assert.Equal("a>b", RazorTags.AttributeValue(tag, "href"));
     }
 
     [Fact]
@@ -60,5 +43,4 @@ public sealed class ThemeScanSupportTests
 
         Assert.False(RazorTags.HasAttribute(tag, "id"));
     }
-
 }

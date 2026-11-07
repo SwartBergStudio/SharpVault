@@ -1,5 +1,6 @@
 @inject RoutedAssemblies RoutedAssemblies
 
+<span id="app-started" hidden></span>
 <Router AppAssembly="typeof(Routes).Assembly" AdditionalAssemblies="RoutedAssemblies.Assemblies" NotFoundPage="typeof(NotFound)">
     <Found Context="routeData">
         <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)">

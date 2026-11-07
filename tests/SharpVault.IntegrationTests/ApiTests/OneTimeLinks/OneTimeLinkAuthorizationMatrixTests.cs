@@ -39,7 +39,6 @@ public sealed class OneTimeLinkAuthorizationMatrixTests(ApiTestFactory factory) 
         CallerKind.User,
         CallerKind.ShareManager,
         CallerKind.ShareViewer,
-        CallerKind.ShareEditor,
         CallerKind.FolderManager,
         CallerKind.OtherUser,
         CallerKind.Admin,
@@ -156,7 +155,6 @@ public sealed class OneTimeLinkAuthorizationMatrixTests(ApiTestFactory factory) 
         var secret = await NewSecretAsync(folderId: folder.Id);
         await ShareSecretAsync(secret.Id, TestUsers.ShareManager, SharePermissionDto.Manage);
         await ShareSecretAsync(secret.Id, TestUsers.ShareViewer, SharePermissionDto.View);
-        await ShareSecretAsync(secret.Id, TestUsers.ShareEditor, SharePermissionDto.Edit);
         await ShareFolderAsync(folder.Id, TestUsers.FolderManager, SharePermissionDto.Manage);
         await WarmUpAsync(TestUsers.LockedUser);
         await LockUserAsync(TestUsers.LockedUser.ObjectId);

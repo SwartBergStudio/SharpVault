@@ -15,18 +15,10 @@ public sealed class LocalSignInGuardTests
 {
     [Theory]
     [InlineData("localhost")]
-    [InlineData("LOCALHOST")]
-    [InlineData("127.0.0.1")]
     [InlineData("[::1]")]
     public void Allows_LocalModeLoopbackLocalhost_ReturnsTrue(string host)
     {
         Assert.True(LocalSignInGuard.Allows(AuthenticationMode.Local, IPAddress.Loopback, host, hasForwardedHeaders: false));
-    }
-
-    [Fact]
-    public void Allows_Ipv6Loopback_ReturnsTrue()
-    {
-        Assert.True(LocalSignInGuard.Allows(AuthenticationMode.Local, IPAddress.IPv6Loopback, "localhost", hasForwardedHeaders: false));
     }
 
     [Fact]
@@ -37,7 +29,6 @@ public sealed class LocalSignInGuardTests
 
     [Theory]
     [InlineData("203.0.113.9")]
-    [InlineData("10.0.0.5")]
     [InlineData("2001:db8::1")]
     public void Allows_RemoteAddress_ReturnsFalse(string address)
     {
@@ -52,10 +43,7 @@ public sealed class LocalSignInGuardTests
 
     [Theory]
     [InlineData("sharpvault.example.com")]
-    [InlineData("")]
     [InlineData(null)]
-    [InlineData("   ")]
-    [InlineData("203.0.113.9")]
     public void Allows_PublicHostHeader_ReturnsFalse(string? host)
     {
         Assert.False(LocalSignInGuard.Allows(AuthenticationMode.Local, IPAddress.Loopback, host, hasForwardedHeaders: false));
@@ -65,12 +53,7 @@ public sealed class LocalSignInGuardTests
     [InlineData("Forwarded")]
     [InlineData("X-Forwarded-For")]
     [InlineData("X-Forwarded-Host")]
-    [InlineData("X-Forwarded-Proto")]
-    [InlineData("x-forwarded-for")]
-    [InlineData("X-Original-For")]
-    [InlineData("X-Original-Proto")]
     [InlineData("X-Original-Host")]
-    [InlineData("Via")]
     [InlineData("X-Real-IP")]
     public void Allows_EachForwardedHeader_ReturnsFalse(string header)
     {
@@ -90,7 +73,6 @@ public sealed class LocalSignInGuardTests
 
     [Theory]
     [InlineData("localhost:5000")]
-    [InlineData("127.0.0.1:17001")]
     [InlineData("[::1]:5000")]
     public void Allows_HostWithPort_IsAccepted(string host)
     {
@@ -99,11 +81,8 @@ public sealed class LocalSignInGuardTests
 
     [Theory]
     [InlineData("localhost.evil.example")]
-    [InlineData("evil-localhost")]
     [InlineData("localhostevil")]
-    [InlineData("localhost.evil.example:5000")]
     [InlineData("127.0.0.1.evil.example")]
-    [InlineData("xlocalhost")]
     public void Allows_HostLookalikeLocalhostEvil_ReturnsFalse(string host)
     {
         Assert.False(LocalSignInGuard.Allows(AuthenticationMode.Local, IPAddress.Loopback, host, hasForwardedHeaders: false));

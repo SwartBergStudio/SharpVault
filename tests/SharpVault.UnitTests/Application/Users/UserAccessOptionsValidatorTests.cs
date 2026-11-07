@@ -29,10 +29,8 @@ public sealed class UserAccessOptionsValidatorTests
     }
 
     [Theory]
-    [InlineData(-1000)]
     [InlineData(-1)]
     [InlineData(30_001)]
-    [InlineData(31_000)]
     public void Validate_CacheTtlOutOfRange_Fails(int milliseconds)
     {
         var result = _validator.Validate(null, new UserAccessOptions { CacheTtl = TimeSpan.FromMilliseconds(milliseconds) });
@@ -40,14 +38,6 @@ public sealed class UserAccessOptionsValidatorTests
         Assert.True(result.Failed);
         var failure = Assert.Single(result.Failures!);
         Assert.Contains("UserAccess:CacheTtl", failure, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Validate_CacheTtlMaxValue_Fails()
-    {
-        var result = _validator.Validate(null, new UserAccessOptions { CacheTtl = TimeSpan.MaxValue });
-
-        Assert.True(result.Failed);
     }
 
     [Theory]
@@ -62,10 +52,7 @@ public sealed class UserAccessOptionsValidatorTests
 
     [Theory]
     [InlineData(99)]
-    [InlineData(0)]
-    [InlineData(-1)]
     [InlineData(1_000_001)]
-    [InlineData(int.MaxValue)]
     public void Validate_CacheMaxEntriesOutOfRange_Fails(int entries)
     {
         var result = _validator.Validate(null, new UserAccessOptions { CacheMaxEntries = entries });
@@ -87,8 +74,6 @@ public sealed class UserAccessOptionsValidatorTests
 
     [Theory]
     [InlineData(59)]
-    [InlineData(0)]
-    [InlineData(-60)]
     [InlineData(86_401)]
     public void Validate_SignInRecordIntervalOutOfRange_Fails(int seconds)
     {

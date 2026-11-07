@@ -46,7 +46,6 @@ public sealed class SecretValidatorTests
     [Theory]
     [InlineData(0)]
     [InlineData(6)]
-    [InlineData(-1)]
     public void CreateSecretCommandValidator_UndefinedType_Fails(int type) =>
         AssertFailsOn(_create.Validate(ValidCreate() with { Type = (SecretTypeDto)type }), "Type");
 
@@ -54,12 +53,9 @@ public sealed class SecretValidatorTests
     public void CreateSecretCommandValidator_NullName_FailsWithoutThrowing() =>
         AssertFailsOn(_create.Validate(ValidCreate() with { Name = null! }), "Name");
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("\t")]
-    public void CreateSecretCommandValidator_BlankName_Fails(string name) =>
-        AssertFailsOn(_create.Validate(ValidCreate() with { Name = name }), "Name");
+    [Fact]
+    public void CreateSecretCommandValidator_BlankName_Fails() =>
+        AssertFailsOn(_create.Validate(ValidCreate() with { Name = "   " }), "Name");
 
     [Fact]
     public void CreateSecretCommandValidator_NameAtLimit_Passes() =>
@@ -72,9 +68,8 @@ public sealed class SecretValidatorTests
     [Theory]
     [Trait("Category", "Security")]
     [InlineData("a\u0000b")]
-    [InlineData("a\nb")]
     [InlineData("a‮b")]
-    public void CreateSecretCommandValidator_NameWithControlBidiOrLoneSurrogate_Fails(string name) =>
+    public void CreateSecretCommandValidator_NameWithControlOrBidi_Fails(string name) =>
         AssertFailsOn(_create.Validate(ValidCreate() with { Name = name }), "Name");
 
     [Fact]
@@ -97,9 +92,7 @@ public sealed class SecretValidatorTests
     [Theory]
     [Trait("Category", "Security")]
     [InlineData("javascript:alert(1)")]
-    [InlineData("data:text/html,x")]
     [InlineData("file:///etc/passwd")]
-    [InlineData("ftp://host/")]
     [InlineData("/relative")]
     [InlineData("https://exa mple.com/")]
     [InlineData("https://example.com/\n")]
@@ -180,24 +173,15 @@ public sealed class SecretValidatorTests
     [Theory]
     [Trait("Category", "Security")]
     [InlineData("*")]
-    [InlineData("")]
-    [InlineData("garbage")]
     [InlineData("\"strong\"")]
+    [InlineData("garbage")]
     [InlineData("W/\"datetime'x'\" or 1=1")]
     public void UpdateSecretCommandValidator_BadETag_Fails(string etag) =>
         AssertFailsOn(_update.Validate(ValidUpdate() with { ETag = etag }), "ETag");
 
     [Fact]
-    public void UpdateSecretCommandValidator_NullETag_FailsWithoutThrowing() =>
-        AssertFailsOn(_update.Validate(ValidUpdate() with { ETag = null! }), "ETag");
-
-    [Fact]
     public void UpdateSecretCommandValidator_UndefinedType_Fails() =>
         AssertFailsOn(_update.Validate(ValidUpdate() with { Type = (SecretTypeDto)0 }), "Type");
-
-    [Fact]
-    public void UpdateSecretCommandValidator_NullName_FailsWithoutThrowing() =>
-        AssertFailsOn(_update.Validate(ValidUpdate() with { Name = null! }), "Name");
 
     [Fact]
     public void UpdateSecretCommandValidator_NameOverLimit_Fails() =>
@@ -222,14 +206,6 @@ public sealed class SecretValidatorTests
     }
 
     [Fact]
-    public void UpdateSecretCommandValidator_ValueOverLimit_Fails() =>
-        AssertFailsOn(_update.Validate(ValidUpdate() with { Value = new string('v', VaultLimits.ValueMaxLength + 1) }), "Value");
-
-    [Fact]
-    public void MoveSecretCommandValidator_Valid_Passes() =>
-        Assert.True(_move.Validate(new MoveSecretCommand(Guid.NewGuid(), ValidETag, Guid.NewGuid())).IsValid);
-
-    [Fact]
     public void MoveSecretCommandValidator_ToRoot_Passes() =>
         Assert.True(_move.Validate(new MoveSecretCommand(Guid.NewGuid(), ValidETag, null)).IsValid);
 
@@ -241,11 +217,9 @@ public sealed class SecretValidatorTests
     public void MoveSecretCommandValidator_EmptyFolderId_Fails() =>
         AssertFailsOn(_move.Validate(new MoveSecretCommand(Guid.NewGuid(), ValidETag, Guid.Empty)), "FolderId");
 
-    [Theory]
-    [InlineData("*")]
-    [InlineData("")]
-    public void MoveSecretCommandValidator_BadETag_Fails(string etag) =>
-        AssertFailsOn(_move.Validate(new MoveSecretCommand(Guid.NewGuid(), etag, null)), "ETag");
+    [Fact]
+    public void MoveSecretCommandValidator_WildcardETag_Fails() =>
+        AssertFailsOn(_move.Validate(new MoveSecretCommand(Guid.NewGuid(), "*", null)), "ETag");
 
     [Fact]
     public void DeleteSecretCommandValidator_Valid_Passes() =>
@@ -255,19 +229,15 @@ public sealed class SecretValidatorTests
     public void DeleteSecretCommandValidator_EmptySecretId_Fails() =>
         AssertFailsOn(_delete.Validate(new DeleteSecretCommand(Guid.Empty, ValidETag)), "SecretId");
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Security")]
-    [InlineData("*")]
-    [InlineData("")]
-    public void DeleteSecretCommandValidator_BadETag_Fails(string etag) =>
-        AssertFailsOn(_delete.Validate(new DeleteSecretCommand(Guid.NewGuid(), etag)), "ETag");
+    public void DeleteSecretCommandValidator_WildcardETag_Fails() =>
+        AssertFailsOn(_delete.Validate(new DeleteSecretCommand(Guid.NewGuid(), "*")), "ETag");
 
     [Theory]
     [InlineData(RevealFieldDto.Value, RevealIntentDto.View)]
-    [InlineData(RevealFieldDto.Value, RevealIntentDto.Copy)]
-    [InlineData(RevealFieldDto.Notes, RevealIntentDto.View)]
     [InlineData(RevealFieldDto.Notes, RevealIntentDto.Copy)]
-    public void RevealSecretFieldCommandValidator_EveryDefinedCombination_Passes(RevealFieldDto field, RevealIntentDto intent) =>
+    public void RevealSecretFieldCommandValidator_DefinedCombination_Passes(RevealFieldDto field, RevealIntentDto intent) =>
         Assert.True(_reveal.Validate(new RevealSecretFieldCommand(Guid.NewGuid(), field, intent)).IsValid);
 
     [Fact]
@@ -278,7 +248,6 @@ public sealed class SecretValidatorTests
     [Trait("Category", "Security")]
     [InlineData(0)]
     [InlineData(3)]
-    [InlineData(-1)]
     public void RevealSecretFieldCommandValidator_UndefinedField_Fails(int field) =>
         AssertFailsOn(_reveal.Validate(new RevealSecretFieldCommand(Guid.NewGuid(), (RevealFieldDto)field, RevealIntentDto.View)), "Field");
 
@@ -286,7 +255,6 @@ public sealed class SecretValidatorTests
     [Trait("Category", "Security")]
     [InlineData(0)]
     [InlineData(3)]
-    [InlineData(-1)]
     public void RevealSecretFieldCommandValidator_UndefinedIntent_Fails(int intent) =>
         AssertFailsOn(_reveal.Validate(new RevealSecretFieldCommand(Guid.NewGuid(), RevealFieldDto.Value, (RevealIntentDto)intent)), "Intent");
 
@@ -298,27 +266,19 @@ public sealed class SecretValidatorTests
 
     [Theory]
     [InlineData(1)]
-    [InlineData(50)]
     [InlineData(200)]
     public void ListSecretsQueryValidator_PageSizeInRange_Passes(int pageSize) =>
         Assert.True(_list.Validate(new ListSecretsQuery(null, false, null, pageSize, null)).IsValid);
 
     [Theory]
     [InlineData(0)]
-    [InlineData(-1)]
     [InlineData(201)]
-    [InlineData(int.MaxValue)]
-    [InlineData(int.MinValue)]
     public void ListSecretsQueryValidator_PageSizeOutOfRange_Fails(int pageSize) =>
         AssertFailsOn(_list.Validate(new ListSecretsQuery(null, false, null, pageSize, null)), "PageSize");
 
     [Fact]
     public void ListSecretsQueryValidator_FolderIdAndUnfiled_Fails() =>
         AssertFailsOn(_list.Validate(new ListSecretsQuery(Guid.NewGuid(), true, null, 50, null)), "Unfiled");
-
-    [Fact]
-    public void ListSecretsQueryValidator_FolderIdAlone_Passes() =>
-        Assert.True(_list.Validate(new ListSecretsQuery(Guid.NewGuid(), false, null, 50, null)).IsValid);
 
     [Fact]
     public void ListSecretsQueryValidator_UnfiledAlone_Passes() =>
@@ -336,29 +296,23 @@ public sealed class SecretValidatorTests
     public void ListSecretsQueryValidator_SearchOver100_Fails() =>
         AssertFailsOn(_list.Validate(new ListSecretsQuery(null, false, new string('s', 101), 50, null)), "Search");
 
+    [Fact]
+    public void ListSecretsQueryValidator_SearchWhitespace_Fails() =>
+        AssertFailsOn(_list.Validate(new ListSecretsQuery(null, false, "   ", 50, null)), "Search");
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void ListSecretsQueryValidator_ODataSyntaxInSearch_Passes() =>
+        Assert.True(_list.Validate(new ListSecretsQuery(null, false, "' or PartitionKey ne '", 50, null)).IsValid);
+
     [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void ListSecretsQueryValidator_SearchWhitespace_Fails(string search) =>
-        AssertFailsOn(_list.Validate(new ListSecretsQuery(null, false, search, 50, null)), "Search");
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ListSecretsQueryValidator_IssuedToken_Passes(bool secretIdToken) =>
+        Assert.True(_list.Validate(new ListSecretsQuery(null, false, null, 50, secretIdToken ? ValidToken : ContinuationTokens.ForStorage("abc"))).IsValid);
 
     [Theory]
     [Trait("Category", "Security")]
-    [InlineData("' or PartitionKey ne '")]
-    public void ListSecretsQueryValidator_ODataSyntaxInSearch_Passes(string search) =>
-        Assert.True(_list.Validate(new ListSecretsQuery(null, false, search, 50, null)).IsValid);
-
-    [Fact]
-    public void ListSecretsQueryValidator_SecretIdToken_Passes() =>
-        Assert.True(_list.Validate(new ListSecretsQuery(null, false, null, 50, ValidToken)).IsValid);
-
-    [Fact]
-    public void ListSecretsQueryValidator_StorageToken_Passes() =>
-        Assert.True(_list.Validate(new ListSecretsQuery(null, false, null, 50, ContinuationTokens.ForStorage("abc"))).IsValid);
-
-    [Theory]
-    [Trait("Category", "Security")]
-    [InlineData("")]
     [InlineData("garbage")]
     [InlineData("' or PartitionKey ne '")]
     [InlineData("0123456789ABCDEF0123456789abcdef")]

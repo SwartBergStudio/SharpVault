@@ -40,11 +40,4 @@ public static class SharingEnumMap
         ShareItemKind.Folder => SharedItemKindDto.Folder,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
-
-    public static ShareItemKind ToDomain(SharedItemKindDto kind) => kind switch
-    {
-        SharedItemKindDto.Secret => ShareItemKind.Secret,
-        SharedItemKindDto.Folder => ShareItemKind.Folder,
-        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
-    };
 }

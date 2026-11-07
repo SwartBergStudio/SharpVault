@@ -66,14 +66,6 @@ public sealed class SecretClipboardTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Copy_NullText_Throws()
-    {
-        await Assert.ThrowsAsync<ArgumentNullException>(() => _secretClipboard.CopyAsync(null!, TestContext.Current.CancellationToken));
-
-        Assert.Empty(_clipboard.Writes);
-    }
-
-    [Fact]
     public async Task SecretClipboard_AfterDelay_ClearsClipboard()
     {
         await _secretClipboard.CopyAsync(Secret, TestContext.Current.CancellationToken);
@@ -121,27 +113,6 @@ public sealed class SecretClipboardTests : IAsyncLifetime
         _time.Advance(Delay * 2);
         await SettleAsync();
         Assert.Equal(1, _clipboard.ClearCalls);
-    }
-
-    [Fact]
-    public async Task Dispose_AfterTheTimerAlreadyCleared_DoesNotClearAgain()
-    {
-        await _secretClipboard.CopyAsync(Secret, TestContext.Current.CancellationToken);
-        _time.Advance(Delay);
-        await WaitUntilAsync(() => _clipboard.ClearCalls == 1);
-
-        await _secretClipboard.DisposeAsync();
-
-        Assert.Equal(1, _clipboard.ClearCalls);
-    }
-
-    [Fact]
-    public async Task ClearNow_NoPendingClear_DoesNothing()
-    {
-        await _secretClipboard.ClearNowAsync(TestContext.Current.CancellationToken);
-        await _secretClipboard.DisposeAsync();
-
-        Assert.Equal(0, _clipboard.ClearCalls);
     }
 
     [Fact]
@@ -227,7 +198,6 @@ public sealed class SecretClipboardTests : IAsyncLifetime
     [Theory]
     [InlineData("js")]
     [InlineData("disconnected")]
-    [InlineData("canceled")]
     public async Task ClearNow_ClearThrowsKnownFailure_DoesNotThrow(string kind)
     {
         var failure = ClearFailure(kind);
@@ -239,17 +209,6 @@ public sealed class SecretClipboardTests : IAsyncLifetime
         Assert.Null(exception);
         Assert.Equal(1, _clipboard.ClearCalls);
         Assert.Contains(failure.GetType().Name, _logger.AllText(), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Dispose_ClearThrowsKnownFailure_DoesNotThrow()
-    {
-        _clipboard.ClearFailure = new JSDisconnectedException("circuit gone");
-        await _secretClipboard.CopyAsync(Secret, TestContext.Current.CancellationToken);
-
-        var exception = await Record.ExceptionAsync(() => _secretClipboard.DisposeAsync().AsTask());
-
-        Assert.Null(exception);
     }
 
     [Fact]

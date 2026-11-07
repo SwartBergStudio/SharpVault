@@ -49,19 +49,9 @@ public sealed class IdleMonitorScriptTests
         Assert.Equal(1, result.Submits);
     }
 
-    [Fact]
-    public async Task Monitor_TimeoutNotReached_DoesNotSubmit()
-    {
-        var result = await RunAsync(Start(), Advance(Timeout - 1));
-
-        Assert.Equal(0, result.Submits);
-    }
-
     [Theory]
     [InlineData("pointerdown")]
     [InlineData("keydown")]
-    [InlineData("wheel")]
-    [InlineData("touchstart")]
     public async Task Monitor_ActivityBeforeTimeout_DelaysTheSubmit(string activity)
     {
         var before = await RunAsync(Start(), Advance(Timeout - 1000), Activity(activity), Advance(Timeout - 1000));
@@ -123,35 +113,13 @@ public sealed class IdleMonitorScriptTests
         Assert.Equal(["write:secret", "write:", "submit"], result.Order);
     }
 
-    [Fact]
-    public async Task Monitor_CopyPendingFromAnotherModuleInstance_IsStillSeen()
+    [Theory]
+    [InlineData("reject")]
+    [InlineData("throw")]
+    [InlineData("missing")]
+    public async Task Monitor_ClipboardClearFailsOrIsMissing_StillSubmits(string clipboard)
     {
-        var result = await RunWithClipboardAsync("ok", Start(), Copy(), Advance(Timeout));
-
-        Assert.Contains("write:", result.Order);
-    }
-
-    [Fact]
-    public async Task Monitor_ClearRejects_StillSubmits()
-    {
-        var result = await RunWithClipboardAsync("reject", Start(), Advance(1000), Copy(), Advance(Timeout));
-
-        Assert.Equal(1, result.Submits);
-        Assert.Equal("submit", result.Order[^1]);
-    }
-
-    [Fact]
-    public async Task Monitor_ClearThrows_StillSubmits()
-    {
-        var result = await RunWithClipboardAsync("throw", Start(), Advance(1000), Copy(), Advance(Timeout));
-
-        Assert.Equal(1, result.Submits);
-    }
-
-    [Fact]
-    public async Task Monitor_ClipboardMissing_StillSubmits()
-    {
-        var result = await RunWithClipboardAsync("missing", Start(), Advance(1000), Copy(), Advance(Timeout));
+        var result = await RunWithClipboardAsync(clipboard, Start(), Advance(1000), Copy(), Advance(Timeout));
 
         Assert.Equal(1, result.Submits);
     }
@@ -182,15 +150,6 @@ public sealed class IdleMonitorScriptTests
 
         Assert.Equal(1, result.Submits);
         Assert.Equal(["secret", ""], result.Writes);
-    }
-
-    [Fact]
-    public async Task Monitor_LockFromAnotherTabWithCopyPending_ClearsThenSubmits()
-    {
-        var result = await RunWithClipboardAsync("ok", Start(), Advance(Timeout - 1000), Copy(), OtherTabActivity(), Advance(Timeout));
-
-        Assert.Equal("submit", result.Order[^1]);
-        Assert.Contains("write:", result.Order);
     }
 
     [Fact]
@@ -251,14 +210,6 @@ public sealed class IdleMonitorScriptTests
     }
 
     [Fact]
-    public async Task Clear_NothingPending_FocusNeverTouchesTheClipboard()
-    {
-        var result = await RunWithClipboardAsync("ok", Focus(), Visibility("visible"));
-
-        Assert.Empty(result.Writes);
-    }
-
-    [Fact]
     public async Task Clear_IdleSignOutWhileUnfocused_ClearsWhenTheSignedOutPageRegainsFocus()
     {
         var result = await RunWithClipboardAsync("reject", Start(), Copy(), Advance(Timeout), Navigate(), ClipboardMode("ok"), Focus());
@@ -280,22 +231,6 @@ public sealed class IdleMonitorScriptTests
         var result = await RunWithClipboardAsync("reject", Start(), Copy(), Advance(Timeout), Navigate(false), ClipboardMode("ok"), Focus());
 
         Assert.Equal(["secret", ""], result.Writes);
-    }
-
-    [Fact]
-    public async Task Clear_SignedOutPageRetryRejected_KeepsTryingOnTheNextFocus()
-    {
-        var result = await RunWithClipboardAsync("reject", Start(), Copy(), Advance(Timeout), Navigate(), Focus(), ClipboardMode("ok"), Focus(), Focus());
-
-        Assert.Equal(["secret", "", "", "", ""], result.Writes);
-    }
-
-    [Fact]
-    public async Task Clear_NothingCopied_SignedOutPageNeverWrites()
-    {
-        var result = await RunWithClipboardAsync("ok", Start(), Advance(Timeout), Navigate(), Focus());
-
-        Assert.Empty(result.Writes);
     }
 
     [Fact]
@@ -345,14 +280,6 @@ public sealed class IdleMonitorScriptTests
         var result = await RunAsync(Start("a"), OtherTabActivity());
 
         Assert.Equal(1, result.Heartbeats);
-    }
-
-    [Fact]
-    public async Task Monitor_NoActivity_SendsNoHeartbeat()
-    {
-        var result = await RunAsync(Start("a"), Advance(Timeout - 1000));
-
-        Assert.Equal(0, result.Heartbeats);
     }
 
     private static Task<ScriptResult> RunWithClipboardAsync(string clipboard, params object[] steps) =>

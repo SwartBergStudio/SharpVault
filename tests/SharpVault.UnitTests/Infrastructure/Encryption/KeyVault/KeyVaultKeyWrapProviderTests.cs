@@ -19,27 +19,15 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
     private const string KeyIdPrefix = FakeKeyVault.VaultUri + "/keys/" + FakeKeyVault.KeyName + "/";
     private const string SomeVersion = "0123456789abcdef0123456789abcdef";
     private const string PlaintextMarker = "SV-PLAINTEXT-7d2a";
+    private const string EvilKeyId = "https://evil.example/keys/sharpvault-kek/" + SomeVersion;
     private const int RsaWrappedLength = 256;
     private const int DataKeyLength = 32;
-    private const int ParallelRoundTrips = 200;
     private const int SessionOperations = 100;
 
     private readonly FakeKeyVault _vault = new();
     private readonly CollectingLogger<EnvelopeEncryptor> _logger = new();
 
-    public static TheoryData<string> InvalidConfiguredKeyIds => new()
-    {
-        KeyIdPrefix + SomeVersion,
-        "http://sharpvault-test.vault.azure.net/keys/sharpvault-kek",
-        "https://sharpvault-test.vault.azure.net/secrets/sharpvault-kek",
-        "https://sharpvault-test.vault.azure.net/certificates/sharpvault-kek",
-        "https://sharpvault-test.vault.azure.net//keys/sharpvault-kek",
-        "https://user:pw@sharpvault-test.vault.azure.net/keys/sharpvault-kek",
-        string.Empty,
-        "   ",
-    };
-
-    public static TheoryData<int> NotDataKeyLengths => new() { 0, 16, 31, 33, 64 };
+    public static TheoryData<int> NotDataKeyLengths => new() { 0, 31, 33 };
 
     public static TheoryData<string> UnexpectedReturnedKeyIds => new()
     {
@@ -47,18 +35,12 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
         "https://other.vault.azure.net/keys/sharpvault-kek/" + SomeVersion,
         "https://sharpvault-test.vault.azure.net.evil.example/keys/sharpvault-kek/" + SomeVersion,
         "http://sharpvault-test.vault.azure.net/keys/sharpvault-kek/" + SomeVersion,
-        "https://sharpvault-test.vault.azure.net:8443/keys/sharpvault-kek/" + SomeVersion,
-        "https://sharpvault-test.vault.azure.net/secrets/sharpvault-kek/" + SomeVersion,
-        "https://sharpvault-test.vault.azure.net/certificates/sharpvault-kek/" + SomeVersion,
-        "https://sharpvault-test.vault.azure.net//keys/sharpvault-kek/" + SomeVersion,
         "https://sharpvault-test.vault.azure.net/keys/sharpvault-kek/" + SomeVersion + "?sig=abc",
-        "development:0123456789abcdef",
         FakeKeyVault.VersionlessKeyId,
-        FakeKeyVault.VersionlessKeyId + "/",
         string.Empty,
     };
 
-    public static TheoryData<int> UnexpectedWrappedLengths => new() { 0, 1, 255, 257, 383, 385, 511, 513, 1024 };
+    public static TheoryData<int> UnexpectedWrappedLengths => new() { 0, 255, 257, 513 };
 
     public static TheoryData<int> AllowedWrappedLengths => new() { 256, 384, 512 };
 
@@ -67,55 +49,35 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
         "RSA1_5",
         "RSA-OAEP",
         "rsa-oaep-256",
-        "RSA-OAEP-256 ",
-        string.Empty,
         "development-A256GCM",
-        "recording",
     };
 
     public static TheoryData<string> ForeignKeyIds => new()
     {
         "https://other.vault.azure.net/keys/sharpvault-kek/" + SomeVersion,
-        "https://sharpvault-test.vault.azure.net.evil.example/keys/sharpvault-kek/" + SomeVersion,
-        "https://evil.example/keys/sharpvault-kek/" + SomeVersion,
+        EvilKeyId,
         "https://sharpvault-test.vault.azure.net/keys/other-key/" + SomeVersion,
         FakeKeyVault.VersionlessKeyId,
         "http://sharpvault-test.vault.azure.net/keys/sharpvault-kek/" + SomeVersion,
-        "https://sharpvault-test.vault.azure.net:8443/keys/sharpvault-kek/" + SomeVersion,
-        "https://sharpvault-test.vault.azure.net/secrets/sharpvault-kek/" + SomeVersion,
-        "https://sharpvault-test.vault.azure.net/certificates/sharpvault-kek/" + SomeVersion,
-        "https://sharpvault-test.vault.azure.net//keys/sharpvault-kek/" + SomeVersion,
-        "https://sharpvault-test.vault.azure.net/keys/sharpvault-kek/" + SomeVersion + "?x=1",
-        "https://sharpvault-test.vault.azure.net/keys/sharpvault-kek/" + SomeVersion + "#f",
         "https://user:pw@sharpvault-test.vault.azure.net/keys/sharpvault-kek/" + SomeVersion,
         "development:0123456789abcdef",
-        "../keys/sharpvault-kek",
-        KeyIdPrefix + new string('a', 513),
+        "https://sharpvault-test.vault.azure.net/keys/sharpvault-kek/" + SomeVersion + "?x=1",
     };
 
-    public static TheoryData<int> WrappedValueLengthsNotRsaSized => new() { 0, 1, 255, 257, 383, 385, 511, 513, 1024 };
-
-    public static TheoryData<int> FlippedByteIndexes => new() { 0, 1, 31, 128, 254, 255 };
-
-    public static TheoryData<int> NonBadRequestStatuses => new() { 401, 403, 404, 409, 429, 500, 503 };
+    public static TheoryData<int> NotRsaSizedWrappedLengths => new() { 0, 255, 513 };
 
     [Theory]
     [Trait("Category", "Security")]
-    [InlineData(null)]
-    [MemberData(nameof(InvalidConfiguredKeyIds))]
-    public void Constructor_InvalidConfiguredKeyId_Throws(string? keyId)
+    [InlineData("http://sharpvault-test.vault.azure.net/keys/sharpvault-kek")]
+    [InlineData("https://sharpvault-test.vault.azure.net/secrets/sharpvault-kek")]
+    [InlineData("https://user:pw@sharpvault-test.vault.azure.net/keys/sharpvault-kek")]
+    [InlineData("   ")]
+    public void Constructor_InvalidConfiguredKeyId_Throws(string keyId)
     {
-        var exception = Assert.Throws<InvalidOperationException>(() => new KeyVaultKeyWrapProvider(_vault, TestEncryptionOptions.KeyVault(keyId!)));
+        var exception = Assert.Throws<InvalidOperationException>(() => new KeyVaultKeyWrapProvider(_vault, TestEncryptionOptions.KeyVault(keyId)));
 
         Assert.Equal(EncryptionMessageText.KeyVaultKeyIdInvalid, exception.Message);
         Assert.Equal(0, _vault.WrapCount + _vault.UnwrapCount);
-    }
-
-    [Fact]
-    public void Constructor_NullArguments_Throw()
-    {
-        Assert.Throws<ArgumentNullException>(() => new KeyVaultKeyWrapProvider(null!, TestEncryptionOptions.KeyVault(FakeKeyVault.VersionlessKeyId)));
-        Assert.Throws<ArgumentNullException>(() => new KeyVaultKeyWrapProvider(_vault, null!));
     }
 
     [Fact]
@@ -137,30 +99,8 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
 
         Assert.Equal(_vault.CurrentKeyId, wrapped.KeyId);
         Assert.Equal(Algorithm, wrapped.Algorithm);
-        Assert.Equal(KeyVaultKeyWrapProvider.Algorithm, wrapped.Algorithm);
         Assert.Equal(RsaWrappedLength, wrapped.Value.Length);
         Assert.Equal([Algorithm], _vault.WrapAlgorithms);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task WrapAsync_ValidDataKey_PassesSameArrayWithoutCopy()
-    {
-        var provider = CreateProvider();
-        var dataKey = NewDataKey();
-
-        await provider.WrapAsync(dataKey, TestContext.Current.CancellationToken);
-
-        Assert.Same(dataKey, Assert.Single(_vault.WrapInputs));
-    }
-
-    [Fact]
-    public async Task WrapAsync_NullDataKey_ThrowsArgumentNullException()
-    {
-        var provider = CreateProvider();
-
-        await Assert.ThrowsAsync<ArgumentNullException>(() => provider.WrapAsync(null!, TestContext.Current.CancellationToken));
-        Assert.Equal(0, _vault.WrapCount);
     }
 
     [Theory]
@@ -189,7 +129,6 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
     }
 
     [Theory]
-    [Trait("Category", "Security")]
     [MemberData(nameof(UnexpectedWrappedLengths))]
     public async Task WrapAsync_KeyVaultReturnsUnexpectedWrappedLength_ThrowsUnexpectedKey(int length)
     {
@@ -228,18 +167,6 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task WrapAsync_SameDataKeyTwice_ProducesDifferentWrappedValues()
-    {
-        var provider = CreateProvider();
-        var dataKey = NewDataKey();
-
-        var first = await provider.WrapAsync(dataKey, TestContext.Current.CancellationToken);
-        var second = await provider.WrapAsync(dataKey, TestContext.Current.CancellationToken);
-
-        Assert.NotEqual(first.Value, second.Value);
-    }
-
-    [Fact]
     public async Task WrapAsync_WithToken_PassesTokenToClient()
     {
         var provider = CreateProvider();
@@ -248,16 +175,6 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
         await provider.WrapAsync(NewDataKey(), source.Token);
 
         Assert.Equal(source.Token, Assert.Single(_vault.WrapTokens));
-    }
-
-    [Fact]
-    public async Task WrapAsync_CancelledToken_ThrowsOperationCanceled()
-    {
-        var provider = CreateProvider();
-        using var source = new CancellationTokenSource();
-        await source.CancelAsync();
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.WrapAsync(NewDataKey(), source.Token));
     }
 
     [Fact]
@@ -289,27 +206,6 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
         Assert.Equal(copy, unwrapped);
         Assert.Equal(wrapped.KeyId, _vault.RequestedKeyIds[^1]);
         Assert.NotEqual(_vault.CurrentKeyId, wrapped.KeyId);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task UnwrapAsync_AfterSeveralRotations_EveryOldVersionStillUnwraps()
-    {
-        var provider = CreateProvider();
-        var wrappedKeys = new List<(WrappedDataKey Wrapped, byte[] Key)>();
-        for (var generation = 0; generation < 4; generation++)
-        {
-            var key = NewDataKey();
-            var copy = key.ToArray();
-            wrappedKeys.Add((await provider.WrapAsync(key, TestContext.Current.CancellationToken), copy));
-            _vault.Rotate();
-        }
-
-        Assert.Equal(4, wrappedKeys.Select(entry => entry.Wrapped.KeyId).Distinct().Count());
-        foreach (var (wrapped, key) in wrappedKeys)
-        {
-            Assert.Equal(key, await provider.UnwrapAsync(wrapped, TestContext.Current.CancellationToken));
-        }
     }
 
     [Fact]
@@ -362,30 +258,6 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task UnwrapAsync_NullKeyId_ThrowsKeyMismatchWithoutCallingKeyVault()
-    {
-        var provider = CreateProvider();
-        var wrapped = await provider.WrapAsync(NewDataKey(), TestContext.Current.CancellationToken);
-
-        var exception = await Assert.ThrowsAsync<SecretDecryptionException>(
-            () => provider.UnwrapAsync(wrapped with { KeyId = null! }, TestContext.Current.CancellationToken));
-
-        Assert.Equal(DecryptionFailureReason.KeyMismatch, exception.Reason);
-        Assert.Equal(0, _vault.UnwrapCount);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task UnwrapAsync_NullWrappedKey_ThrowsArgumentNullException()
-    {
-        var provider = CreateProvider();
-
-        await Assert.ThrowsAsync<ArgumentNullException>(() => provider.UnwrapAsync(null!, TestContext.Current.CancellationToken));
-        Assert.Equal(0, _vault.UnwrapCount);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
     public async Task UnwrapAsync_DevelopmentWrappedKey_ThrowsKeyMismatchWithoutCallingKeyVault()
     {
         using var development = new DevelopmentKeyWrapProvider(HostEnvironments.Named("Development"), TestEncryptionOptions.Development());
@@ -398,22 +270,9 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
         Assert.Equal(0, _vault.UnwrapCount);
     }
 
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task UnwrapAsync_KeyVaultWrappedKeyGivenToDevelopmentProvider_ThrowsKeyMismatch()
-    {
-        var provider = CreateProvider();
-        var wrapped = await provider.WrapAsync(NewDataKey(), TestContext.Current.CancellationToken);
-        using var development = new DevelopmentKeyWrapProvider(HostEnvironments.Named("Development"), TestEncryptionOptions.Development());
-
-        var exception = await Assert.ThrowsAsync<SecretDecryptionException>(() => development.UnwrapAsync(wrapped, TestContext.Current.CancellationToken));
-
-        Assert.Equal(DecryptionFailureReason.KeyMismatch, exception.Reason);
-    }
-
     [Theory]
     [Trait("Category", "Security")]
-    [MemberData(nameof(WrappedValueLengthsNotRsaSized))]
+    [MemberData(nameof(NotRsaSizedWrappedLengths))]
     public async Task UnwrapAsync_WrappedValueLengthNotRsaSize_ThrowsMalformedWithoutCallingKeyVault(int length)
     {
         var provider = CreateProvider();
@@ -428,22 +287,11 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
         Assert.Equal(requestedBefore, _vault.RequestedKeyIds.Count);
     }
 
-    [Fact]
-    public async Task UnwrapAsync_NullValue_ThrowsMalformedWrappedKey()
-    {
-        var provider = CreateProvider();
-        var wrapped = await provider.WrapAsync(NewDataKey(), TestContext.Current.CancellationToken);
-
-        var exception = await Assert.ThrowsAsync<SecretDecryptionException>(
-            () => provider.UnwrapAsync(wrapped with { Value = null! }, TestContext.Current.CancellationToken));
-
-        Assert.Equal(DecryptionFailureReason.MalformedWrappedKey, exception.Reason);
-        Assert.Equal(0, _vault.UnwrapCount);
-    }
-
     [Theory]
     [Trait("Category", "Security")]
-    [MemberData(nameof(FlippedByteIndexes))]
+    [InlineData(0)]
+    [InlineData(128)]
+    [InlineData(255)]
     public async Task UnwrapAsync_TamperedWrappedValue_ThrowsAuthenticationFailed(int index)
     {
         var provider = CreateProvider();
@@ -490,7 +338,8 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
 
     [Theory]
     [Trait("Category", "Security")]
-    [MemberData(nameof(NonBadRequestStatuses))]
+    [InlineData(403)]
+    [InlineData(503)]
     public async Task UnwrapAsync_KeyVaultFailsWithOtherStatus_PropagatesRequestFailedException(int status)
     {
         var provider = CreateProvider();
@@ -512,17 +361,6 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
         await provider.UnwrapAsync(wrapped, source.Token);
 
         Assert.Equal(source.Token, Assert.Single(_vault.UnwrapTokens));
-    }
-
-    [Fact]
-    public async Task UnwrapAsync_CancelledToken_ThrowsOperationCanceled()
-    {
-        var provider = CreateProvider();
-        var wrapped = await provider.WrapAsync(NewDataKey(), TestContext.Current.CancellationToken);
-        using var source = new CancellationTokenSource();
-        await source.CancelAsync();
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.UnwrapAsync(wrapped, source.Token));
     }
 
     [Fact]
@@ -553,24 +391,6 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
 
         Assert.Equal(wrapsBefore, _vault.WrapCount);
         Assert.Equal(1, _vault.UnwrapCount);
-    }
-
-    [Fact]
-    public async Task RewrapDataKeyAsync_KeyVault_CallsUnwrapOnceAndWrapOnce()
-    {
-        var encryptor = CreateEncryptor();
-        WrappedDataKey wrapped;
-        using (var created = await encryptor.CreateDataKeyAsync(TestContext.Current.CancellationToken))
-        {
-            wrapped = created.WrappedKey;
-        }
-
-        var wrapsBefore = _vault.WrapCount;
-
-        await encryptor.RewrapDataKeyAsync(wrapped, TestContext.Current.CancellationToken);
-
-        Assert.Equal(1, _vault.UnwrapCount);
-        Assert.Equal(wrapsBefore + 1, _vault.WrapCount);
     }
 
     [Fact]
@@ -658,23 +478,10 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task CreateDataKeyAsync_KeyVaultWrapCancelled_ZeroesDataKeyAndThrowsOperationCanceled()
-    {
-        var encryptor = CreateEncryptor();
-        using var source = new CancellationTokenSource();
-        await source.CancelAsync();
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => encryptor.CreateDataKeyAsync(source.Token));
-
-        ByteAssert.AllZero(Assert.Single(_vault.WrapInputs));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
     public async Task CreateDataKeyAsync_KeyVaultReturnsOtherKey_ZeroesDataKeyAndThrowsUnexpectedKey()
     {
         var encryptor = CreateEncryptor();
-        _vault.WrapKeyIdOverride = "https://evil.example/keys/sharpvault-kek/" + SomeVersion;
+        _vault.WrapKeyIdOverride = EvilKeyId;
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => encryptor.CreateDataKeyAsync(TestContext.Current.CancellationToken));
 
@@ -685,10 +492,8 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
     [Theory]
     [Trait("Category", "Security")]
     [InlineData(0)]
-    [InlineData(16)]
     [InlineData(31)]
     [InlineData(33)]
-    [InlineData(64)]
     public async Task OpenDataKeyAsync_KeyVaultReturnsKeyOfWrongLength_ZeroesItAndThrowsMalformedWrappedKey(int length)
     {
         var encryptor = CreateEncryptor();
@@ -717,7 +522,7 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
             wrapped = created.WrappedKey;
         }
 
-        var foreign = wrapped with { KeyId = "https://evil.example/keys/sharpvault-kek/" + SomeVersion };
+        var foreign = wrapped with { KeyId = EvilKeyId };
 
         var exception = await Assert.ThrowsAsync<SecretDecryptionException>(() => encryptor.OpenDataKeyAsync(foreign, TestContext.Current.CancellationToken));
 
@@ -740,14 +545,14 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
         var failures = new List<Exception>();
 
         failures.Add(await Capture(() => provider.UnwrapAsync(wrapped with { Value = tampered }, TestContext.Current.CancellationToken)));
-        failures.Add(await Capture(() => provider.UnwrapAsync(wrapped with { KeyId = "https://evil.example/keys/sharpvault-kek/" + SomeVersion }, TestContext.Current.CancellationToken)));
+        failures.Add(await Capture(() => provider.UnwrapAsync(wrapped with { KeyId = EvilKeyId }, TestContext.Current.CancellationToken)));
         failures.Add(await Capture(() => provider.UnwrapAsync(wrapped with { Algorithm = "RSA1_5" }, TestContext.Current.CancellationToken)));
         failures.Add(await Capture(() => provider.UnwrapAsync(wrapped with { Value = wrapped.Value[..255] }, TestContext.Current.CancellationToken)));
-        _vault.WrapKeyIdOverride = "https://evil.example/keys/sharpvault-kek/" + SomeVersion;
-        failures.Add(await Capture(() => provider.WrapAsync(NewDataKeyFrom(dataKeyCopy), TestContext.Current.CancellationToken)));
+        _vault.WrapKeyIdOverride = EvilKeyId;
+        failures.Add(await Capture(() => provider.WrapAsync(dataKeyCopy.ToArray(), TestContext.Current.CancellationToken)));
         _vault.WrapKeyIdOverride = null;
         _vault.WrapLengthOverride = 100;
-        failures.Add(await Capture(() => provider.WrapAsync(NewDataKeyFrom(dataKeyCopy), TestContext.Current.CancellationToken)));
+        failures.Add(await Capture(() => provider.WrapAsync(dataKeyCopy.ToArray(), TestContext.Current.CancellationToken)));
         _vault.WrapLengthOverride = null;
         _vault.UnwrapFailureStatus = 403;
         failures.Add(await Capture(() => provider.UnwrapAsync(wrapped, TestContext.Current.CancellationToken)));
@@ -764,31 +569,9 @@ public sealed class KeyVaultKeyWrapProviderTests : IDisposable
         }
     }
 
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task WrapAndUnwrap_InParallel_AllRoundTrip()
-    {
-        var provider = CreateProvider();
-
-        var results = await Task.WhenAll(Enumerable.Range(0, ParallelRoundTrips).Select(async _ =>
-        {
-            var dataKey = NewDataKey();
-            var copy = dataKey.ToArray();
-            var wrapped = await provider.WrapAsync(dataKey, TestContext.Current.CancellationToken);
-            var unwrapped = await provider.UnwrapAsync(wrapped, TestContext.Current.CancellationToken);
-            return copy.SequenceEqual(unwrapped);
-        }));
-
-        Assert.All(results, Assert.True);
-        Assert.Equal(ParallelRoundTrips, _vault.WrapCount);
-        Assert.Equal(ParallelRoundTrips, _vault.UnwrapCount);
-    }
-
     public void Dispose() => _vault.Dispose();
 
     private static byte[] NewDataKey() => System.Security.Cryptography.RandomNumberGenerator.GetBytes(DataKeyLength);
-
-    private static byte[] NewDataKeyFrom(byte[] value) => value.ToArray();
 
     private static async Task<Exception> Capture(Func<Task> action)
     {

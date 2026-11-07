@@ -62,7 +62,7 @@ public sealed class AdminJourneyTests(E2EHost host)
         await adminUsers.StartTransferAsync(E2EAccounts.UserOneId);
         var transfers = new TransfersPage(adminOnePage, host.WebUrl);
         await transfers.RequestAsync(E2EAccounts.UserTwo, TransferReasonPrefix + suffix + ".");
-        await adminOnePage.WaitForURLAsync(TransferDetailUrl, new() { Timeout = PageObject.TimeoutMilliseconds });
+        await PageObject.WaitForUrlAsync(adminOnePage, TransferDetailUrl.IsMatch, "a transfer detail URL");
         var transferUrl = adminOnePage.Url;
 
         await adminTwoPage.GotoAsync(transferUrl);

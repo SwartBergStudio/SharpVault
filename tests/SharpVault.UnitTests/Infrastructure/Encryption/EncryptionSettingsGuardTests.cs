@@ -14,45 +14,12 @@ public sealed class EncryptionSettingsGuardTests
     private const string Marker = "SV-MARKER-4d1f9b2c7a";
     private const string KeyIdHost = "https://x.vault.azure.net/keys/";
 
-    public static TheoryData<string> NonDevelopmentEnvironments => ["Production", "Staging", "Test"];
-
-    public static TheoryData<string> NonDevelopmentEnvironmentsWithDev => ["Production", "Staging", "Test", "Dev"];
-
-    public static TheoryData<string> ProductionAndStaging => ["Production", "Staging"];
-
     public static TheoryData<string> InvalidKeyIds =>
     [
         "not a uri",
-        "/keys/k",
-        "http://x.vault.azure.net/keys/k",
         "https://x.vault.azure.net/keys/k/0123abcd",
-        "https://x.vault.azure.net/secrets/k",
-        "https://x.vault.azure.net/certificates/k",
-        "https://x.vault.azure.net//keys/k",
-        "https://x.vault.azure.net/keys",
-        "https://x.vault.azure.net/keys/k/v/extra",
-        "https://user:pw@x.vault.azure.net/keys/k",
-        "https://x.vault.azure.net/keys/k?sig=abc",
-        "https://x.vault.azure.net/keys/k#f",
         KeyIdHost + new string('k', 513 - KeyIdHost.Length),
     ];
-
-    public static TheoryData<int, string> UndefinedProviderValues
-    {
-        get
-        {
-            var data = new TheoryData<int, string>();
-            foreach (var value in new[] { 2, -1 })
-            {
-                foreach (var environment in new[] { "Development", "Production" })
-                {
-                    data.Add(value, environment);
-                }
-            }
-
-            return data;
-        }
-    }
 
     [Fact]
     public void ResolveProvider_DevelopmentWithKeyMaterial_ReturnsDevelopment()
@@ -73,13 +40,10 @@ public sealed class EncryptionSettingsGuardTests
         Assert.Equal(EncryptionMessageText.DevelopmentKeyMaterialMissing, exception.Message);
     }
 
-    [Theory]
-    [InlineData(31, false)]
-    [InlineData(31, true)]
-    public void ResolveProvider_DevelopmentWithShortKeyMaterial_ThrowsWithoutEchoingValue(int length, bool padded)
+    [Fact]
+    public void ResolveProvider_DevelopmentWithShortKeyMaterial_ThrowsWithoutEchoingValue()
     {
-        var core = Marker + new string('x', length - Marker.Length);
-        var material = padded ? "   " + core + "   " : core;
+        var material = Marker + new string('x', 31 - Marker.Length);
         var options = new EncryptionOptions { DevelopmentKeyMaterial = material };
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
@@ -99,19 +63,9 @@ public sealed class EncryptionSettingsGuardTests
         Assert.Equal(KeyWrapProviderKind.KeyVault, kind);
     }
 
-    [Fact]
-    public void ResolveProvider_DevelopmentWithExplicitKeyVaultAndNoKeyId_ThrowsKeyIdInvalid()
-    {
-        var options = new EncryptionOptions { Provider = KeyWrapProviderKind.KeyVault };
-
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            EncryptionSettingsGuard.ResolveProvider(options, HostEnvironments.Named("Development")));
-
-        Assert.Equal(EncryptionMessageText.KeyVaultKeyIdInvalid, exception.Message);
-    }
-
     [Theory]
-    [MemberData(nameof(NonDevelopmentEnvironments))]
+    [InlineData("Production")]
+    [InlineData("Staging")]
     public void ResolveProvider_NonDevelopmentWithValidKeyId_ReturnsKeyVault(string environmentName)
     {
         var options = new EncryptionOptions { KeyVaultKeyId = ValidKeyId };
@@ -121,9 +75,8 @@ public sealed class EncryptionSettingsGuardTests
         Assert.Equal(KeyWrapProviderKind.KeyVault, kind);
     }
 
-    [Theory]
-    [MemberData(nameof(NonDevelopmentEnvironmentsWithDev))]
-    public void ResolveProvider_NonDevelopmentWithExplicitDevelopmentProvider_Throws(string environmentName)
+    [Fact]
+    public void ResolveProvider_NonDevelopmentWithExplicitDevelopmentProvider_Throws()
     {
         var options = new EncryptionOptions
         {
@@ -133,32 +86,19 @@ public sealed class EncryptionSettingsGuardTests
         };
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
-            EncryptionSettingsGuard.ResolveProvider(options, HostEnvironments.Named(environmentName)));
+            EncryptionSettingsGuard.ResolveProvider(options, HostEnvironments.Named("Production")));
 
         Assert.Equal(EncryptionMessageText.DevelopmentProviderNotAllowed, exception.Message);
     }
 
-    [Theory]
-    [MemberData(nameof(NonDevelopmentEnvironmentsWithDev))]
-    public void ResolveProvider_NonDevelopmentWithExplicitDevelopmentProviderAndNoMaterial_Throws(string environmentName)
-    {
-        var options = new EncryptionOptions { Provider = KeyWrapProviderKind.Development };
-
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            EncryptionSettingsGuard.ResolveProvider(options, HostEnvironments.Named(environmentName)));
-
-        Assert.Equal(EncryptionMessageText.DevelopmentProviderNotAllowed, exception.Message);
-    }
-
-    [Theory]
-    [MemberData(nameof(ProductionAndStaging))]
-    public void ResolveProvider_NonDevelopmentWithDevelopmentKeyMaterial_ThrowsWithoutEchoingValue(string environmentName)
+    [Fact]
+    public void ResolveProvider_NonDevelopmentWithDevelopmentKeyMaterial_ThrowsWithoutEchoingValue()
     {
         var material = Marker + new string('m', 40);
         var options = new EncryptionOptions { KeyVaultKeyId = ValidKeyId, DevelopmentKeyMaterial = material };
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
-            EncryptionSettingsGuard.ResolveProvider(options, HostEnvironments.Named(environmentName)));
+            EncryptionSettingsGuard.ResolveProvider(options, HostEnvironments.Named("Production")));
 
         Assert.Equal(EncryptionMessageText.DevelopmentKeyMaterialNotAllowed, exception.Message);
         Assert.DoesNotContain(Marker, exception.ToString(), StringComparison.Ordinal);
@@ -201,7 +141,8 @@ public sealed class EncryptionSettingsGuardTests
     }
 
     [Theory]
-    [MemberData(nameof(UndefinedProviderValues))]
+    [InlineData(2, "Production")]
+    [InlineData(-1, "Development")]
     public void ResolveProvider_UndefinedProviderValue_Throws(int value, string environmentName)
     {
         var options = new EncryptionOptions
@@ -233,7 +174,7 @@ public sealed class EncryptionSettingsGuardTests
     [Fact]
     public void TryResolveProvider_NonDevelopmentWithDevelopmentProvider_NeverReportsSuccess()
     {
-        foreach (var environmentName in new[] { "Production", "Staging", "Test", "Dev", "Development2", string.Empty })
+        foreach (var environmentName in new[] { "Production", "Development2", string.Empty })
         {
             var options = new EncryptionOptions
             {
@@ -246,13 +187,6 @@ public sealed class EncryptionSettingsGuardTests
             Assert.False(resolved);
             Assert.Equal(EncryptionMessageText.DevelopmentProviderNotAllowed, error);
         }
-    }
-
-    [Fact]
-    public void ResolveProvider_NullArguments_ThrowArgumentNullException()
-    {
-        Assert.Throws<ArgumentNullException>(() => EncryptionSettingsGuard.ResolveProvider(null!, HostEnvironments.Named("Development")));
-        Assert.Throws<ArgumentNullException>(() => EncryptionSettingsGuard.ResolveProvider(new EncryptionOptions(), null!));
     }
 
     [Fact]

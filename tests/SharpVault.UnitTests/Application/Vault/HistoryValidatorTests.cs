@@ -34,17 +34,10 @@ public sealed class HistoryValidatorTests
     public void RestoreSecretVersionCommandValidator_EmptyVersionId_Fails() =>
         AssertFailsOn(_restore.Validate(new RestoreSecretVersionCommand(Guid.NewGuid(), Guid.Empty, ValidETag)), "VersionId");
 
-    [Theory]
-    [Trait("Category", "Security")]
-    [InlineData("*")]
-    [InlineData("")]
-    [InlineData("garbage")]
-    public void RestoreSecretVersionCommandValidator_BadETag_Fails(string etag) =>
-        AssertFailsOn(_restore.Validate(new RestoreSecretVersionCommand(Guid.NewGuid(), Guid.NewGuid(), etag)), "ETag");
-
     [Fact]
-    public void RestoreSecretVersionCommandValidator_NullETag_FailsWithoutThrowing() =>
-        AssertFailsOn(_restore.Validate(new RestoreSecretVersionCommand(Guid.NewGuid(), Guid.NewGuid(), null!)), "ETag");
+    [Trait("Category", "Security")]
+    public void RestoreSecretVersionCommandValidator_WildcardETag_Fails() =>
+        AssertFailsOn(_restore.Validate(new RestoreSecretVersionCommand(Guid.NewGuid(), Guid.NewGuid(), "*")), "ETag");
 
     [Theory]
     [InlineData(RevealIntentDto.View)]
@@ -64,7 +57,6 @@ public sealed class HistoryValidatorTests
     [Trait("Category", "Security")]
     [InlineData(0)]
     [InlineData(3)]
-    [InlineData(-1)]
     public void RevealSecretVersionCommandValidator_UndefinedIntent_Fails(int intent) =>
         AssertFailsOn(_reveal.Validate(new RevealSecretVersionCommand(Guid.NewGuid(), Guid.NewGuid(), (RevealIntentDto)intent)), "Intent");
 

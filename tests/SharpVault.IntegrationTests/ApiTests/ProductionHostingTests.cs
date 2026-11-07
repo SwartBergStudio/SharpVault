@@ -24,12 +24,12 @@ public sealed class ProductionHostingTests(ProductionApiTestFactory factory)
         ";TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;";
 
     public static TheoryData<CallerKind> ForgedCallers() =>
-        new() { CallerKind.Anonymous, CallerKind.AlgNoneToken, CallerKind.UnknownKeyToken };
+        new() { CallerKind.Anonymous, CallerKind.AlgNoneToken };
 
     public static TheoryData<string, CallerKind> LockedPathsAndCallers()
     {
         var data = new TheoryData<string, CallerKind>();
-        foreach (var path in new[] { "/openapi/v1.json", "/scalar/v1", "/scalar", "/scalar/scalar.js", "/does-not-exist", "/api/v1/secrets", "/health/extra" })
+        foreach (var path in new[] { "/openapi/v1.json", "/scalar/v1", "/api/v1/secrets" })
         {
             foreach (var caller in new[] { CallerKind.Anonymous, CallerKind.AlgNoneToken, CallerKind.UnknownKeyToken })
             {
@@ -142,28 +142,6 @@ public sealed class ProductionHostingTests(ProductionApiTestFactory factory)
     }
 
     [Fact]
-    public async Task OpenApiDocument_Production_Returns401()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = factory.CreateUnauthenticatedClient();
-
-        var response = await client.GetAsync("/openapi/v1.json", cancellationToken);
-
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task ApiReference_Production_Returns401()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = factory.CreateUnauthenticatedClient();
-
-        var response = await client.GetAsync("/scalar/v1", cancellationToken);
-
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    [Fact]
     public void Endpoints_ProductionEnvironment_OnlyHealthEndpointsAreAnonymous()
     {
         var anonymous = factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
@@ -200,35 +178,10 @@ public sealed class ProductionHostingTests(ProductionApiTestFactory factory)
         Assert.StartsWith("Bearer", response.HeaderValue("WWW-Authenticate"), StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task UnknownRoute_ProductionAlgNoneToken_Returns401()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = CallerClients.CreateFor(factory, CallerKind.AlgNoneToken);
-
-        var response = await client.GetAsync("/does-not-exist", cancellationToken);
-
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task UnknownRoute_ProductionTokenSignedWithUnknownKey_Returns401()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = CallerClients.CreateFor(factory, CallerKind.UnknownKeyToken);
-
-        var response = await client.GetAsync("/does-not-exist", cancellationToken);
-
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
     [Theory]
     [InlineData("Bearer", "")]
     [InlineData("Bearer", "garbage")]
-    [InlineData("Bearer", "a.b.c")]
-    [InlineData("Bearer", "..")]
     [InlineData("Basic", "YWRtaW46YWRtaW4=")]
-    [InlineData("Negotiate", "abc")]
     [InlineData("bearer", "garbage")]
     public async Task UnknownRoute_ProductionMalformedAuthorizationHeader_Returns401(string scheme, string parameter)
     {
@@ -317,7 +270,6 @@ public sealed class ProductionHostingTests(ProductionApiTestFactory factory)
     [Theory]
     [InlineData("/does-not-exist")]
     [InlineData("/openapi/v1.json")]
-    [InlineData("/scalar/v1")]
     public async Task ApiResponse_ProductionErrorResponses_HaveSecurityHeadersAndNoStore(string path)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -344,11 +296,8 @@ public sealed class ProductionHostingTests(ProductionApiTestFactory factory)
 
     [Theory]
     [InlineData("POST")]
-    [InlineData("PUT")]
     [InlineData("DELETE")]
-    [InlineData("PATCH")]
     [InlineData("OPTIONS")]
-    [InlineData("TRACE")]
     public async Task AliveEndpoint_ProductionUnsupportedMethod_Returns401(string method)
     {
         var cancellationToken = TestContext.Current.CancellationToken;

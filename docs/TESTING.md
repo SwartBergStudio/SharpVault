@@ -125,6 +125,8 @@ Integration tests in `ApiTests/UiApiRouteContractTests.cs` check the UI's route 
 
   In PowerShell, set the variable with `$env:SHARPVAULT_E2E_SCREENSHOT_DIR = "C:\path\to\folder"` first. Without the variable the screenshots go to `sharpvault-site-tour` in the temp folder. The tour never clicks reveal.
 
+Writing these tests: call `BringToFrontAsync` on the tab being driven when a test opens more than one, because Chrome starves a tab behind another when the CPU is busy. Wait for a URL with `PageObject.WaitForUrlAsync`, not `WaitForURLAsync`.
+
 How the host works (`Hosting/E2EHost.cs`):
 
 - It starts an Azurite container with in-memory persistence, so E2E data does not survive the run.

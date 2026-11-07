@@ -54,15 +54,13 @@ Timing differs slightly by state (one read for most states, two for a locked cre
 - **Open after lock.** The open handler reads the creator's status on every open, so a locked creator's links do not open even if the sweep is incomplete.
 - **Expiry purge.** Each link has an expiry row in an hourly partition (`e_{yyyyMMddHH}`, UTC). The purge (`OneTimeLinks:PurgeEnabled`, on by default) walks each expiry hour from its last completed run through the current hour, and deletes each expired link with its index row and expiry row. With no earlier run, it starts at the maximum lifetime plus an hour before now. It holds the lease `one-time-link-purge`. Expired links are refused on open whether or not the purge has run.
 
-## Snapshot rule: links outlive the secret
+## Snapshot rule: a link is a copy
 
-A link is a snapshot. Its contents are copied at create time and do not change. So these do not revoke an existing link:
+A link is a snapshot. Its contents are copied at create time and do not change, so an edit never reaches it. The edit page warns about the caller's own open links to that secret and offers to revoke them. It reads at most 5 pages of 100 links. It cannot see links made by other people with Manage.
 
-- editing, recycling or purging the secret,
-- transferring the secret,
-- revoking the creator's Manage grant on it.
+The open handler also checks that the secret is still live in the owner's vault. If the secret was recycled, purged or transferred away, every open gets the generic 404, for links from every creator. The link is not consumed, so it opens again if the secret is restored before the link expires. It stays on the creator's list until it expires or is revoked.
 
-The open handler checks only the creator's status. It does not check that the secret still exists. Only the creator's lock, a revoke, the link's own expiry, or an open revokes a link.
+Revoking the creator's Manage grant does not stop a link. Only the checks above, the creator's lock, a revoke, the link's own expiry, or an open do.
 
 The purge's crypto-shredding (see [ENCRYPTION.md](ENCRYPTION.md#history-and-crypto-shredding)) deletes the vault's wrapped data keys. It does not cover a link copy. The link's blob is encrypted under the link key, which the vault key ring does not wrap. A copy of a link therefore lives until it is opened, revoked or expires, whatever happens to the secret.
 
@@ -122,6 +120,6 @@ Chosen as defaults without owner review. Each can be reversed.
 - **O1. Creator notice** is in-app only, at the next load. A creator who never loads the vault or links pages is not told. There is no email or push.
 - **O2. Off by default**, with only the AppHost run mode turning it on.
 - **O3. The Web-to-API proof is a shared HMAC key.** It needs no tenant and works the same in Entra and local mode. A stolen key lets someone forge proofs with any address.
-- **O4. Links outlive the secret.** See [the snapshot rule](#snapshot-rule-links-outlive-the-secret).
+- **O4. Links stop opening once the secret leaves the vault.** Changed by the owner on 2026-11-07. See [the snapshot rule](#snapshot-rule-a-link-is-a-copy).
 - **D6. Passphrase minimum of 8 characters, in the browser only.** A shorter passphrase fails in the UI, and the server cannot enforce it.
 - **D12. AUD-4 CSV export** must neutralise formula prefixes, because the user agent is visitor-controlled text.

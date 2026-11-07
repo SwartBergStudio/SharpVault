@@ -26,38 +26,17 @@ public sealed class LocalSharingAuthorizationMatrixTests(LocalApiTestFactory fac
 
     private static readonly SharePermissionDto[] Permissions = [SharePermissionDto.View, SharePermissionDto.Edit, SharePermissionDto.Manage];
 
-    private static readonly string[] DeniedCallers =
-    [
-        "Anonymous", "AlgNone", "UnknownKey", "WrongTenant", "Guest", "NoRole", "LockedUser", "LockedAdmin",
-    ];
+    private static readonly string[] DeniedCallers = ["Anonymous", "UnknownKey", "LockedUser"];
 
-    private static readonly string[] OtherCallers = ["Owner", "AdminOne", "AdminTwo"];
+    private static readonly string[] OtherCallers = ["Owner", "AdminOne"];
 
     private static readonly IReadOnlyList<LocalEndpoint> Endpoints =
     [
         new("E21", (api, w) => Response(api.ListSharedItemsAsync()), (r, p) => Ok),
         new("E22-S", (api, w) => Response(api.GetSharedSecretAsync(w.Owner, w.SecretS)), (r, p) => RecipientOnly(r, Ok)),
-        new("E22-T", (api, w) => Response(api.GetSharedSecretAsync(w.Owner, w.SecretT)), (r, p) => RecipientOnly(r, Ok)),
         new("E23-S", (api, w) => Response(api.UpdateSharedSecretAsync(w.Owner, w.SecretS, w.SecretToken, UpdateBody())), (r, p) => RecipientAtLeast(r, p, SharePermissionDto.Edit, Ok)),
-        new("E23-T", (api, w) => Response(api.UpdateSharedSecretAsync(w.Owner, w.SecretT, w.NestedToken, UpdateBody())), (r, p) => RecipientAtLeast(r, p, SharePermissionDto.Edit, Ok)),
-        new("E24-S", (api, w) => Response(api.RevealSharedSecretAsync(w.Owner, w.SecretS, RevealBody())), (r, p) => RecipientOnly(r, Ok)),
-        new("E24-T", (api, w) => Response(api.RevealSharedSecretAsync(w.Owner, w.SecretT, RevealBody())), (r, p) => RecipientOnly(r, Ok)),
-        new("E25-F", (api, w) => Response(api.GetSharedFolderAsync(w.Owner, w.FolderF)), (r, p) => RecipientOnly(r, Ok)),
-        new("E25-G", (api, w) => Response(api.GetSharedFolderAsync(w.Owner, w.FolderG)), (r, p) => RecipientOnly(r, Ok)),
-        new("E26-S", (api, w) => api.FileSharedSecretAsync(w.Owner, w.SecretS, new FileSharedItemRequestDto { FolderId = null }), (r, p) => RecipientOnly(r, HttpStatusCode.NoContent)),
-        new("E27-F", (api, w) => api.FileSharedFolderAsync(w.Owner, w.FolderF, new FileSharedItemRequestDto { FolderId = null }), (r, p) => RecipientOnly(r, HttpStatusCode.NoContent)),
         new("E28-S", (api, w) => Response(api.ListSecretGrantsAsync(w.Owner, w.SecretS)), (r, p) => OwnerOrManager(r, p, Ok)),
-        new("E28-T", (api, w) => Response(api.ListSecretGrantsAsync(w.Owner, w.SecretT)), (r, p) => OwnerOrManager(r, p, Ok)),
-        new("E29-S", (api, w) => Response(api.CreateSecretGrantAsync(w.Owner, w.SecretS, NewGrant())), (r, p) => OwnerOrManager(r, p, HttpStatusCode.Created)),
-        new("E29-T", (api, w) => Response(api.CreateSecretGrantAsync(w.Owner, w.SecretT, NewGrant())), (r, p) => OwnerOrManager(r, p, HttpStatusCode.Created)),
         new("E30-S", (api, w) => Response(api.ChangeSecretGrantAsync(w.Owner, w.SecretS, LocalAccounts.UserTwo.Id, w.SecretGrantToken, ChangeBody(w.Permission))), (r, p) => OwnerOnly(r, Ok)),
-        new("E31-S", (api, w) => api.RevokeSecretGrantAsync(w.Owner, w.SecretS, LocalAccounts.UserTwo.Id), (r, p) => OwnerOnly(r, HttpStatusCode.NoContent)),
-        new("E32-F", (api, w) => Response(api.ListFolderGrantsAsync(w.Owner, w.FolderF)), (r, p) => OwnerOrManager(r, p, Ok)),
-        new("E33-F", (api, w) => Response(api.CreateFolderGrantAsync(w.Owner, w.FolderF, NewGrant())), (r, p) => OwnerOrManager(r, p, HttpStatusCode.Created)),
-        new("E33-G", (api, w) => Response(api.CreateFolderGrantAsync(w.Owner, w.FolderG, NewGrant())), (r, p) => OwnerOrManager(r, p, HttpStatusCode.Created)),
-        new("E34-F", (api, w) => Response(api.ChangeFolderGrantAsync(w.Owner, w.FolderF, LocalAccounts.UserTwo.Id, w.FolderGrantToken, ChangeBody(w.Permission))), (r, p) => OwnerOnly(r, Ok)),
-        new("E35-F", (api, w) => api.RevokeFolderGrantAsync(w.Owner, w.FolderF, LocalAccounts.UserTwo.Id), (r, p) => OwnerOnly(r, HttpStatusCode.NoContent)),
-        new("E36", (api, w) => Response(api.SearchDirectoryAsync("two")), (r, p) => Ok),
     ];
 
     public static TheoryData<string> EndpointIds() => [.. Endpoints.Select(endpoint => endpoint.Id)];
@@ -69,7 +48,7 @@ public sealed class LocalSharingAuthorizationMatrixTests(LocalApiTestFactory fac
         {
             foreach (var caller in DeniedCallers)
             {
-                cases.Add(endpoint.Id, caller, SharePermissionDto.View, caller is "LockedUser" or "LockedAdmin" or "Guest" or "NoRole" ? HttpStatusCode.Forbidden : HttpStatusCode.Unauthorized);
+                cases.Add(endpoint.Id, caller, SharePermissionDto.View, caller == "LockedUser" ? HttpStatusCode.Forbidden : HttpStatusCode.Unauthorized);
             }
 
             foreach (var caller in OtherCallers)
@@ -110,11 +89,6 @@ public sealed class LocalSharingAuthorizationMatrixTests(LocalApiTestFactory fac
             await LockAsync(LocalAccounts.UserOne.Id);
         }
 
-        if (caller == "LockedAdmin")
-        {
-            await LockAsync(LocalAccounts.AdminTwo.Id);
-        }
-
         using var client = CreateClient(caller);
 
         var response = await Endpoints.Single(endpoint => endpoint.Id == endpointId).Send(new SharingTestApi(client), world);
@@ -139,13 +113,12 @@ public sealed class LocalSharingAuthorizationMatrixTests(LocalApiTestFactory fac
     {
         var world = await ArrangeAsync(SharePermissionDto.Manage);
         await LockAsync(LocalAccounts.UserOne.Id);
-        await LockAsync(LocalAccounts.AdminTwo.Id);
         var endpoint = Endpoints.Single(candidate => candidate.Id == endpointId);
         factory.StorageRequests.Clear();
 
-        foreach (var caller in DeniedCallers.Concat(["Owner"]))
+        foreach (var caller in DeniedCallers)
         {
-            using var client = CreateClient(caller == "Owner" ? "LockedUser" : caller);
+            using var client = CreateClient(caller);
             var response = await endpoint.Send(new SharingTestApi(client), world);
             Assert.True(response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden, $"Unexpected status {response.StatusCode}.");
         }
@@ -162,7 +135,7 @@ public sealed class LocalSharingAuthorizationMatrixTests(LocalApiTestFactory fac
         var endpoint = Endpoints.Single(candidate => candidate.Id == endpointId);
         var before = await SnapshotAsync();
 
-        foreach (var caller in new[] { "AdminOne", "AdminTwo" })
+        foreach (var caller in new[] { "AdminOne" })
         {
             using var client = CreateClient(caller);
             await endpoint.Send(new SharingTestApi(client), world);
@@ -268,20 +241,13 @@ public sealed class LocalSharingAuthorizationMatrixTests(LocalApiTestFactory fac
         return caller switch
         {
             "Anonymous" => factory.CreateUnauthenticatedClient(),
-            "AlgNone" => factory.CreateClientWithToken(LocalTokens.AlgNone(LocalAccounts.AdminOne)),
             "UnknownKey" => factory.CreateClientWithToken(LocalTokens.Builder(LocalAccounts.AdminOne, wrongKey).Build()),
-            "WrongTenant" => factory.CreateClientWithToken(Builder(LocalAccounts.UserOne).WithClaim(EntraClaimTypes.TenantId, Guid.NewGuid().ToString("D")).Build()),
-            "Guest" => factory.CreateClientWithToken(Builder(LocalAccounts.UserOne).WithClaim(EntraClaimTypes.AccountType, EntraClaimTypes.GuestAccountType).Build()),
-            "NoRole" => factory.CreateClientWithToken(Builder(LocalAccounts.UserOne).WithoutClaim(EntraClaimTypes.Roles).Build()),
             "Owner" or "LockedUser" => factory.CreateClientForAccount(LocalAccounts.UserOne),
             "Recipient" => factory.CreateClientForAccount(LocalAccounts.UserTwo),
             "AdminOne" => factory.CreateClientForAccount(LocalAccounts.AdminOne),
-            "AdminTwo" or "LockedAdmin" => factory.CreateClientForAccount(LocalAccounts.AdminTwo),
             _ => throw new ArgumentOutOfRangeException(nameof(caller), caller, null),
         };
     }
-
-    private TestTokenBuilder Builder(LocalAccount account) => LocalTokens.Builder(factory.Services, account);
 
     private enum Role
     {

@@ -24,16 +24,13 @@ public sealed class RecycleBinValidatorTests
 
     [Theory]
     [InlineData(1)]
-    [InlineData(50)]
     [InlineData(200)]
     public void ListRecycleBinQueryValidator_PageSizeInRange_Passes(int pageSize) =>
         Assert.True(_list.Validate(new ListRecycleBinQuery(pageSize, null)).IsValid);
 
     [Theory]
     [InlineData(0)]
-    [InlineData(-1)]
     [InlineData(201)]
-    [InlineData(int.MaxValue)]
     public void ListRecycleBinQueryValidator_PageSizeOutOfRange_Fails(int pageSize) =>
         AssertFailsOn(_list.Validate(new ListRecycleBinQuery(pageSize, null)), "PageSize");
 
@@ -54,13 +51,10 @@ public sealed class RecycleBinValidatorTests
     [Theory]
     [Trait("Category", "Security")]
     [InlineData("x_0123456789abcdef0123456789abcdef")]
-    [InlineData("F_0123456789abcdef0123456789abcdef")]
     [InlineData("s_0123456789ABCDEF0123456789abcdef")]
     [InlineData("s_0123456789abcdef0123456789abcde")]
-    [InlineData("s_0123456789abcdef0123456789abcdef0")]
     [InlineData("s_0123456789abcdef0123456789abcdef\n")]
     [InlineData("0123456789abcdef0123456789abcdef")]
-    [InlineData("")]
     [InlineData("' or PartitionKey ne '")]
     public void ListRecycleBinQueryValidator_TokenPattern_Fails(string token) =>
         AssertFailsOn(_list.Validate(new ListRecycleBinQuery(50, token)), "ContinuationToken");

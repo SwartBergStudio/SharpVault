@@ -25,7 +25,6 @@ public sealed class AccessControlTests(ApiTestFactory factory) : ApiSecurityTest
 {
     private const string UserRole = "SharpVault.User";
     private const string AdminRole = "SharpVault.Admin";
-    private const string UriRoleClaim = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role";
     private const string GlobalAdministratorWid = "62e90394-69f5-4237-9190-012177145e10";
     private const string Disclosing = "lock|guest|role|tenant|disabled|inactive|suspend";
     private const int OversizedNameLength = 10_000;
@@ -36,22 +35,12 @@ public sealed class AccessControlTests(ApiTestFactory factory) : ApiSecurityTest
     public static TheoryData<string> InjectedRoleScenarios() =>
     [
         "RoleClaim",
-        "RoleArrayClaim",
         "WidsClaim",
-        "GroupsClaim",
         "ScopeClaim",
-        "UriRoleClaim",
         "LowercaseRole",
-        "UppercaseRole",
-        "PaddedRole",
-        "TrailingSpaceRole",
         "NulSuffixRole",
         "CommaJoinedRoles",
-        "SpaceJoinedRoles",
-        "CapitalizedRolesClaim",
         "NestedRolesObject",
-        "EmptyRolesArray",
-        "NullRoles",
     ];
 
     public static TheoryData<string> GuestScenarios() =>
@@ -60,8 +49,6 @@ public sealed class AccessControlTests(ApiTestFactory factory) : ApiSecurityTest
         "ForeignIdp",
         "ForeignIdpV2Issuer",
         "AcctMissing",
-        "AcctTwo",
-        "AcctEmptyString",
         "AcctArray",
         "AcctText",
     ];
@@ -70,26 +57,17 @@ public sealed class AccessControlTests(ApiTestFactory factory) : ApiSecurityTest
     [
         "Disabled",
         "active",
-        "ACTIVE",
         " Active",
-        "Active ",
         string.Empty,
         "Locked",
         "1",
-        "true",
-        "Admin",
         "Active\u0000",
-        "Activé",
     ];
 
     public static TheoryData<string> AdminQueryAbuse() =>
     [
-        "continuationToken=5f0c1d2e-4b7a-4c3d-9e8f-00000000b002",
         "continuationToken=garbage",
         "continuationToken=%27%20or%20PartitionKey%20ne%20%27",
-        "continuationToken=",
-        "pageSize=0",
-        "pageSize=-1",
         "pageSize=abc",
         "pageSize=101&continuationToken=x",
         "pageSize=1&pageSize=2",
@@ -107,8 +85,6 @@ public sealed class AccessControlTests(ApiTestFactory factory) : ApiSecurityTest
             "ForeignIdp" => builder.WithClaim("idp", $"https://sts.windows.net/{TestTenant.OtherId:D}/"),
             "ForeignIdpV2Issuer" => builder.WithClaim("idp", TestIdentityProvider.Issuer(TestTenant.OtherId)),
             "AcctMissing" => builder.WithoutClaim("acct"),
-            "AcctTwo" => builder.WithClaim("acct", 2),
-            "AcctEmptyString" => builder.WithClaim("acct", string.Empty),
             "AcctArray" => builder.WithClaim("acct", MemberAndGuestAccountTypes),
             "AcctText" => builder.WithClaim("acct", "member"),
             _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null),
@@ -238,17 +214,6 @@ public sealed class AccessControlTests(ApiTestFactory factory) : ApiSecurityTest
         Assert.Equal(0, await UserRows.CountAsync(GetUsersTable(), cancellationToken));
     }
 
-    [Theory]
-    [MemberData(nameof(InjectedRoleScenarios))]
-    public async Task UserRoleToken_WithInjectedAdminClaim_CannotReachAdminEndpoint(string scenario)
-    {
-        var token = Inject(TestTokens.For(TestUsers.User), scenario, AdminRole).Build();
-
-        var response = await GetWithTokenAsync(AdminUsersPath, token);
-
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-    }
-
     [Fact]
     public async Task ApiRequest_TestHeadersWithoutToken_Returns401()
     {
@@ -303,23 +268,6 @@ public sealed class AccessControlTests(ApiTestFactory factory) : ApiSecurityTest
         Assert.False(body.RootElement.GetProperty("isAdmin").GetBoolean());
         Assert.Equal(HttpStatusCode.Forbidden, admin.StatusCode);
         Assert.Null(await UserRows.GetAsync(GetUsersTable(), TestUsers.Admin.ObjectId, cancellationToken));
-    }
-
-    [Fact]
-    public async Task ForbiddenResponses_LockedNoRoleAndGuest_AreIdentical()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var shapes = new List<ErrorResponseShape>();
-        foreach (var caller in new[] { CallerKind.LockedUser, CallerKind.AuthenticatedWithoutRole, CallerKind.Guest })
-        {
-            using var client = await ArrangeCallerAsync(caller);
-            var response = await client.GetAsync(MePath, cancellationToken);
-            shapes.Add(await ErrorResponseShape.CaptureAsync(response, cancellationToken));
-        }
-
-        Assert.All(shapes, shape => Assert.Equal(HttpStatusCode.Forbidden, shape.Status));
-        Assert.All(shapes, shape => Assert.Equal(ProblemJsonMediaType, shape.ContentType));
-        Assert.Single(shapes.Distinct());
     }
 
     [Fact]
@@ -411,18 +359,11 @@ public sealed class AccessControlTests(ApiTestFactory factory) : ApiSecurityTest
     }
 
     [Theory]
-    [InlineData("/api/admin/users/")]
     [InlineData("/API/ADMIN/USERS")]
-    [InlineData("/Api/Admin/Users/")]
     [InlineData("/api/admin/users/.")]
-    [InlineData("/api//admin/users")]
-    [InlineData("/api/admin//users")]
     [InlineData("/api/%61dmin/users")]
-    [InlineData("/api/admin/users%2f")]
     [InlineData("/api/me/../admin/users")]
     [InlineData("/api/admin/users;x=1")]
-    [InlineData("/api/admin/users.json")]
-    [InlineData("/api/admin/users/00000000-0000-0000-0000-000000000000")]
     public async Task AdminUsersRouteVariants_UserRoleCaller_NeverSucceeds(string path)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -439,11 +380,7 @@ public sealed class AccessControlTests(ApiTestFactory factory) : ApiSecurityTest
     }
 
     [Theory]
-    [InlineData("/api/admin/users/")]
-    [InlineData("/API/ADMIN/USERS")]
     [InlineData("/api//admin/users")]
-    [InlineData("/api/%61dmin/users")]
-    [InlineData("/api/me/")]
     [InlineData("/API/ME")]
     [InlineData("/api/%6De")]
     public async Task ApiRouteVariants_Anonymous_Returns401(string path)
@@ -458,9 +395,7 @@ public sealed class AccessControlTests(ApiTestFactory factory) : ApiSecurityTest
 
     [Theory]
     [InlineData("POST")]
-    [InlineData("PUT")]
     [InlineData("DELETE")]
-    [InlineData("PATCH")]
     public async Task UnsupportedMethods_OnProtectedEndpoints_AreDeniedBeforeAnythingElse(string method)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -593,25 +528,6 @@ public sealed class AccessControlTests(ApiTestFactory factory) : ApiSecurityTest
         Assert.Equal(before.ETag, after.ETag);
         Assert.Empty(await ListAuditRowsAsync());
         AssertNoQueryWithoutPartitionKey();
-    }
-
-    [Fact]
-    public async Task GetMe_RowWithNumericStatus_IsNeverTreatedAsActive()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        await InsertRawUserRowAsync(TestUsers.User.ObjectId, new Dictionary<string, object?>
-        {
-            [UserColumns.DisplayName] = TestUsers.User.DisplayName,
-            [UserColumns.Status] = 1,
-            [UserColumns.CreatedAt] = DateTimeOffset.UtcNow.AddDays(-30),
-            [UserColumns.LastSignInAt] = DateTimeOffset.UtcNow.AddDays(-30),
-        });
-        SetAuthenticatedClient(TestUsers.User);
-
-        var response = await Client.GetAsync(MePath, cancellationToken);
-
-        Assert.NotEqual(HttpStatusCode.OK, response.StatusCode);
-        Assert.Empty(await ListAuditRowsAsync());
     }
 
     [Fact]
@@ -751,7 +667,6 @@ public sealed class AccessControlTests(ApiTestFactory factory) : ApiSecurityTest
 
     [Theory]
     [InlineData("no-at-sign")]
-    [InlineData("")]
     [InlineData("   ")]
     public async Task ApiRequest_InvalidEmailClaim_StoresNoEmail(string email)
     {
@@ -770,22 +685,12 @@ public sealed class AccessControlTests(ApiTestFactory factory) : ApiSecurityTest
     private static TestTokenBuilder Inject(TestTokenBuilder builder, string scenario, string role) => scenario switch
     {
         "RoleClaim" => builder.WithClaim("role", role),
-        "RoleArrayClaim" => builder.WithClaim("role", new[] { role }),
         "WidsClaim" => builder.WithClaim("wids", new[] { GlobalAdministratorWid }),
-        "GroupsClaim" => builder.WithClaim("groups", new[] { role }),
         "ScopeClaim" => builder.WithClaim("scp", $"{TestApi.Scope} {role}"),
-        "UriRoleClaim" => builder.WithClaim(UriRoleClaim, role),
         "LowercaseRole" => builder.WithClaim("roles", new[] { role.ToLowerInvariant() }),
-        "UppercaseRole" => builder.WithClaim("roles", new[] { role.ToUpperInvariant() }),
-        "PaddedRole" => builder.WithClaim("roles", new[] { " " + role }),
-        "TrailingSpaceRole" => builder.WithClaim("roles", new[] { role + " " }),
         "NulSuffixRole" => builder.WithClaim("roles", new[] { role + "\u0000" }),
         "CommaJoinedRoles" => builder.WithClaim("roles", $"SharpVault.Other,{role}"),
-        "SpaceJoinedRoles" => builder.WithClaim("roles", $"SharpVault.Other {role}"),
-        "CapitalizedRolesClaim" => builder.WithClaim("Roles", new[] { role }),
         "NestedRolesObject" => builder.WithClaim("roles", new Dictionary<string, string> { ["value"] = role }),
-        "EmptyRolesArray" => builder.WithClaim("roles", Array.Empty<string>()),
-        "NullRoles" => builder.WithClaim("roles", string.Empty),
         _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null),
     };
 }

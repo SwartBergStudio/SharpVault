@@ -9,8 +9,10 @@ using SharpVault.Application.Common.Interfaces;
 using SharpVault.Application.Common.Models;
 using SharpVault.Application.Features.OneTimeLinks.Common;
 using SharpVault.Application.Features.Vault.Common;
+using SharpVault.Domain.Encryption;
 using SharpVault.Domain.OneTimeLinks;
 using SharpVault.Domain.Users;
+using SharpVault.Domain.Vaults;
 using SharpVault.UnitTests.Support.Vault;
 
 namespace SharpVault.UnitTests.OneTimeLinks;
@@ -60,6 +62,14 @@ internal static class OneTimeLinkSamples
         policy.GetAsync(Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromResult(new OneTimeLinkSettings(enabled, maxLifetime ?? TimeSpan.FromDays(7))));
         return policy;
+    }
+
+    public static IVaultStore VaultWithEverySecret()
+    {
+        var vault = Substitute.For<IVaultStore>();
+        vault.GetSecretAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<Versioned<Secret>?>(new Versioned<Secret>(new Secret { DataKey = new WrappedDataKey("id", "alg", [1]) }, "secret-etag")));
+        return vault;
     }
 
     public static Versioned<User> UserRow(Guid id, UserStatus status, bool isAdmin = false) => new(

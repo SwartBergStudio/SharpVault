@@ -14,6 +14,7 @@
         else
         {
             <StatusBanner Id="otl-create-status" Message="@_status" />
+            <SvAlert Id="otl-copy-note" Kind="AlertKind.Info">This link holds a copy of the item as it is now. Later edits will not reach it. It stops opening if the item is recycled or purged.</SvAlert>
             <SvSelect Id="otl-lifetime" Label="Link lifetime" Options="@_lifetimeOptions" Value="@_lifetime" ValueChanged="@HandleLifetimeChangedAsync" Disabled="IsCommandRunning" />
             <SvBrowserOnlyInput Id="otl-passphrase" Label="Passphrase (optional, at least 8 characters)" Password="true" />
             <SvButton Id="otl-create" Variant="SvButtonVariant.Primary" Icon="@SvIcons.Link" Busy="IsCommandRunning" Disabled="IsCommandRunning" OnClick="@CreateLinkAsync">Create link</SvButton>

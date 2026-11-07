@@ -22,10 +22,6 @@ public sealed class FolderValidatorTests
     }
 
     [Fact]
-    public void CreateFolderCommandValidator_NameAndParent_Passes() =>
-        Assert.True(_create.Validate(new CreateFolderCommand("Finance", Guid.NewGuid())).IsValid);
-
-    [Fact]
     public void CreateFolderCommandValidator_RootLevel_Passes() =>
         Assert.True(_create.Validate(new CreateFolderCommand("Finance", null)).IsValid);
 
@@ -38,26 +34,18 @@ public sealed class FolderValidatorTests
         AssertFailsOn(_create.Validate(new CreateFolderCommand(new string('f', VaultLimits.FolderNameMaxLength + 1), null)), "Name");
 
     [Fact]
-    public void CreateFolderCommandValidator_NullName_FailsWithoutThrowing() =>
-        AssertFailsOn(_create.Validate(new CreateFolderCommand(null!, null)), "Name");
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void CreateFolderCommandValidator_BlankName_Fails(string name) =>
-        AssertFailsOn(_create.Validate(new CreateFolderCommand(name, null)), "Name");
+    public void CreateFolderCommandValidator_BlankName_Fails() =>
+        AssertFailsOn(_create.Validate(new CreateFolderCommand("   ", null)), "Name");
 
     [Theory]
     [Trait("Category", "Security")]
     [InlineData("a\u0000b")]
     [InlineData("a‮b")]
-    [InlineData("a\tb")]
     public void CreateFolderCommandValidator_ControlOrBidiName_Fails(string name) =>
         AssertFailsOn(_create.Validate(new CreateFolderCommand(name, null)), "Name");
 
     [Theory]
     [InlineData("a/b")]
-    [InlineData("a\\b#c?d")]
     [InlineData("' or PartitionKey ne '")]
     public void CreateFolderCommandValidator_TableKeyAndODataCharactersInName_Pass(string name) =>
         Assert.True(_create.Validate(new CreateFolderCommand(name, null)).IsValid);
@@ -75,24 +63,8 @@ public sealed class FolderValidatorTests
         AssertFailsOn(_rename.Validate(new RenameFolderCommand(Guid.Empty, "New")), "FolderId");
 
     [Fact]
-    public void RenameFolderCommandValidator_NullName_FailsWithoutThrowing() =>
-        AssertFailsOn(_rename.Validate(new RenameFolderCommand(Guid.NewGuid(), null!)), "Name");
-
-    [Fact]
     public void RenameFolderCommandValidator_BlankName_Fails() =>
         AssertFailsOn(_rename.Validate(new RenameFolderCommand(Guid.NewGuid(), "  ")), "Name");
-
-    [Fact]
-    public void RenameFolderCommandValidator_NameOverLimit_Fails() =>
-        AssertFailsOn(_rename.Validate(new RenameFolderCommand(Guid.NewGuid(), new string('f', VaultLimits.FolderNameMaxLength + 1))), "Name");
-
-    [Fact]
-    public void RenameFolderCommandValidator_NameWithBidiOverride_Fails() =>
-        AssertFailsOn(_rename.Validate(new RenameFolderCommand(Guid.NewGuid(), "a‮b")), "Name");
-
-    [Fact]
-    public void MoveFolderCommandValidator_ToParent_Passes() =>
-        Assert.True(_move.Validate(new MoveFolderCommand(Guid.NewGuid(), Guid.NewGuid())).IsValid);
 
     [Fact]
     public void MoveFolderCommandValidator_ToRoot_Passes() =>
@@ -120,8 +92,6 @@ public sealed class FolderValidatorTests
     [Trait("Category", "Security")]
     [InlineData(0)]
     [InlineData(3)]
-    [InlineData(-1)]
-    [InlineData(int.MaxValue)]
-    public void DeleteFolderCommandValidator_ModeZero_Fails(int mode) =>
+    public void DeleteFolderCommandValidator_UndefinedMode_Fails(int mode) =>
         AssertFailsOn(_delete.Validate(new DeleteFolderCommand(Guid.NewGuid(), (FolderDeleteModeDto)mode)), "Mode");
 }

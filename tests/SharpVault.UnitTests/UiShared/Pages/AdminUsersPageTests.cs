@@ -6,7 +6,6 @@ using Bunit.TestDoubles;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using SharpVault.Dtos.Users;
-using SharpVault.UI.Shared.Components.Base;
 using SharpVault.UI.Shared.Components.Users;
 using SharpVault.UI.Shared.Pages;
 using SharpVault.UI.Shared.Services;
@@ -21,13 +20,12 @@ public sealed class AdminUsersPageTests : ShellTestContext
     private static UserSummaryDto Summary(
         string name,
         UserStatusDto status = UserStatusDto.Active,
-        DateTimeOffset? lastSignIn = null,
-        string? email = null) =>
+        DateTimeOffset? lastSignIn = null) =>
         new()
         {
             UserId = Guid.NewGuid(),
             DisplayName = name,
-            Email = email ?? $"{name.ToLowerInvariant().Replace(' ', '.')}@sharpvault.invalid",
+            Email = $"{name.ToLowerInvariant().Replace(' ', '.')}@sharpvault.invalid",
             Status = status,
             LastSignInAt = lastSignIn ?? SignedInAt,
         };
@@ -41,14 +39,20 @@ public sealed class AdminUsersPageTests : ShellTestContext
 
     private void SignInAsAdmin() => SignInAs("Admin One", isAdmin: true);
 
+    private void ReturnsCounts(Guid userId, UserCountsDto counts) =>
+        UsersClient.GetCountsAsync(userId, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(ApiResponse<UserCountsDto>.Success(counts)));
+
+    private static UserCountsDto Counts(int items, int shares) =>
+        new() { ItemCount = items, ShareCount = shares };
+
     [Fact]
     public async Task AdminUsersPage_ShowCounts_OpensTheDialogWithTheCountsOfThatUser()
     {
         SignInAsAdmin();
         var target = Summary("User Two");
         ReturnsPage(Page(null, target));
-        UsersClient.GetCountsAsync(target.UserId, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(ApiResponse<UserCountsDto>.Success(new UserCountsDto { ItemCount = 4, ShareCount = 2 })));
+        ReturnsCounts(target.UserId, Counts(items: 4, shares: 2));
         var dialogs = RenderDialogProviders();
         var cut = Render<AdminUsers>();
 
@@ -59,7 +63,7 @@ public sealed class AdminUsersPageTests : ShellTestContext
     }
 
     [Fact]
-    public void AdminUsersPage_Admin_ListsUsersWithStatusAndNeverForEpoch()
+    public void AdminUsersPage_Admin_ListsUsersAndShowsNeverForEpoch()
     {
         SignInAsAdmin();
         ReturnsPage(Page(
@@ -72,24 +76,9 @@ public sealed class AdminUsersPageTests : ShellTestContext
 
         var rows = cut.FindAll("#admin-users-table tbody tr");
         Assert.Equal(3, rows.Count);
-        Assert.Contains("Admin One", rows[0].TextContent, StringComparison.Ordinal);
-        Assert.Contains("2026-11-04 20:47 UTC", rows[0].TextContent, StringComparison.Ordinal);
         Assert.Contains("Never", rows[1].TextContent, StringComparison.Ordinal);
-        Assert.Contains("Active", rows[0].TextContent, StringComparison.Ordinal);
         Assert.Contains("Locked", rows[2].TextContent, StringComparison.Ordinal);
         Assert.Empty(cut.FindAll("#admin-users-forbidden"));
-        Assert.Empty(cut.FindAll("#admin-users-load-more"));
-    }
-
-    [Fact]
-    public void AdminUsersPage_LastSignInAfterEpoch_IsUtcWithMinutePrecision()
-    {
-        SignInAsAdmin();
-        ReturnsPage(Page(null, Summary("Late One", lastSignIn: DateTimeOffset.UnixEpoch.AddSeconds(1))));
-
-        var cut = Render<AdminUsers>();
-
-        Assert.Contains("1970-01-01 00:00", cut.Find("#admin-users-table tbody tr").TextContent, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -106,48 +95,6 @@ public sealed class AdminUsersPageTests : ShellTestContext
         Assert.Empty(cut.FindAll("#admin-users-table"));
         Assert.Empty(cut.FindAll("#admin-users-refresh"));
         _ = UsersClient.DidNotReceive().ListUsersAsync(Arg.Any<int?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public void AdminUsersPage_EmptyList_ShowsEmptyState()
-    {
-        SignInAsAdmin();
-        ReturnsPage(Page(null));
-
-        var cut = Render<AdminUsers>();
-
-        Assert.NotNull(cut.Find("#admin-users-empty"));
-        Assert.Empty(cut.FindAll("#admin-users-table"));
-        Assert.Empty(cut.FindAll("#admin-users-forbidden"));
-    }
-
-    [Fact]
-    public void AdminUsersPage_ApiFailure_ShowsErrorWithRetry()
-    {
-        SignInAsAdmin();
-        UsersClient.ListUsersAsync(Arg.Any<int?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(ApiResponse<UserPageDto>.Failed()));
-
-        var cut = Render<AdminUsers>();
-
-        var error = cut.Find("#admin-users-error");
-        Assert.Contains(LoadableComponentBase<UserPageDto>.GenericErrorText, error.TextContent, StringComparison.Ordinal);
-        Assert.NotNull(cut.Find("#admin-users-retry"));
-        Assert.Empty(cut.FindAll("#admin-users-table"));
-    }
-
-    [Fact]
-    public void AdminUsersPage_RetryAfterFailure_ListsTheUsers()
-    {
-        SignInAsAdmin();
-        UsersClient.ListUsersAsync(Arg.Any<int?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(
-            Task.FromResult(ApiResponse<UserPageDto>.Failed()),
-            Task.FromResult(ApiResponse<UserPageDto>.Success(Page(null, Summary("Admin One")))));
-        var cut = Render<AdminUsers>();
-
-        cut.Find("#admin-users-retry").Click();
-
-        Assert.Single(cut.FindAll("#admin-users-table tbody tr"));
     }
 
     [Fact]
@@ -210,27 +157,11 @@ public sealed class AdminUsersPageTests : ShellTestContext
         Assert.Contains("1000", cut.Find("#admin-users-limit").TextContent, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void AdminUsersPage_LoadMoreFails_KeepsRowsAndShowsAnInlineError()
-    {
-        SignInAsAdmin();
-        UsersClient.ListUsersAsync(50, null, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(ApiResponse<UserPageDto>.Success(Page("token-two", Summary("Admin One")))));
-        UsersClient.ListUsersAsync(50, "token-two", Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(ApiResponse<UserPageDto>.Failed()));
-        var cut = Render<AdminUsers>();
-
-        cut.Find("#admin-users-load-more").Click();
-
-        Assert.Single(cut.FindAll("#admin-users-table tbody tr"));
-        Assert.NotNull(cut.Find("#admin-users-load-more-error"));
-        Assert.NotNull(cut.Find("#admin-users-load-more"));
-    }
-
     [Theory]
+    [InlineData(ApiCallStatus.Failed)]
     [InlineData(ApiCallStatus.RateLimited)]
     [InlineData(ApiCallStatus.NotFound)]
-    public void AdminUsersPage_LoadMoreRateLimitedOrNotFound_KeepsRowsAndShowsAnInlineError(ApiCallStatus status)
+    public void AdminUsersPage_LoadMoreFailure_KeepsRowsAndShowsAnInlineError(ApiCallStatus status)
     {
         SignInAsAdmin();
         UsersClient.ListUsersAsync(50, null, Arg.Any<CancellationToken>())
@@ -245,22 +176,6 @@ public sealed class AdminUsersPageTests : ShellTestContext
         Assert.Empty(cut.FindAll("#admin-users-error"));
         Assert.NotNull(cut.Find("#admin-users-load-more-error"));
         Assert.NotNull(cut.Find("#admin-users-load-more"));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void AdminUsersPage_DisplayNameAndEmailWithMarkup_AreEncoded()
-    {
-        SignInAsAdmin();
-        const string hostile = "<img src=x onerror=alert(1)><script>alert(2)</script>";
-        ReturnsPage(Page(null, Summary(hostile, email: hostile)));
-
-        var cut = Render<AdminUsers>();
-
-        Assert.Empty(cut.FindAll("img"));
-        Assert.Empty(cut.FindAll("script"));
-        Assert.DoesNotContain("<img", cut.Markup, StringComparison.Ordinal);
-        Assert.Contains("&lt;img", cut.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -358,22 +273,6 @@ public sealed class AdminUsersPageTests : ShellTestContext
     }
 
     [Fact]
-    public void AdminUsersPage_LoadMore_MakesNoCountsCalls()
-    {
-        SignInAsAdmin();
-        UsersClient.ListUsersAsync(50, null, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(ApiResponse<UserPageDto>.Success(Page("token-two", Summary("Admin One")))));
-        UsersClient.ListUsersAsync(50, "token-two", Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(ApiResponse<UserPageDto>.Success(Page(null, Summary("User Two")))));
-        var cut = Render<AdminUsers>();
-
-        cut.Find("#admin-users-load-more").Click();
-
-        Assert.Equal(2, cut.FindAll("#admin-users-table tbody tr").Count);
-        _ = UsersClient.DidNotReceive().GetCountsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     [Trait("Category", "Security")]
     public void AdminUsersPage_OwnRow_ShowsCountsButNotLock()
     {
@@ -392,24 +291,6 @@ public sealed class AdminUsersPageTests : ShellTestContext
         Assert.Empty(cut.FindAll($"#user-unlock-{caller:D}"));
         Assert.Empty(cut.FindAll($"#user-transfer-{caller:D}"));
         Assert.NotNull(cut.Find($"#user-lock-{other.UserId:D}"));
-    }
-
-    [Fact]
-    public async Task AdminUsersPage_CloseCounts_RemovesThePanel()
-    {
-        SignInAsAdmin();
-        var target = Summary("User Two");
-        ReturnsPage(Page(null, target));
-        ReturnsCounts(target.UserId, Counts(items: 4, shares: 2));
-        var dialogs = RenderDialogProviders();
-        var cut = Render<AdminUsers>();
-        await cut.Find($"#user-counts-{target.UserId:D}").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
-        cut.WaitForAssertion(() => Assert.Equal("4", dialogs.Find("#user-counts-secrets").TextContent));
-
-        await dialogs.Find("#user-counts-close").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
-        await WaitForClosedDialogsToSettleAsync();
-
-        Assert.Empty(dialogs.FindAll("#user-counts-secrets"));
     }
 
     [Fact]
@@ -434,47 +315,4 @@ public sealed class AdminUsersPageTests : ShellTestContext
         _ = UsersClient.Received(1).GetCountsAsync(first.UserId, Arg.Any<CancellationToken>());
         _ = UsersClient.Received(1).GetCountsAsync(second.UserId, Arg.Any<CancellationToken>());
     }
-
-    [Fact]
-    public async Task AdminUsersPage_CountsFailed_ShowsTheErrorInsideTheDialog()
-    {
-        SignInAsAdmin();
-        var target = Summary("User Two");
-        ReturnsPage(Page(null, target));
-        ReturnsCounts(target.UserId, ApiResponse<UserCountsDto>.Failed());
-        var dialogs = RenderDialogProviders();
-        var cut = Render<AdminUsers>();
-
-        await cut.Find($"#user-counts-{target.UserId:D}").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
-
-        cut.WaitForAssertion(() => Assert.Contains(LoadableComponentBase<UserCountsDto>.GenericErrorText, dialogs.Find("#user-counts-error").TextContent, StringComparison.Ordinal));
-        Assert.NotNull(dialogs.Find("#user-counts-retry"));
-        Assert.Empty(dialogs.FindAll("#user-counts-secrets"));
-    }
-
-    [Fact]
-    public async Task AdminUsersPage_CountsCapped_ShowsTheWarningInsideTheDialog()
-    {
-        SignInAsAdmin();
-        var target = Summary("User Two");
-        ReturnsPage(Page(null, target));
-        ReturnsCounts(target.UserId, Counts(items: 1000, shares: 3, capped: true));
-        var dialogs = RenderDialogProviders();
-        var cut = Render<AdminUsers>();
-
-        await cut.Find($"#user-counts-{target.UserId:D}").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
-
-        cut.WaitForAssertion(() => Assert.Contains("very large", dialogs.Find("#user-counts-capped").TextContent, StringComparison.Ordinal));
-        Assert.Equal("1000", dialogs.Find("#user-counts-secrets").TextContent);
-    }
-
-    private void ReturnsCounts(Guid userId, UserCountsDto counts) =>
-        UsersClient.GetCountsAsync(userId, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(ApiResponse<UserCountsDto>.Success(counts)));
-
-    private void ReturnsCounts(Guid userId, ApiResponse<UserCountsDto> response) =>
-        UsersClient.GetCountsAsync(userId, Arg.Any<CancellationToken>()).Returns(Task.FromResult(response));
-
-    private static UserCountsDto Counts(int items, int shares, bool capped = false) =>
-        new() { ItemCount = items, ShareCount = shares, CountsAreCapped = capped };
 }

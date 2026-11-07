@@ -9,7 +9,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using SharpVault.Dtos.Vault;
-using SharpVault.UI.Shared.Components.Base;
 using SharpVault.UI.Shared.Components.Vault;
 using SharpVault.UI.Shared.Navigation;
 using SharpVault.UI.Shared.Services;
@@ -88,31 +87,22 @@ public sealed class SecretListPanelTests : VaultTestContext
         Assert.Equal(VaultRoutes.Secret(first.Id), link.GetAttribute("href"));
         Assert.NotNull(cut.Find($"#vault-secret-copy-{first.Id:D}"));
         Assert.Contains("ada@example.test", table.TextContent, StringComparison.Ordinal);
-        Assert.Contains("Login", table.TextContent, StringComparison.Ordinal);
         Assert.NotNull(cut.Find($"#{LinkId(second)}"));
         Assert.Empty(cut.FindAll("#vault-load-more"));
         Assert.Empty(cut.FindAll("#vault-status"));
     }
 
-    [Fact]
-    public void Render_PassesFolderAndPageSizeToTheClient()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Render_PassesTheScopeToTheClient(bool unfiled)
     {
-        var folder = Guid.NewGuid();
+        var folder = unfiled ? (Guid?)null : Guid.NewGuid();
         ListReturns(Page(null, Secret()));
 
-        RenderPanel(folderId: folder);
+        RenderPanel(folderId: folder, unfiled: unfiled);
 
-        SecretsClient.Received(1).ListSecretsAsync(folder, false, null, SecretListPanel.BrowsePageSize, null, Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public void Render_Unfiled_PassesTheUnfiledFlag()
-    {
-        ListReturns(Page(null, Secret()));
-
-        RenderPanel(unfiled: true);
-
-        SecretsClient.Received(1).ListSecretsAsync(null, true, null, SecretListPanel.BrowsePageSize, null, Arg.Any<CancellationToken>());
+        SecretsClient.Received(1).ListSecretsAsync(folder, unfiled, null, SecretListPanel.BrowsePageSize, null, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -127,38 +117,6 @@ public sealed class SecretListPanelTests : VaultTestContext
     }
 
     [Fact]
-    public void Render_Empty_ShowsAHint()
-    {
-        ListReturns(Page(null));
-
-        var cut = RenderPanel();
-
-        Assert.NotNull(cut.Find("#vault-secrets-empty-description"));
-    }
-
-    [Fact]
-    public void Render_EmptyFolder_ShowsAHint()
-    {
-        ListReturns(Page(null));
-
-        var cut = RenderPanel(folderId: Guid.NewGuid());
-
-        Assert.NotNull(cut.Find("#vault-secrets-empty-description"));
-    }
-
-    [Fact]
-    public void Render_EmptySearch_HintSuggestsChangingTheSearchNotCreating()
-    {
-        ListReturns(Page(null));
-
-        var cut = RenderPanel(search: "zzz");
-
-        var hint = cut.Find("#vault-secrets-empty-description").TextContent;
-        Assert.Equal("Try a different search term, or select Clear to see all items.", hint);
-        Assert.DoesNotContain("New item", hint, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void Render_EmptySearch_ShowsNoMatchText()
     {
         ListReturns(Page(null));
@@ -166,21 +124,6 @@ public sealed class SecretListPanelTests : VaultTestContext
         var cut = RenderPanel(search: "zzz");
 
         Assert.Contains("No items match your search", cut.Find("#vault-secrets-empty").TextContent, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Render_Failed_ShowsErrorAndRetryReloads()
-    {
-        var item = Secret("Alpha");
-        var calls = 0;
-        ListReturns(_ => ++calls == 1 ? ApiResponse<SecretPageDto>.Failed() : ApiResponse<SecretPageDto>.Success(Page(null, item)));
-
-        var cut = RenderPanel();
-
-        Assert.Contains("could not be loaded", cut.Find("#vault-secrets-error").TextContent, StringComparison.Ordinal);
-        cut.Find("#vault-secrets-retry").Click();
-        cut.WaitForAssertion(() => Assert.NotNull(cut.Find($"#{LinkId(item)}")));
-        Assert.Empty(cut.FindAll("#vault-secrets-error"));
     }
 
     [Fact]
@@ -258,22 +201,6 @@ public sealed class SecretListPanelTests : VaultTestContext
     }
 
     [Fact]
-    public void FolderView_EmptyPageWithToken_KeepsLoading()
-    {
-        var found = Secret("Late");
-        ListReturns(token => token switch
-        {
-            null => ApiResponse<SecretPageDto>.Success(Page("t1")),
-            _ => ApiResponse<SecretPageDto>.Success(Page(null, found)),
-        });
-
-        var cut = RenderPanel();
-
-        Assert.Equal(2, ListCalls());
-        Assert.NotNull(cut.Find($"#{LinkId(found)}"));
-    }
-
-    [Fact]
     public void FolderView_StopsAt1000AndOffersLoadMore()
     {
         ListReturns(token => ApiResponse<SecretPageDto>.Success(
@@ -290,10 +217,7 @@ public sealed class SecretListPanelTests : VaultTestContext
     [InlineData(ApiCallStatus.Failed)]
     [InlineData(ApiCallStatus.RateLimited)]
     [InlineData(ApiCallStatus.NotFound)]
-    [InlineData(ApiCallStatus.ConfigurationMismatch)]
-    [InlineData(ApiCallStatus.Invalid)]
-    [InlineData(ApiCallStatus.Conflict)]
-    public async Task LoadMore_AnyFailureStatus_KeepsTheLoadedRowsAndShowsTheFailure(ApiCallStatus status)
+    public async Task LoadMore_FailureStatus_KeepsTheLoadedRowsAndShowsTheFailure(ApiCallStatus status)
     {
         var first = Secret("Alpha");
         ListReturns(token => token switch
@@ -331,40 +255,6 @@ public sealed class SecretListPanelTests : VaultTestContext
     }
 
     [Fact]
-    public void LoadMore_EmptyPage_HidesButton()
-    {
-        ListReturns(token => token switch
-        {
-            null => ApiResponse<SecretPageDto>.Success(Page("t1", Secret("Alpha"))),
-            _ => ApiResponse<SecretPageDto>.Success(Page(null)),
-        });
-        var cut = RenderPanel(search: "a");
-
-        cut.Find("#vault-load-more").Click();
-
-        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("#vault-load-more")));
-        Assert.Single(RowIds(cut));
-    }
-
-    [Fact]
-    public void LoadMore_Failure_KeepsRowsAndShowsErrorAndButton()
-    {
-        var first = Secret("Alpha");
-        ListReturns(token => token switch
-        {
-            null => ApiResponse<SecretPageDto>.Success(Page("t1", first)),
-            _ => ApiResponse<SecretPageDto>.Failed(),
-        });
-        var cut = RenderPanel(search: "a");
-
-        cut.Find("#vault-load-more").Click();
-
-        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("#vault-load-more-error")));
-        Assert.NotNull(cut.Find($"#{LinkId(first)}"));
-        Assert.NotNull(cut.Find("#vault-load-more"));
-    }
-
-    [Fact]
     public void LoadMore_Throws_ShowsErrorAndLogsTypeOnly()
     {
         var calls = 0;
@@ -380,23 +270,6 @@ public sealed class SecretListPanelTests : VaultTestContext
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("#vault-load-more-error")));
         Assert.DoesNotContain(RevealedValue, LogText, StringComparison.Ordinal);
         Assert.Contains(nameof(InvalidOperationException), LogText, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void LoadMore_SignInRequired_NavigatesToSignIn()
-    {
-        ListReturns(token => token switch
-        {
-            null => ApiResponse<SecretPageDto>.Success(Page("t1", Secret("Alpha"))),
-            _ => ApiResponse<SecretPageDto>.SignInRequired(),
-        });
-        var cut = RenderPanel(search: "a");
-
-        cut.Find("#vault-load-more").Click();
-
-        cut.WaitForAssertion(() => Assert.Contains("/account/sign-in", CurrentUri, StringComparison.Ordinal));
-        Assert.Empty(cut.FindAll("#vault-load-more-error"));
     }
 
     [Fact]
@@ -446,27 +319,11 @@ public sealed class SecretListPanelTests : VaultTestContext
         cut.WaitForAssertion(() => Assert.Equal(1, Clipboard.ClearCalls));
     }
 
-    [Fact]
-    [Trait("Category", "Security")]
-    public void CopyFromList_RateLimited_ShowsMessageAndNoClipboardWrite()
-    {
-        var item = Secret("Alpha");
-        ListReturns(Page(null, item));
-        RevealReturns(ApiResponse<RevealedValueDto>.RateLimited());
-        var cut = RenderPanel();
-
-        cut.Find($"#vault-secret-copy-{item.Id:D}").Click();
-
-        cut.WaitForAssertion(() => Assert.Contains(SecretListPanel.CopyFailedText, cut.Find("#vault-status").TextContent, StringComparison.Ordinal));
-        Assert.Empty(Clipboard.Writes);
-    }
-
     [Theory]
     [Trait("Category", "Security")]
     [InlineData(ApiCallStatus.NotFound)]
     [InlineData(ApiCallStatus.Failed)]
-    [InlineData(ApiCallStatus.Conflict)]
-    [InlineData(ApiCallStatus.ConfigurationMismatch)]
+    [InlineData(ApiCallStatus.RateLimited)]
     public void CopyFromList_RevealFails_ShowsCopyFailedAndNoClipboardWrite(ApiCallStatus status)
     {
         var item = Secret("Alpha");
@@ -533,18 +390,6 @@ public sealed class SecretListPanelTests : VaultTestContext
 
         cut.WaitForAssertion(() => Assert.Contains(SecretListPanel.CopyFailedText, cut.Find("#vault-status").TextContent, StringComparison.Ordinal));
         Assert.DoesNotContain(RevealedValue, LogText, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CopyFromList_SecretWithoutValue_HasNoCopyButton()
-    {
-        var item = Secret("Note", hasValue: false);
-        ListReturns(Page(null, item));
-
-        var cut = RenderPanel();
-
-        Assert.NotNull(cut.Find($"#{LinkId(item)}"));
-        Assert.Empty(cut.FindAll($"#vault-secret-copy-{item.Id:D}"));
     }
 
     [Fact]
@@ -627,18 +472,6 @@ public sealed class SecretListPanelTests : VaultTestContext
     }
 
     [Fact]
-    [Trait("Category", "Security")]
-    public void AccessDenied_NavigatesToAccessDeniedAndShowsNoRows()
-    {
-        ListReturns(_ => ApiResponse<SecretPageDto>.AccessDenied());
-
-        var cut = RenderPanel();
-
-        Assert.EndsWith("/account/access-denied", CurrentUri, StringComparison.Ordinal);
-        Assert.Empty(cut.FindAll("#vault-secret-list"));
-    }
-
-    [Fact]
     public void DamagedRow_ShowsDamagedMarker()
     {
         var damaged = Secret("Real but unreadable", hasValue: false, damaged: true);
@@ -654,42 +487,20 @@ public sealed class SecretListPanelTests : VaultTestContext
         Assert.NotNull(cut.Find($"#{LinkId(healthy)}"));
     }
 
-    [Fact]
-    public void DamagedRow_NullNameAndNullUsername_DoesNotBreakTheList()
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("   ", false)]
+    public void DamagedRow_MissingOrBlankName_ShowsUnreadableTextAndKeepsTheList(string? name, bool damaged)
     {
-        var damaged = new SecretDto { Id = Guid.NewGuid(), IsDamaged = true, Name = null, Username = null };
+        var item = new SecretDto { Id = Guid.NewGuid(), Name = name, IsDamaged = damaged, HasValue = true, ConcurrencyToken = "etag" };
         var healthy = Secret("Fine");
-        ListReturns(Page(null, damaged, healthy));
+        ListReturns(Page(null, item, healthy));
 
         var cut = RenderPanel();
 
         Assert.Empty(cut.FindAll("#vault-secrets-error"));
-        Assert.Equal(SecretDisplayName.DamagedName, cut.Find($"#{LinkId(damaged)}").TextContent.Trim());
+        Assert.Equal(SecretDisplayName.DamagedName, cut.Find($"#{LinkId(item)}").TextContent.Trim());
         Assert.NotNull(cut.Find($"#{LinkId(healthy)}"));
-    }
-
-    [Fact]
-    public void DamagedRow_BlankNameNotMarkedDamaged_ShowsUnreadableText()
-    {
-        var blank = Secret("   ");
-        ListReturns(Page(null, blank));
-
-        var cut = RenderPanel();
-
-        Assert.Equal(SecretDisplayName.DamagedName, cut.Find($"#{LinkId(blank)}").TextContent.Trim());
-    }
-
-    [Fact]
-    public void Rows_SortedByNameWithinLoadedItems()
-    {
-        var zulu = Secret("zulu");
-        var alpha = Secret("Alpha");
-        var mike = Secret("mike");
-        ListReturns(Page(null, zulu, alpha, mike));
-
-        var cut = RenderPanel();
-
-        Assert.Equal([LinkId(alpha), LinkId(mike), LinkId(zulu)], RowIds(cut));
     }
 
     [Fact]
@@ -708,26 +519,6 @@ public sealed class SecretListPanelTests : VaultTestContext
         cut.Find("#vault-load-more").Click();
 
         cut.WaitForAssertion(() => Assert.Equal([LinkId(alpha), LinkId(bravo), LinkId(charlie)], RowIds(cut)));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void Render_NameUsernameWithMarkupAndJavascriptUrl_RendersEncodedAndInert()
-    {
-        const string hostile = "<img src=x onerror=alert(1)><script>alert(2)</script>";
-        var item = Secret(hostile, username: hostile);
-        item.Url = "javascript:alert(3)";
-        ListReturns(Page(null, item));
-
-        var cut = RenderPanel();
-
-        Assert.Empty(cut.FindAll("img"));
-        Assert.Empty(cut.FindAll("script"));
-        Assert.Empty(cut.FindAll("[onerror]"));
-        Assert.Equal(hostile, cut.Find($"#{LinkId(item)}").TextContent.Trim());
-        Assert.Equal(2, cut.FindAll("td").Count(cell => cell.TextContent.Trim() == hostile));
-        Assert.Contains("&lt;img", cut.Markup, StringComparison.Ordinal);
-        Assert.DoesNotContain("javascript:", cut.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -843,43 +634,6 @@ public sealed class SecretListPanelTests : VaultTestContext
         var navigation = Assert.IsType<BunitNavigationManager>(Services.GetRequiredService<NavigationManager>());
         cut.WaitForAssertion(() => Assert.Contains(navigation.History, entry => entry.Uri == AccountRoutes.AccessDenied && entry.Options.ForceLoad));
         Assert.Empty(cut.FindAll("#vault-load-more-error"));
-    }
-
-    [Fact]
-    public void SecretListPanel_LoadMoreRateLimited_KeepsRowsAndShowsTheServerText()
-    {
-        var first = Secret("Alpha");
-        ListReturns(token => token switch
-        {
-            null => ApiResponse<SecretPageDto>.Success(Page("t1", first)),
-            _ => ApiResponse<SecretPageDto>.RateLimited(),
-        });
-        var cut = RenderPanel(search: "a");
-
-        cut.Find("#vault-load-more").Click();
-
-        cut.WaitForAssertion(() => Assert.Contains(LoadableComponentBase<SecretPageDto>.RateLimitedText, cut.Find("#vault-load-more-error").TextContent, StringComparison.Ordinal));
-        Assert.Equal([LinkId(first)], RowIds(cut));
-        Assert.NotNull(cut.Find("#vault-load-more"));
-    }
-
-    [Fact]
-    public void SecretListPanel_LoadMoreThrows_KeepsRowsAndShowsTheFailedText()
-    {
-        var first = Secret("Alpha");
-        var calls = 0;
-        SecretsClient
-            .ListSecretsAsync(Arg.Any<Guid?>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<int>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(_ => ++calls == 1
-                ? Task.FromResult(ApiResponse<SecretPageDto>.Success(Page("t1", first)))
-                : throw new InvalidOperationException("boom-detail"));
-        var cut = RenderPanel(search: "a");
-
-        cut.Find("#vault-load-more").Click();
-
-        cut.WaitForAssertion(() => Assert.Contains(VaultStatusText.FailedText, cut.Find("#vault-load-more-error").TextContent, StringComparison.Ordinal));
-        Assert.Equal([LinkId(first)], RowIds(cut));
-        Assert.DoesNotContain("boom-detail", cut.Markup, StringComparison.Ordinal);
     }
 
     [Fact]

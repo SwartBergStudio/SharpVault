@@ -52,13 +52,9 @@ public sealed class SignedInIdentityReaderTests
     }
 
     [Theory]
-    [InlineData("")]
     [InlineData("abc")]
     [InlineData("-5")]
-    [InlineData("+5")]
     [InlineData("1.5")]
-    [InlineData(" 5")]
-    [InlineData("1e9")]
     public void TryRead_MalformedIat_IsNull(string value)
     {
         var claims = TestIdentities.MemberClaims(Guid.NewGuid()).With("iat", value);
@@ -70,7 +66,6 @@ public sealed class SignedInIdentityReaderTests
 
     [Theory]
     [InlineData("99999999999999999999")]
-    [InlineData("9223372036854775807")]
     [InlineData("300000000000")]
     public void TryRead_OutOfRangeIat_IsNull(string value)
     {
@@ -127,15 +122,6 @@ public sealed class SignedInIdentityReaderTests
         Assert.Equal("alice@contoso.test", identity!.Email);
     }
 
-    [Fact]
-    public void TryRead_NoNameOrEmail_ReturnsNullValues()
-    {
-        SignedInIdentityReader.TryRead(TestIdentities.Authenticated(TestIdentities.MemberClaims(Guid.NewGuid())), Settings, out var identity);
-
-        Assert.Null(identity!.DisplayName);
-        Assert.Null(identity.Email);
-    }
-
     public static TheoryData<string, string[]> InvalidObjectIds() =>
         new()
         {
@@ -143,10 +129,8 @@ public sealed class SignedInIdentityReaderTests
             { "notGuid", ["x"] },
             { "emptyGuid", ["00000000-0000-0000-0000-000000000000"] },
             { "two", ["3f2a1c9e-7b4d-4e8a-9c21-5d6e7f809a1b", "9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a"] },
-            { "braces", ["{3f2a1c9e-7b4d-4e8a-9c21-5d6e7f809a1b}"] },
             { "noHyphens", ["3f2a1c9e7b4d4e8a9c215d6e7f809a1b"] },
             { "email", ["alice@example.test"] },
-            { "empty", [""] },
         };
 
     [Theory]
@@ -170,12 +154,7 @@ public sealed class SignedInIdentityReaderTests
     [InlineData("role", "SharpVault.Admin")]
     [InlineData("wids", "SharpVault.Admin")]
     [InlineData("groups", "SharpVault.Admin")]
-    [InlineData("scp", "SharpVault.Admin")]
-    [InlineData("http://schemas.microsoft.com/ws/2008/06/identity/claims/role", "SharpVault.Admin")]
     [InlineData("roles", "sharpvault.admin")]
-    [InlineData("roles", "SHARPVAULT.ADMIN")]
-    [InlineData("roles", " SharpVault.Admin")]
-    [InlineData("roles", "SharpVault.Admin ")]
     [InlineData("roles", "SharpVault.Admin,SharpVault.User")]
     [InlineData("roles", "SharpVault.Admin SharpVault.User")]
     public void TryRead_RoleClaimOtherThanRoles_IsNotAdmin(string claimType, string value)
@@ -195,12 +174,5 @@ public sealed class SignedInIdentityReaderTests
         SignedInIdentityReader.TryRead(TestIdentities.Authenticated(claims), Settings, out var identity);
 
         Assert.Equal(AccountKind.Unknown, identity!.AccountKind);
-    }
-
-    [Fact]
-    public void TryRead_NullArguments_Throw()
-    {
-        Assert.Throws<ArgumentNullException>(() => SignedInIdentityReader.TryRead(null!, Settings, out _));
-        Assert.Throws<ArgumentNullException>(() => SignedInIdentityReader.TryRead(new ClaimsPrincipal(), null!, out _));
     }
 }

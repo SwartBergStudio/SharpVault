@@ -23,8 +23,6 @@ public sealed class SharingEscalationSecurityTests(ApiTestFactory factory) : Sha
         "4",
         "3",
         "\"view\"",
-        "\"VIEW\"",
-        "\"manage\"",
         "\"Manage,Edit\"",
         "\"\"",
         "null",

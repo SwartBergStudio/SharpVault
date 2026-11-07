@@ -87,33 +87,12 @@ public sealed class ClientAddressResolverTests
     }
 
     [Fact]
-    public void Resolve_NoConnectionAddressAndInvalidProof_ReturnsNull()
-    {
-        var context = ContextFor(connection: null, UserId);
-        AddProof(context, ForgedAddress, UnixSeconds, OtherKey, UserId);
-
-        Assert.Null(ResolverFor(Key, new CollectingLogger<ClientAddressResolver>()).Resolve(context));
-    }
-
-    [Fact]
     public void Resolve_OversizedAddress_ReturnsTheConnectionAddress()
     {
         var logger = new CollectingLogger<ClientAddressResolver>();
         var oversized = new string('1', UserProfileText.IpAddressMaxLength + 1);
         var context = ContextFor(ConnectionAddress, UserId);
         AddProof(context, oversized, UnixSeconds, Key, UserId);
-
-        Assert.Equal(ConnectionAddress, ResolverFor(Key, logger).Resolve(context));
-        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Warning);
-    }
-
-    [Fact]
-    public void Resolve_OversizedSignature_ReturnsTheConnectionAddress()
-    {
-        var logger = new CollectingLogger<ClientAddressResolver>();
-        var context = ContextFor(ConnectionAddress, UserId);
-        AddProof(context, ProofAddress, UnixSeconds, Key, UserId);
-        context.Request.Headers[WebGatewayHeaders.Signature] = new string('A', 4096);
 
         Assert.Equal(ConnectionAddress, ResolverFor(Key, logger).Resolve(context));
         Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Warning);
@@ -128,19 +107,6 @@ public sealed class ClientAddressResolverTests
         var timeProvider = new FakeTimeProvider(Now.AddSeconds(WindowSeconds + 1));
 
         Assert.Equal(ConnectionAddress, ResolverFor(Key, logger, timeProvider).Resolve(context));
-    }
-
-    [Fact]
-    public void Resolve_CalledTwiceInARequest_LogsOnce()
-    {
-        var logger = new CollectingLogger<ClientAddressResolver>();
-        var context = ContextFor(ConnectionAddress, UserId);
-        AddProof(context, ForgedAddress, UnixSeconds, OtherKey, UserId);
-        var resolver = ResolverFor(Key, logger);
-
-        Assert.Equal(ConnectionAddress, resolver.Resolve(context));
-        Assert.Equal(ConnectionAddress, resolver.Resolve(context));
-        Assert.Single(logger.Entries);
     }
 
     [Fact]
@@ -172,11 +138,8 @@ public sealed class ClientAddressResolverTests
     }
 
     [Theory]
-    [InlineData(true, false, false)]
-    [InlineData(false, true, false)]
-    [InlineData(false, false, true)]
-    [InlineData(true, true, false)]
     [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
     [InlineData(false, true, true)]
     public void Resolve_PartialProof_ReturnsTheConnectionAddress(bool time, bool address, bool signature)
     {

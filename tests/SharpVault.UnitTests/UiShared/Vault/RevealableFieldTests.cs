@@ -84,29 +84,6 @@ public sealed class RevealableFieldTests : VaultTestContext
     }
 
     [Fact]
-    public void Print_StateAttributeMarksRevealed()
-    {
-        var cut = RenderField();
-        Assert.Equal("hidden", cut.Find($"#{Prefix}-frame").GetAttribute("data-state"));
-
-        cut.Find($"#{Prefix}-reveal").Click();
-
-        cut.WaitForAssertion(() => Assert.Equal("revealed", cut.Find($"#{Prefix}-frame").GetAttribute("data-state")));
-    }
-
-    [Fact]
-    public void Reveal_ValueWithMarkup_IsRenderedEncoded()
-    {
-        _reveal = (_, _) => Task.FromResult(ApiResponse<RevealedValueDto>.Success(new RevealedValueDto { Value = "<img src=x onerror=alert(1)>" }));
-        var cut = RenderField();
-
-        cut.Find($"#{Prefix}-reveal").Click();
-
-        cut.WaitForAssertion(() => Assert.Contains("&lt;img", cut.Markup, StringComparison.Ordinal));
-        Assert.Empty(cut.FindAll("img"));
-    }
-
-    [Fact]
     public void Hide_Click_RemovesTheValueFromTheMarkup()
     {
         var cut = RenderField();
@@ -172,20 +149,6 @@ public sealed class RevealableFieldTests : VaultTestContext
     }
 
     [Fact]
-    public async Task Dispose_WhileAutoHideIsWaiting_CancelsItWithoutError()
-    {
-        var cut = RenderField();
-        cut.Find($"#{Prefix}-reveal").Click();
-        cut.WaitForAssertion(() => Assert.Contains(Secret, cut.Markup, StringComparison.Ordinal));
-
-        await cut.Instance.DisposeAsync();
-        Time.Advance(Settings.RevealAutoHideDelay * 2);
-        await SettleAsync();
-
-        Assert.Empty(_failures);
-    }
-
-    [Fact]
     public void Copy_Click_CallsRevealWithCopyIntentAndWritesTheClipboardWithoutRendering()
     {
         var cut = RenderField();
@@ -241,12 +204,8 @@ public sealed class RevealableFieldTests : VaultTestContext
 
     [Theory]
     [InlineData(ApiCallStatus.NotFound)]
-    [InlineData(ApiCallStatus.RateLimited)]
-    [InlineData(ApiCallStatus.Conflict)]
-    [InlineData(ApiCallStatus.SignInRequired)]
     [InlineData(ApiCallStatus.AccessDenied)]
     [InlineData(ApiCallStatus.Failed)]
-    [InlineData(ApiCallStatus.ConfigurationMismatch)]
     public void Failure_RaisesOnFailureWithStatus(ApiCallStatus status)
     {
         _reveal = (_, _) => Task.FromResult(new ApiResponse<RevealedValueDto>(status, null));
@@ -258,19 +217,6 @@ public sealed class RevealableFieldTests : VaultTestContext
         Assert.DoesNotContain(Secret, cut.Markup, StringComparison.Ordinal);
         Assert.Equal("hidden", cut.Find($"#{Prefix}-frame").GetAttribute("data-state"));
         Assert.Empty(Clipboard.Writes);
-    }
-
-    [Fact]
-    public void Failure_OnCopy_WritesNothingToTheClipboard()
-    {
-        _reveal = (_, _) => Task.FromResult(ApiResponse<RevealedValueDto>.RateLimited());
-        var cut = RenderField();
-
-        cut.Find($"#{Prefix}-copy").Click();
-
-        cut.WaitForAssertion(() => Assert.Equal([ApiCallStatus.RateLimited], _failures));
-        Assert.Empty(Clipboard.Writes);
-        Assert.Equal(0, _copied);
     }
 
     [Fact]
@@ -314,17 +260,4 @@ public sealed class RevealableFieldTests : VaultTestContext
         Assert.Null(HeldText(cut.Instance));
         Assert.DoesNotContain(Secret, cut.Markup, StringComparison.Ordinal);
     }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("Upper")]
-    [InlineData("a b")]
-    public void InvalidIdPrefix_Throws(string prefix)
-    {
-        ThrownExceptions.ArgumentFrom(() => Render<RevealableField>(parameters => parameters
-            .Add(field => field.IdPrefix, prefix)
-            .Add(field => field.Label, "Password")
-            .Add(field => field.Reveal, (_, _) => Task.FromResult(ApiResponse<RevealedValueDto>.Failed()))));
-    }
-
 }

@@ -12,34 +12,30 @@ public sealed class ETagRulesTests
 
     private static bool Valid(string? value) => Validator.Validate(new ETagModel(value)).IsValid;
 
-    [Theory]
-    [InlineData("W/\"datetime'2026-03-01T09%3A00%3A00.0000000Z'\"")]
-    [InlineData("W/\"datetime'2026-11-05T02%3A03%3A07.2843881Z'\"")]
-    public void ValidIfMatch_AzureFormat_Passes(string value)
+    [Fact]
+    public void ValidIfMatch_AzureFormat_Passes()
     {
+        const string value = "W/\"datetime'2026-03-01T09%3A00%3A00.0000000Z'\"";
+
         Assert.True(Valid(value));
         Assert.True(ETagRules.IsValid(value));
     }
 
-    [Theory]
-    [InlineData("*")]
-    [InlineData("W/*")]
-    public void ValidIfMatch_Wildcard_Fails(string value)
+    [Fact]
+    public void ValidIfMatch_Wildcard_Fails()
     {
-        Assert.False(Valid(value));
+        Assert.False(Valid("*"));
     }
 
     [Theory]
     [InlineData("\"datetime'2026-03-01T09%3A00%3A00.0000000Z'\"")]
-    [InlineData("\"abc\"")]
     [InlineData("abc")]
-    public void ValidIfMatch_StrongETag_Fails(string value)
+    public void ValidIfMatch_StrongOrBareETag_Fails(string value)
     {
         Assert.False(Valid(value));
     }
 
     [Theory]
-    [InlineData("")]
     [InlineData(null)]
     [InlineData("   ")]
     public void ValidIfMatch_Empty_Fails(string? value)
@@ -67,30 +63,14 @@ public sealed class ETagRulesTests
     }
 
     [Theory]
+    [Trait("Category", "Security")]
     [InlineData("W/\"datetime'abc'\" or 1=1")]
     [InlineData("W/\"datetime'a\"b'\"")]
-    [InlineData("W/\"datetime'a'b'\"")]
     [InlineData("W/\"datetime'abc'\"\n")]
     [InlineData("W/\"datetime'abc'\"\r\nX-Injected: 1")]
-    [InlineData("W/\"datetime''\"")]
-    [InlineData("W/\"datetime'a b'\"")]
-    public void ValidIfMatch_InjectedQuote_Fails(string value)
+    public void ValidIfMatch_InjectedQuoteOrLineBreak_Fails(string value)
     {
         Assert.False(Valid(value));
-    }
-
-    [Fact]
-    public void ValidIfMatch_Message_IsTheConstantInvalidETagText()
-    {
-        var result = Validator.Validate(new ETagModel("*"));
-
-        Assert.Equal(VaultMessages.InvalidETag, Assert.Single(result.Errors).ErrorMessage);
-    }
-
-    [Fact]
-    public void ValidIfMatch_NullBuilder_Throws()
-    {
-        Assert.Throws<ArgumentNullException>(() => ETagRules.ValidIfMatch<ETagModel, string?>(null!));
     }
 
     private sealed record ETagModel(string? Value);

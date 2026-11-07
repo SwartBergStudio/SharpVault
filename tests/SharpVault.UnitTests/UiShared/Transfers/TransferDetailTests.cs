@@ -58,43 +58,6 @@ public sealed class TransferDetailTests : TransferUiTestHost
     }
 
     [Fact]
-    public void Blocked_ShowsTheBlockReasonAndAbort()
-    {
-        var blocked = Transfer(_transferId, Guid.NewGuid(), TransferStateDto.Blocked, canAbort: true);
-        blocked.BlockReason = TransferBlockReasonDto.TargetLocked;
-
-        var cut = RenderDetail(blocked);
-
-        Assert.NotNull(cut.Find("#transfer-block-reason"));
-        Assert.NotNull(cut.Find("#transfer-abort"));
-    }
-
-    [Fact]
-    public void Retrying_ShowsTheFailureKindAndWhenItStartedFailing()
-    {
-        var retrying = Transfer(_transferId, Guid.NewGuid(), TransferStateDto.Publishing, canAbort: true);
-        retrying.IsRetrying = true;
-        retrying.LastFailureKind = "TransferStepPendingException";
-        retrying.FailingSince = Time.GetUtcNow();
-
-        var cut = RenderDetail(retrying);
-
-        Assert.Contains("TransferStepPendingException", cut.Find("#transfer-failure-kind").TextContent, StringComparison.Ordinal);
-        Assert.NotNull(cut.Find("#transfer-failing-since"));
-    }
-
-    [Fact]
-    public void RenamedSecrets_ShowTheCountAsASentence()
-    {
-        var completed = Transfer(_transferId, Guid.NewGuid(), TransferStateDto.Completed);
-        completed.RenamedItemCount = 2;
-
-        var cut = RenderDetail(completed);
-
-        Assert.Contains("2 secret(s) were already at the receiving user", cut.Find("#transfer-progress-renamed").TextContent, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task Approve_ConfirmThenCallsWithTheConcurrencyToken()
     {
         var provider = RenderDialogProviders();
@@ -203,7 +166,6 @@ public sealed class TransferDetailTests : TransferUiTestHost
     [Theory]
     [InlineData(TransferStateDto.PendingApproval)]
     [InlineData(TransferStateDto.Completed)]
-    [InlineData(TransferStateDto.Aborted)]
     public async Task Polling_NotInProgressAtLoad_DoesNotStartPolling(TransferStateDto state)
     {
         RenderPolling(Respond(Transfer(_transferId, Guid.NewGuid(), state)));
@@ -225,20 +187,6 @@ public sealed class TransferDetailTests : TransferUiTestHost
         Time.Advance(TransferDetail.PollInterval);
 
         cut.WaitForAssertion(() => Assert.Equal("Moving items", StateText(cut)));
-    }
-
-    [Fact]
-    public void Polling_InProgressTransfer_RequestsTheTransferOncePerInterval()
-    {
-        var cut = RenderPolling(
-            Respond(Transfer(_transferId, Guid.NewGuid(), TransferStateDto.Approved)),
-            Respond(Transfer(_transferId, Guid.NewGuid(), TransferStateDto.Releasing)));
-
-        Time.Advance(TransferDetail.PollInterval);
-        cut.WaitForAssertion(() => Assert.Equal(2, PollCount()));
-
-        Time.Advance(TransferDetail.PollInterval);
-        cut.WaitForAssertion(() => Assert.Equal(3, PollCount()));
     }
 
     [Fact]

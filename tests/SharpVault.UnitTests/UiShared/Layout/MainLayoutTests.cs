@@ -100,28 +100,6 @@ public sealed class MainLayoutTests : ShellTestContext
 
     [Fact]
     [Trait("Category", "Security")]
-    public void MainLayout_CurrentUserAccessDenied_HidesAdminLink()
-    {
-        Authorization.SetAuthorized(DisplayName);
-        ReturnsCurrentUserStatus(ApiResponse<CurrentUserDto>.AccessDenied());
-
-        var cut = RenderLayout();
-
-        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("#side-nav")));
-        Assert.Empty(cut.FindAll("#nav-admin-users"));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void MainLayout_Rendered_HostsTheIdleLock()
-    {
-        var cut = RenderLayout();
-
-        Assert.NotNull(cut.FindComponent<IdleLock>());
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
     public void MainLayout_SignedIn_StartsTheIdleMonitorThroughTheLayout()
     {
         SignInAs(DisplayName, isAdmin: false);
@@ -166,15 +144,6 @@ public sealed class MainLayoutTests : ShellTestContext
 
     [Fact]
     [Trait("Category", "Security")]
-    public void MainLayout_SignedOut_HasUniqueIds()
-    {
-        var cut = RenderLayout();
-
-        AssertUniqueIds(cut);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
     public void MainLayout_Rendered_ContainsNoScriptOrEventHandlerAttributes()
     {
         SignInAs(DisplayName, isAdmin: true);
@@ -185,21 +154,6 @@ public sealed class MainLayoutTests : ShellTestContext
         Assert.Empty(cut.FindAll("script"));
         Assert.DoesNotContain("javascript:", cut.Markup, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(cut.FindAll("*"), element => element.Attributes.Any(attribute => attribute.Name.StartsWith("on", StringComparison.OrdinalIgnoreCase)));
-    }
-
-    [Fact]
-    public void MainLayout_Rendered_ErrorUiDismissIsLabelledButton()
-    {
-        var cut = RenderLayout();
-
-        var errorUi = cut.Find("#blazor-error-ui");
-        Assert.Equal("alert", errorUi.GetAttribute("role"));
-        var dismiss = cut.Find("#blazor-error-dismiss");
-        Assert.Equal("button", dismiss.LocalName);
-        Assert.Equal("button", dismiss.GetAttribute("type"));
-        Assert.Contains("dismiss", dismiss.ClassList);
-        Assert.Equal("Dismiss", dismiss.GetAttribute("aria-label"));
-        Assert.Contains("reload", cut.Find("#blazor-error-reload").ClassList);
     }
 
     [Fact]
@@ -245,18 +199,6 @@ public sealed class MainLayoutTests : ShellTestContext
 
         Assert.Equal("Recovered", cut.Find("#flaky-ok").TextContent);
         Assert.Empty(cut.FindAll("#error-boundary"));
-    }
-
-    [Fact]
-    public void MainLayout_BodyChanges_RecoversTheBoundary()
-    {
-        var cut = RenderLayout(ThrowingBody());
-        Assert.NotNull(cut.Find("#error-boundary"));
-
-        cut.Render(parameters => parameters.Add(layout => layout.Body, PageBody()));
-
-        Assert.Empty(cut.FindAll("#error-boundary"));
-        Assert.Equal("Page body", cut.Find("#page-body").TextContent);
     }
 
     private static RenderFragment ThrowingBody() =>

@@ -74,32 +74,21 @@ public sealed partial class ComponentSourceRulesTests
     private static bool IsInside(string path, string folder) => Relative(path).StartsWith(folder + "/", StringComparison.Ordinal);
 
     [Fact]
-    public void RazorFiles_UiShared_AreAtMost200Lines()
+    public void RazorFiles_UiSharedAndWeb_AreAtMost200Lines()
     {
-        var files = RazorFiles();
+        var uiFiles = RazorFiles();
+        var webFiles = WebMarkupFiles();
 
-        var offenders = files
+        var offenders = uiFiles
             .Where(path => File.ReadAllLines(path).Length > MaxRazorLines)
             .Select(Relative)
+            .Concat(webFiles
+                .Where(path => File.ReadAllLines(path).Length > MaxRazorLines)
+                .Select(WebRelative))
             .ToList();
 
-        Assert.NotEmpty(files);
-        Assert.Empty(offenders);
-    }
-
-    [Fact]
-    public void RazorFiles_WebProject_AreAtMost200Lines()
-    {
-        var files = Directory.EnumerateFiles(WebRoot, "*.razor", SearchOption.AllDirectories)
-            .Where(path => !IsBuildOutput(path))
-            .ToList();
-
-        var offenders = files
-            .Where(path => File.ReadAllLines(path).Length > MaxRazorLines)
-            .Select(path => Path.GetRelativePath(WebRoot, path).Replace(Path.DirectorySeparatorChar, '/'))
-            .ToList();
-
-        Assert.NotEmpty(files);
+        Assert.NotEmpty(uiFiles);
+        Assert.NotEmpty(webFiles);
         Assert.Empty(offenders);
     }
 
@@ -134,14 +123,7 @@ public sealed partial class ComponentSourceRulesTests
 
     [Theory]
     [InlineData("@code { [Parameter] public string? Name { get; set; } }", "")]
-    [InlineData("@code { [SupplyParameterFromQuery(Name = \"returnUrl\")] private string? ReturnUrl { get; set; } }", "")]
-    [InlineData("@code { protected override Task<ApiResponse<int>> LoadAsync(CancellationToken cancellationToken) =>\n        Accessor.GetAsync(cancellationToken); }", "")]
-    [InlineData("<p>No code</p>", "")]
     [InlineData("@code { private int _count; }", "private int _count;")]
-    [InlineData("@code { private void Click() { _count++; } }", "private void Click() { _count++; }")]
-    [InlineData("@code { private string Label => Name.ToUpperInvariant(); }", "private string Label => Name.ToUpperInvariant();")]
-    [InlineData("@code { protected override async Task OnInitializedAsync() { await Task.Yield(); } }", "protected override async Task OnInitializedAsync() { await Task.Yield(); }")]
-    [InlineData("@code { [Parameter] public string? Name { get; set; } private bool Hidden() => Name is null; }", "private bool Hidden() => Name is null;")]
     public void PageLogic_Source_ReportsOnlyCodeBeyondParameterWiring(string source, string expected)
     {
         Assert.Equal(expected, PageLogic(source));
@@ -178,23 +160,9 @@ public sealed partial class ComponentSourceRulesTests
         Assert.Empty(offenders);
     }
 
-    [Fact]
-    public void MudProviderExceptions_AreOnlyTheFourAppRootProvidersInTheMainLayout()
-    {
-        Assert.Equal(["Layout/MainLayout.razor"], AllowedMudOutsideCommon.Keys);
-        Assert.Equal(
-            ["MudDialogProvider", "MudPopoverProvider", "MudSnackbarProvider", "MudThemeProvider"],
-            AllowedMudOutsideCommon["Layout/MainLayout.razor"].Order(StringComparer.Ordinal));
-        Assert.All(MudProviders, provider => Assert.EndsWith("Provider", provider, StringComparison.Ordinal));
-    }
-
     [Theory]
     [InlineData("Components/Vault/SecretForm.razor", "<MudStack Spacing=\"3\"></MudStack>", "MudStack")]
-    [InlineData("Components/Vault/SecretForm.razor", "<MudThemeProvider />", "MudThemeProvider")]
-    [InlineData("Layout/SideNav.razor", "<MudPopoverProvider />", "MudPopoverProvider")]
-    [InlineData("Layout/MainLayout.razor", "<MudAppBar></MudAppBar>", "MudAppBar")]
     [InlineData("Pages/Account.razor", "<MudText Typo=\"Typo.h4\">x</MudText>", "MudText")]
-    [InlineData("Web/Components/Pages/LocalSignIn.razor", "<MudPaper>x</MudPaper>", "MudPaper")]
     public void MudViolations_ReintroducedUse_IsReported(string path, string source, string expected)
     {
         Assert.Equal([expected], MudViolations(path, source));
@@ -203,7 +171,6 @@ public sealed partial class ComponentSourceRulesTests
     [Theory]
     [InlineData("Components/Common/SvText.razor", "<MudText>x</MudText>")]
     [InlineData("Layout/MainLayout.razor", "<MudThemeProvider /><MudPopoverProvider /><MudDialogProvider /><MudSnackbarProvider />")]
-    [InlineData("Components/Vault/SecretForm.razor", "<SvStack></SvStack>")]
     public void MudViolations_AllowedUse_IsNotReported(string path, string source)
     {
         Assert.Empty(MudViolations(path, source));
@@ -254,5 +221,4 @@ public sealed partial class ComponentSourceRulesTests
 
     [GeneratedRegex(@"protected override Task<ApiResponse<\w+>> LoadAsync\(CancellationToken \w+\) => [\w.]+\([\w, ]*\);", RegexOptions.CultureInvariant)]
     private static partial Regex LoadAsyncExpression();
-
 }

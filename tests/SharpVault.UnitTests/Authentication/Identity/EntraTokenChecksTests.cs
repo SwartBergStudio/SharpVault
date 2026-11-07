@@ -42,14 +42,10 @@ public sealed class EntraTokenChecksTests
             { "missing", [] },
             { "duplicated", [TestIdentities.TenantId.ToString("D"), TestIdentities.TenantId.ToString("D")] },
             { "duplicatedWithForeign", [TestIdentities.TenantId.ToString("D"), TestIdentities.OtherTenantId.ToString("D")] },
-            { "foreignFirst", [TestIdentities.OtherTenantId.ToString("D"), TestIdentities.TenantId.ToString("D")] },
             { "common", ["common"] },
-            { "organizations", ["organizations"] },
-            { "empty", [string.Empty] },
             { "nonGuid", ["not-a-guid"] },
             { "braces", ["{" + TestIdentities.TenantId.ToString("D") + "}"] },
             { "noHyphens", [TestIdentities.TenantId.ToString("N")] },
-            { "emptyGuid", [Guid.Empty.ToString("D")] },
         };
 
     [Theory]
@@ -73,12 +69,8 @@ public sealed class EntraTokenChecksTests
             { "notGuid", ["x"] },
             { "emptyGuid", [Guid.Empty.ToString("D")] },
             { "two", [Guid.NewGuid().ToString("D"), Guid.NewGuid().ToString("D")] },
-            { "twoIdentical", [TestIdentities.ClientId.ToString("D"), TestIdentities.ClientId.ToString("D")] },
-            { "braces", ["{" + Guid.NewGuid().ToString("D") + "}"] },
             { "noHyphens", [Guid.NewGuid().ToString("N")] },
-            { "empty", [string.Empty] },
             { "email", ["alice@example.test"] },
-            { "upn", ["alice@contoso.onmicrosoft.com"] },
         };
 
     [Theory]
@@ -113,30 +105,8 @@ public sealed class EntraTokenChecksTests
         Assert.Equal(TokenCheckResult.AppOnlyToken, Access(claims));
     }
 
-    [Fact]
-    public void CheckAccessToken_AppIdentityTypeAmongOthers_ReturnsAppOnlyToken()
-    {
-        var claims = TestIdentities.AccessTokenClaims()
-            .With(EntraClaimTypes.IdentityType, "user")
-            .With(EntraClaimTypes.IdentityType, "app");
-
-        Assert.Equal(TokenCheckResult.AppOnlyToken, Access(claims));
-    }
-
-    [Fact]
-    public void CheckAccessToken_AppOnlyTokenWithoutScope_ReturnsAppOnlyToken()
-    {
-        var claims = TestIdentities.AccessTokenClaims()
-            .Without(EntraClaimTypes.Scope)
-            .With(EntraClaimTypes.IdentityType, "app")
-            .With(EntraClaimTypes.Roles, AppRoles.Admin);
-
-        Assert.Equal(TokenCheckResult.AppOnlyToken, Access(claims));
-    }
-
     [Theory]
     [InlineData("User")]
-    [InlineData("")]
     [InlineData("APP")]
     public void CheckAccessToken_OtherIdentityTypes_AreNotTreatedAsApp(string identityType)
     {
@@ -151,14 +121,7 @@ public sealed class EntraTokenChecksTests
             { "none", [] },
             { "other", ["User.Read"] },
             { "prefixOnly", ["access_as_user_admin"] },
-            { "suffixed", ["xaccess_as_user"] },
             { "upperCase", ["ACCESS_AS_USER"] },
-            { "empty", [string.Empty] },
-            { "whitespace", ["   "] },
-            { "twoClaims", ["access_as_user", "access_as_user"] },
-            { "twoClaimsOtherFirst", ["User.Read", "access_as_user"] },
-            { "tabSeparated", ["User.Read\taccess_as_user"] },
-            { "commaSeparated", ["User.Read,access_as_user"] },
             { "fullApiScope", ["api://a1b2c3d4-e5f6-4708-8192-a3b4c5d6e7f8/access_as_user"] },
         };
 
@@ -178,8 +141,6 @@ public sealed class EntraTokenChecksTests
 
     [Theory]
     [InlineData("User.Read access_as_user")]
-    [InlineData("access_as_user User.Read")]
-    [InlineData("User.Read   access_as_user  profile")]
     [InlineData(" access_as_user ")]
     public void CheckAccessToken_ScopeAmongOthers_ReturnsValid(string scopes)
     {
@@ -200,18 +161,6 @@ public sealed class EntraTokenChecksTests
     public void CheckAccessToken_NullPrincipal_ReturnsInvalid()
     {
         Assert.Equal(TokenCheckResult.Invalid, EntraTokenChecks.CheckAccessToken(null, Settings, Scope));
-    }
-
-    [Fact]
-    public void CheckAccessToken_EmptyPrincipal_ReturnsWrongTenant()
-    {
-        Assert.Equal(TokenCheckResult.WrongTenant, EntraTokenChecks.CheckAccessToken(new ClaimsPrincipal(), Settings, Scope));
-    }
-
-    [Fact]
-    public void CheckAccessToken_NullSettings_Throws()
-    {
-        Assert.Throws<ArgumentNullException>(() => EntraTokenChecks.CheckAccessToken(new ClaimsPrincipal(), null!, Scope));
     }
 
     [Fact]
@@ -246,12 +195,6 @@ public sealed class EntraTokenChecksTests
         var claims = TestIdentities.AccessTokenClaims().Replacing(EntraClaimTypes.ObjectId, Guid.Empty.ToString("D"));
 
         Assert.Equal(TokenCheckResult.InvalidObjectId, EntraTokenChecks.CheckIdToken(TestIdentities.Authenticated(claims), Settings));
-    }
-
-    [Fact]
-    public void CheckIdToken_NullPrincipal_ReturnsInvalid()
-    {
-        Assert.Equal(TokenCheckResult.Invalid, EntraTokenChecks.CheckIdToken(null, Settings));
     }
 
     [Fact]

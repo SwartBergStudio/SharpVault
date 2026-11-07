@@ -12,6 +12,7 @@ using SharpVault.Application.Features.OneTimeLinks.Common;
 using SharpVault.Domain.Audit;
 using SharpVault.Domain.OneTimeLinks;
 using SharpVault.Domain.Users;
+using SharpVault.Domain.Vaults;
 using SharpVault.Dtos.OneTimeLinks;
 using SharpVault.UnitTests.Support;
 using SharpVault.UnitTests.Support.Vault;
@@ -26,6 +27,7 @@ public sealed class OpenOneTimeLinkCommandHandlerTests
 
     private readonly IOneTimeLinkStore _links = Substitute.For<IOneTimeLinkStore>();
     private readonly IUserStore _users = Substitute.For<IUserStore>();
+    private readonly IVaultStore _vault = OneTimeLinkSamples.VaultWithEverySecret();
     private readonly RecordingAuditLog _auditLog = new();
     private readonly FakeTimeProvider _time = new(OneTimeLinkSamples.Now);
     private readonly RecordingLogger<OpenOneTimeLinkCommandHandler> _logger = new();
@@ -45,6 +47,7 @@ public sealed class OpenOneTimeLinkCommandHandlerTests
         policy ?? OneTimeLinkSamples.Policy(),
         _links,
         _users,
+        _vault,
         OneTimeLinkSamples.AuditWriter(_auditLog, _time),
         _time,
         _logger);
@@ -64,6 +67,18 @@ public sealed class OpenOneTimeLinkCommandHandlerTests
     private void GivenCreator(UserStatus status) =>
         _users.GetAsync(_creatorId, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<Versioned<User>?>(OneTimeLinkSamples.UserRow(_creatorId, status)));
+
+    [Fact]
+    public async Task Handle_SecretNoLongerInTheVault_ReturnsNotFoundAndKeepsTheLink()
+    {
+        _vault.GetSecretAsync(_link.OwnerId, _link.SecretId, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<Versioned<Secret>?>(null));
+
+        var result = await Handler().Handle(Command(), Token);
+
+        Assert.Equal(ResultFailureKind.NotFound, result.FailureKind);
+        await _links.DidNotReceive().TryConsumeAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
 
     [Fact]
     public async Task Handle_Success_ReturnsThePayloadAndAuditsOpened()

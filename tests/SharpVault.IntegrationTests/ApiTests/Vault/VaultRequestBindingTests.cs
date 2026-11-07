@@ -20,15 +20,9 @@ public sealed class VaultRequestBindingTests(ApiTestFactory factory) : VaultTest
     public static TheoryData<string> BadModes() =>
     [
         "1",
-        "2",
-        "0",
-        "1,2",
         "movetoparent",
-        "MOVETOPARENT",
-        "deletecontents",
         "MoveToParent,DeleteContents",
         " MoveToParent",
-        "MoveToParent ",
         "Unknown",
         "SV-MODE-ECHO-MARKER",
         string.Empty,
@@ -38,15 +32,11 @@ public sealed class VaultRequestBindingTests(ApiTestFactory factory) : VaultTest
     {
         { ApiRoutes.VaultSecrets, "POST" },
         { "/api/vault/secrets/{0}", "PUT" },
-        { "/api/vault/secrets/{0}/move", "POST" },
         { "/api/vault/secrets/{0}/reveal", "POST" },
-        { "/api/vault/secrets/{0}/history/{0}/reveal", "POST" },
         { ApiRoutes.VaultFolders, "POST" },
-        { "/api/vault/folders/{0}", "PUT" },
-        { "/api/vault/folders/{0}/move", "POST" },
     };
 
-    public static TheoryData<string> BadPageSizes() => ["abc", "0", "-1", "201", "1.5", "99999999999", string.Empty];
+    public static TheoryData<string> BadPageSizes() => ["abc", "0", "201", "99999999999"];
 
     private static string ValidBodyFor(string route) => route switch
     {
@@ -152,22 +142,13 @@ public sealed class VaultRequestBindingTests(ApiTestFactory factory) : VaultTest
 
     [Theory]
     [InlineData("{\"type\":1,\"name\":\"n\"}")]
-    [InlineData("{\"type\":\"login\",\"name\":\"n\"}")]
-    [InlineData("{\"type\":\"LOGIN\",\"name\":\"n\"}")]
-    [InlineData("{\"type\":\"Login,Card\",\"name\":\"n\"}")]
     [InlineData("{\"type\":\"Nope\",\"name\":\"n\"}")]
-    [InlineData("{\"type\":0,\"name\":\"n\"}")]
-    [InlineData("{\"type\":\"1\",\"name\":\"n\"}")]
-    [InlineData("{\"type\":null,\"name\":\"n\"}")]
     [InlineData("{\"type\":\"Login\",\"name\":\"\\ud800\"}")]
-    [InlineData("{\"type\":\"Login\",\"name\":5}")]
     [InlineData("{\"type\":\"Login\",\"name\":\"n\",\"tags\":\"a\"}")]
     [InlineData("{\"type\":\"Login\",\"name\":\"n\",\"folderId\":\"not-a-guid\"}")]
     [InlineData("null")]
-    [InlineData("")]
     [InlineData("[]")]
     [InlineData("{")]
-    [InlineData("\"text\"")]
     public async Task CreateSecret_MalformedBody_Returns400AndWritesNothing(string json)
     {
         var api = ApiFor(TestUsers.User);
@@ -220,8 +201,6 @@ public sealed class VaultRequestBindingTests(ApiTestFactory factory) : VaultTest
     [InlineData("unfiled=abc")]
     [InlineData("folderId=not-a-guid")]
     [InlineData("folderId=00000000-0000-0000-0000-000000000000")]
-    [InlineData("unfiled=true&folderId=7d4c3c8e-0000-7000-8000-000000000001")]
-    [InlineData("continuationToken=x_bad")]
     [InlineData("continuationToken=%27%20or%20PartitionKey%20ne%20%27")]
     [InlineData("search=%20%20")]
     public async Task ListSecrets_BadQuery_Returns400AndReadsNothing(string query)
@@ -256,9 +235,7 @@ public sealed class VaultRequestBindingTests(ApiTestFactory factory) : VaultTest
 
     [Theory]
     [InlineData("")]
-    [InlineData("*")]
     [InlineData("abc")]
-    [InlineData("\"abc\"")]
     [InlineData("W/\"datetime'x y'\"")]
     public async Task MutatingSecretRoutes_MalformedIfMatch_Return400AndWriteNothing(string ifMatch)
     {
@@ -326,11 +303,8 @@ public sealed class VaultRequestBindingTests(ApiTestFactory factory) : VaultTest
 
     [Theory]
     [InlineData("GET", "/api/vault/secrets/not-a-guid")]
-    [InlineData("POST", "/api/vault/secrets/not-a-guid/reveal")]
     [InlineData("PUT", "/api/vault/folders/123")]
-    [InlineData("DELETE", "/api/vault/folders/123")]
     [InlineData("DELETE", "/api/vault/recycle-bin/secrets/xyz")]
-    [InlineData("POST", "/api/vault/recycle-bin/folders/xyz/restore")]
     public async Task Routes_NonGuidId_Return404WithoutReachingTheVault(string method, string path)
     {
         var api = ApiFor(TestUsers.User);

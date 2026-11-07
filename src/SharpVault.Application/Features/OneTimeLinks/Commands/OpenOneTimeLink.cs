@@ -32,6 +32,7 @@ public sealed partial class OpenOneTimeLinkCommandHandler(
     IOneTimeLinkPolicy policy,
     IOneTimeLinkStore links,
     IUserStore users,
+    IVaultStore vault,
     OneTimeLinkAuditWriter audit,
     TimeProvider timeProvider,
     ILogger<OpenOneTimeLinkCommandHandler> logger) : IRequestHandler<OpenOneTimeLinkCommand, Result<OneTimeLinkPayloadDto>>
@@ -62,6 +63,11 @@ public sealed partial class OpenOneTimeLinkCommandHandler(
         }
 
         var link = stored.Value;
+        if (await vault.GetSecretAsync(link.OwnerId, link.SecretId, cancellationToken) is null)
+        {
+            return Result<OneTimeLinkPayloadDto>.NotFound();
+        }
+
         if (!await links.TryConsumeAsync(request.LinkId, stored.ETag, cancellationToken))
         {
             return Result<OneTimeLinkPayloadDto>.NotFound();

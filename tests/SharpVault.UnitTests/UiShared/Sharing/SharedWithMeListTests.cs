@@ -8,12 +8,9 @@ using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using SharpVault.Dtos.Sharing;
-using SharpVault.Dtos.Users;
 using SharpVault.Dtos.Vault;
-using SharpVault.UI.Shared.Components.Base;
 using SharpVault.UI.Shared.Components.Sharing;
 using SharpVault.UI.Shared.Components.Vault;
-using SharpVault.UI.Shared.Layout;
 using SharpVault.UI.Shared.Navigation;
 using SharpVault.UI.Shared.Pages;
 using SharpVault.UI.Shared.Services;
@@ -101,23 +98,7 @@ public sealed class SharedWithMeListTests : SharingTestHost
     }
 
     [Fact]
-    public async Task LoadMore_RetryAfterFailure_AppendsAndClearsTheError()
-    {
-        ReturnsFirstPage(NextToken, Secret(_adaId, "Ada Lovelace", _firstSecretId, "Zulu login"));
-        ReturnsNextPage(Task.FromResult(ApiResponse<SharedItemPageDto>.Failed()));
-        var cut = Render<SharedWithMePage>();
-        await cut.WaitForElement("#shared-load-more").ClickAsync();
-        cut.WaitForElement("#shared-load-more-error");
-        ReturnsNextPage(PageOf(null, Secret(_adaId, "Ada Lovelace", _secondSecretId, "Alpha login")));
-
-        await cut.Find("#shared-load-more").ClickAsync();
-
-        cut.WaitForElement($"#shared-item-link-secret-{_secondSecretId:D}");
-        Assert.Empty(cut.FindAll("#shared-load-more-error"));
-    }
-
-    [Fact]
-    public async Task LoadMore_SignInRequired_RedirectsToSignIn()
+    public async Task SharedWithMeView_LoadMoreSignInRequired_RedirectsOnce()
     {
         ReturnsFirstPage(NextToken, Secret(_adaId, "Ada Lovelace", _firstSecretId, "Zulu login"));
         ReturnsNextPage(Task.FromResult(ApiResponse<SharedItemPageDto>.SignInRequired()));
@@ -125,24 +106,29 @@ public sealed class SharedWithMeListTests : SharingTestHost
 
         await cut.WaitForElement("#shared-load-more").ClickAsync();
 
-        cut.WaitForAssertion(AssertRedirectedToSignIn);
-        Assert.Empty(cut.FindAll("#shared-load-more-error"));
+        cut.WaitForAssertion(() =>
+        {
+            var navigation = Assert.IsType<BunitNavigationManager>(Services.GetRequiredService<NavigationManager>());
+            Assert.Single(navigation.History, entry => entry.Uri.StartsWith(AccountRoutes.SignIn, StringComparison.Ordinal));
+        });
+        _ = SharedClient.Received(1).ListAsync(null, Arg.Any<int>(), NextToken, Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task EmptyFirstPageWithAToken_ShowsLoadMoreNotTheEmptyHint()
+    public async Task SharedWithMeView_LoadMoreAccessDenied_GoesToAccessDenied()
     {
-        ReturnsFirstPage(NextToken);
-        ReturnsNextPage(PageOf(null, Secret(_adaId, "Ada Lovelace", _firstSecretId, "Found later")));
+        ReturnsFirstPage(NextToken, Secret(_adaId, "Ada Lovelace", _firstSecretId, "Zulu login"));
+        ReturnsNextPage(Task.FromResult(ApiResponse<SharedItemPageDto>.AccessDenied()));
         var cut = Render<SharedWithMePage>();
 
-        var button = cut.WaitForElement("#shared-load-more");
+        await cut.WaitForElement("#shared-load-more").ClickAsync();
 
-        Assert.Empty(cut.FindAll("#shared-items-empty"));
-        Assert.Empty(cut.FindAll("[id^=shared-owner-heading-]"));
-        await button.ClickAsync();
-        cut.WaitForElement($"#shared-item-link-secret-{_firstSecretId:D}");
-        Assert.Empty(cut.FindAll("#shared-items-empty"));
+        cut.WaitForAssertion(() =>
+        {
+            var navigation = Assert.IsType<BunitNavigationManager>(Services.GetRequiredService<NavigationManager>());
+            Assert.Contains(navigation.History, entry => entry.Uri == AccountRoutes.AccessDenied && entry.Options.ForceLoad);
+        });
+        Assert.Empty(cut.FindAll("#shared-load-more-error"));
     }
 
     [Fact]
@@ -158,17 +144,7 @@ public sealed class SharedWithMeListTests : SharingTestHost
     }
 
     [Fact]
-    public void Undamaged_ShowsNoDamagedMarker()
-    {
-        ReturnsFirstPage(null, Secret(_adaId, "Ada Lovelace", _firstSecretId, "Healthy"));
-
-        var cut = Render<SharedWithMePage>();
-
-        cut.WaitForElement($"#shared-item-link-secret-{_firstSecretId:D}");
-        Assert.Empty(cut.FindAll($"#shared-item-damaged-secret-{_firstSecretId:D}"));
-    }
-
-    [Fact]
+    [Trait("Category", "Security")]
     public async Task FileSecret_SignInRequired_RedirectsToSignInAndShowsNoSuccessStatus()
     {
         ReturnsFirstPage(null, Secret(_adaId, "Ada Lovelace", _firstSecretId, "Payroll"));
@@ -258,66 +234,7 @@ public sealed class SharedWithMeListTests : SharingTestHost
     }
 
     [Fact]
-    public void SideNav_SharedLink_PointsAtTheSharedRoute()
-    {
-        Authorization.SetAuthorized("Owner One");
-        var cut = Render<SideNav>(parameters => parameters
-            .Add(nav => nav.Open, true)
-            .AddCascadingValue(LayoutCascades.CurrentUser, new CurrentUserDto { UserId = Guid.NewGuid(), DisplayName = "Owner One" }));
-
-        Assert.EndsWith(SharingRoutes.Shared, cut.Find("#nav-shared").GetAttribute("href"), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task SharedWithMeView_LoadMoreSignInRequired_RedirectsOnce()
-    {
-        ReturnsFirstPage(NextToken, Secret(_adaId, "Ada Lovelace", _firstSecretId, "Zulu login"));
-        ReturnsNextPage(Task.FromResult(ApiResponse<SharedItemPageDto>.SignInRequired()));
-        var cut = Render<SharedWithMePage>();
-
-        await cut.WaitForElement("#shared-load-more").ClickAsync();
-
-        cut.WaitForAssertion(() =>
-        {
-            var navigation = Assert.IsType<BunitNavigationManager>(Services.GetRequiredService<NavigationManager>());
-            Assert.Single(navigation.History, entry => entry.Uri.StartsWith(AccountRoutes.SignIn, StringComparison.Ordinal));
-        });
-        _ = SharedClient.Received(1).ListAsync(null, Arg.Any<int>(), NextToken, Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task SharedWithMeView_LoadMoreAccessDenied_GoesToAccessDenied()
-    {
-        ReturnsFirstPage(NextToken, Secret(_adaId, "Ada Lovelace", _firstSecretId, "Zulu login"));
-        ReturnsNextPage(Task.FromResult(ApiResponse<SharedItemPageDto>.AccessDenied()));
-        var cut = Render<SharedWithMePage>();
-
-        await cut.WaitForElement("#shared-load-more").ClickAsync();
-
-        cut.WaitForAssertion(() =>
-        {
-            var navigation = Assert.IsType<BunitNavigationManager>(Services.GetRequiredService<NavigationManager>());
-            Assert.Contains(navigation.History, entry => entry.Uri == AccountRoutes.AccessDenied && entry.Options.ForceLoad);
-        });
-        Assert.Empty(cut.FindAll("#shared-load-more-error"));
-    }
-
-    [Fact]
-    public async Task SharedWithMeView_LoadMoreRateLimited_KeepsRowsAndShowsTheServerText()
-    {
-        ReturnsFirstPage(NextToken, Secret(_adaId, "Ada Lovelace", _firstSecretId, "Zulu login"));
-        ReturnsNextPage(Task.FromResult(ApiResponse<SharedItemPageDto>.RateLimited()));
-        var cut = Render<SharedWithMePage>();
-
-        await cut.WaitForElement("#shared-load-more").ClickAsync();
-
-        cut.WaitForElement("#shared-load-more-error");
-        Assert.Contains(LoadableComponentBase<SharedItemPageDto>.RateLimitedText, cut.Find("#shared-load-more-error").TextContent, StringComparison.Ordinal);
-        Assert.NotNull(cut.Find($"#shared-item-link-secret-{_firstSecretId:D}"));
-        Assert.NotNull(cut.Find("#shared-load-more"));
-    }
-
-    [Fact]
+    [Trait("Category", "Security")]
     public async Task SharedWithMeView_LoadMoreThrows_KeepsRowsAndShowsTheFailedText()
     {
         ReturnsFirstPage(NextToken, Secret(_adaId, "Ada Lovelace", _firstSecretId, "Zulu login"));

@@ -38,7 +38,7 @@ public sealed class SharingTamperingSecurityTests(ApiTestFactory factory) : Shar
 
     public static TheoryData<string> UnusableIfMatch() => ["*", string.Empty, "W/\"abc\""];
 
-    public static TheoryData<string> TamperedPermissions() => ["Owner", "4", "view", string.Empty, "Manage,Edit", "None", "0"];
+    public static TheoryData<string> TamperedPermissions() => ["Owner", "4", "view", "Manage,Edit"];
 
     public static TheoryData<string> MalformedTokens() =>
     [

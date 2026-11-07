@@ -322,7 +322,7 @@ This file tracks what is done, what is in progress and what comes next, so each 
 - The two-host tests (`SharedSessionTests`) run in one test process. Separate processes and a real load balancer are not tested.
 - Static pages are dark only. The reason is that `app.css` has no colour tokens for a light scheme. It is not that CSS needs JavaScript (decision 44). [THEME.md](THEME.md) is corrected.
 - Entra-mode rejection of a local cookie is incidental. A cookie made by local sign-in is anonymous in Entra mode, because Identity.Web checks the cookie's `.AuthScheme`. `EntraModeWeb_CookieMintedInLocalMode_IsAnonymous` shows the outcome only, and no code rule states it.
-11. **One-time links, chosen without owner review (reversible).** O1 creator notice in-app only, O2 off by default, O3 shared HMAC key for the Web-to-API proof, O4 links outlive the secret, D6 passphrase minimum of 8 characters in the browser only, D12 formula-prefix rule for the AUD-4 CSV export. See [ONE-TIME-LINKS.md](ONE-TIME-LINKS.md#owner-decisions).
+11. **One-time links, chosen without owner review (reversible).** O1 creator notice in-app only, O2 off by default, O3 shared HMAC key for the Web-to-API proof, D6 passphrase minimum of 8 characters in the browser only, D12 formula-prefix rule for the AUD-4 CSV export. See [ONE-TIME-LINKS.md](ONE-TIME-LINKS.md#owner-decisions).
 
 **Build order.** Numbering follows the stages. Stages 1 to 6 are built on `feature/local-debug-auth` (not committed).
 

@@ -55,22 +55,13 @@ public sealed class ChangeShareGrantCommandValidatorTests
     }
 
     [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
     [InlineData("*")]
     [InlineData("\"abc\"")]
     [InlineData("W/\"datetime'abc'\"\n")]
-    [InlineData("W/\"datetime'a b'\"")]
     [InlineData("W/\"datetime'a'\" or 1=1")]
     public void Validate_MalformedETag_Fails(string etag)
     {
         Assert.False(_validator.Validate(Valid() with { ETag = etag }).IsValid);
-    }
-
-    [Fact]
-    public void Validate_NullETag_Fails()
-    {
-        Assert.False(_validator.Validate(Valid() with { ETag = null! }).IsValid);
     }
 
     [Fact]

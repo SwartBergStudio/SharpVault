@@ -79,6 +79,7 @@ public sealed class OneTimeLinkLockHandlerTests
         OneTimeLinkSamples.Policy(),
         _links,
         _users,
+        OneTimeLinkSamples.VaultWithEverySecret(),
         OneTimeLinkSamples.AuditWriter(_auditLog, _time),
         _time,
         NullLogger<OpenOneTimeLinkCommandHandler>.Instance);
