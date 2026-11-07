@@ -102,6 +102,11 @@ Integration tests in `ApiTests/UiApiRouteContractTests.cs` check the UI's route 
 - **`SharingTestApi`** (`Vault/`): a per-user HTTP client for the sharing endpoints. **`SharingMatrixEndpoints`** (`ApiTests/Sharing/`) holds the expected status for each sharing endpoint and each `CallerKind` in the authorization matrix.
 - **`TestDirectoryHandler`** (`Support/`): a fake Microsoft Graph directory for recipient search and lookup, so no test calls Graph. It records every request.
 
+### One-time link helpers
+
+- `TestWebGateway` (`Support/TestWebGateway.cs`): the test gateway key, and `AddProof` and `AddLinkOpenProof`, which add the signed Web-to-API headers to a request. Use the link-open overload for `/api/one-time-links/{id}/open`.
+- `TestAddresses` (`Support/TestAddresses.cs`): the Web host address and a visitor address, so tests can check which one an audit row holds.
+
 ### Theme helpers
 
 - `tests/SharpVault.UnitTests/UiShared/Theme/` holds the theme's source and security tests. They run in every pull request. `ThemeSourceScanTests` enforces the CSP and markup rules in [THEME.md](THEME.md#content-security-policy), and the rules that keep revealed values out of the print and disconnected views. Colour, contrast, font, size and stylesheet-parsing tests were removed, because they pinned appearance (see [Rules](#rules)).

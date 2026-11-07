@@ -12,6 +12,14 @@ public static class WebGatewayScope
 
     public static string For(Guid userId) => userId.ToString(Format);
 
+    public static string ForRoute(string method, string path)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(method);
+        ArgumentNullException.ThrowIfNull(path);
+
+        return string.Concat(method, " ", path.ToLowerInvariant());
+    }
+
     public static bool TryReadUserId(ClaimsPrincipal principal, out Guid userId)
     {
         ArgumentNullException.ThrowIfNull(principal);

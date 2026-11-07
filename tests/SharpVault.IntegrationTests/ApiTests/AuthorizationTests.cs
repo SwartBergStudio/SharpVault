@@ -227,7 +227,7 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
 
             var policies = endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>().Select(data => data.Policy).ToList();
             Assert.True(
-                policies.Any(policy => policy is Policies.User or Policies.Admin),
+                policies.Any(policy => policy is Policies.User or Policies.Admin or Policies.LinkGateway),
                 $"Endpoint '{pattern}' is not anonymous and has no explicit SharpVault authorization policy.");
         }
     }

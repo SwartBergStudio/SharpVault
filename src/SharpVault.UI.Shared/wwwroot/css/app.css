@@ -196,6 +196,26 @@ h2.mud-typography { font-stretch: 112%; }
     overflow-wrap: anywhere;
 }
 
+.sv-browser-input {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    margin-block: 0.75rem;
+}
+
+.sv-browser-input label { color: var(--mud-palette-text-secondary); }
+
+.sv-browser-input input {
+    font: inherit;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--mud-palette-lines-inputs);
+    border-radius: var(--mud-default-borderradius);
+    background: var(--mud-palette-surface);
+    color: var(--mud-palette-text-primary);
+}
+
+.sv-browser-input input:focus-visible { outline: 2px solid var(--mud-palette-primary); }
+
 
 
 .sv-state-panel.mud-paper {

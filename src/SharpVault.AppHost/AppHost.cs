@@ -34,6 +34,15 @@ var web = builder.AddProject<Projects.SharpVault_Web>(AppHostResourceNames.Web)
 
 if (builder.ExecutionContext.IsRunMode)
 {
+    var webGatewayKey = builder.AddParameter(
+        AppHostResourceNames.WebGatewayKey,
+        new GenerateParameterDefault { MinLength = AppHostResourceNames.WebGatewayKeyLength, Special = false },
+        secret: true,
+        persist: true);
+    api.WithEnvironment(AppHostResourceNames.WebGatewayKeyVariable, webGatewayKey);
+    web.WithEnvironment(AppHostResourceNames.WebGatewayKeyVariable, webGatewayKey);
+    api.WithEnvironment(AppHostResourceNames.OneTimeLinksEnabledVariable, AppHostResourceNames.OneTimeLinksEnabledValue);
+
     var tenantId = ConfiguredValue(AppHostResourceNames.TenantIdKey);
     var instance = ConfiguredValue(AppHostResourceNames.InstanceKey);
     var apiClientId = ConfiguredValue(AppHostResourceNames.ApiClientIdKey);

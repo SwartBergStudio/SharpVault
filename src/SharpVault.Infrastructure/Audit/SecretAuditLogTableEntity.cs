@@ -39,4 +39,6 @@ internal sealed class SecretAuditLogTableEntity : ITableEntity
     public string? TransferId { get; set; }
 
     public string? ReasonCategory { get; set; }
+
+    public string? UserAgent { get; set; }
 }

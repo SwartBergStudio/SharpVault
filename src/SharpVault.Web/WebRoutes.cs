@@ -7,4 +7,6 @@ public static class WebRoutes
 {
     public const string Error = "/error";
     public const string NotFound = "/not-found";
+    public const string OneTimeLinkPage = "/l/{LinkId}";
+    public const string OneTimeLinkOpen = "/l/{linkId}/open";
 }

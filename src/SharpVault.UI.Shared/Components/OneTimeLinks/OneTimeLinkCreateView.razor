@@ -1,0 +1,27 @@
+@inherits LoadableComponentBase<OneTimeLinkSettingsDto>
+@inject IOneTimeLinksApiClient Links
+@inject IOneTimeLinkCrypto Crypto
+@inject IOneTimeLinkBaseUri BaseUri
+
+<SvPageTitle Id="one-time-link-create-heading">New one-time link</SvPageTitle>
+
+<DataStateView TValue="OneTimeLinkSettingsDto" IdPrefix="one-time-link-create" State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+    <ChildContent Context="settings">
+        @if (!settings.Enabled)
+        {
+            <SvAlert Id="otl-create-disabled" Kind="AlertKind.Info">One-time links are turned off for this deployment. Ask an administrator to turn them on.</SvAlert>
+        }
+        else
+        {
+            <StatusBanner Id="otl-create-status" Message="@_status" />
+            <SvSelect Id="otl-lifetime" Label="Link lifetime" Options="@_lifetimeOptions" Value="@_lifetime" ValueChanged="@HandleLifetimeChangedAsync" Disabled="IsCommandRunning" />
+            <SvBrowserOnlyInput Id="otl-passphrase" Label="Passphrase (optional, at least 8 characters)" Password="true" />
+            <SvButton Id="otl-create" Variant="SvButtonVariant.Primary" Icon="@SvIcons.Link" Busy="IsCommandRunning" Disabled="IsCommandRunning" OnClick="@CreateLinkAsync">Create link</SvButton>
+            <div id="otl-result" hidden="@(!_published)">
+                <SvAlert Id="otl-published-warning" Kind="AlertKind.Warning">This link is shown once. Copy it now.</SvAlert>
+                <SvBrowserOnlyInput Id="otl-link-output" Label="One-time link" ReadOnly="true" />
+                <SvButton Id="otl-copy-link" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Copy" Disabled="IsCommandRunning" OnClick="@CopyLinkCommandAsync">Copy link</SvButton>
+            </div>
+        }
+    </ChildContent>
+</DataStateView>

@@ -157,7 +157,7 @@ Vault pages run in interactive server mode. They are reached through the side na
 
 ## Not built yet
 
-- One-time share links (OTL). Sharing and transfers are built (see [SHARING.md](SHARING.md) and [TRANSFERS.md](TRANSFERS.md)).
+- Sharing, transfers and one-time share links are built (see [SHARING.md](SHARING.md), [TRANSFERS.md](TRANSFERS.md) and [ONE-TIME-LINKS.md](ONE-TIME-LINKS.md)).
 - Audit search and history screens (AUD-4, AUD-5).
 - A configurable clipboard timeout (ADM-4).
 - Real browser checks of the clipboard, the dialogs and the idle lock (see [PROGRESS.md](PROGRESS.md)).

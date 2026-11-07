@@ -6,4 +6,5 @@ namespace SharpVault.Authentication.WebGateway;
 public static class WebGatewayPurposes
 {
     public const string ClientAddress = "client-address";
+    public const string LinkOpen = "link-open";
 }

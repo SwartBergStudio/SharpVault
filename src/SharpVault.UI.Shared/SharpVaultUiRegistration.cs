@@ -11,6 +11,7 @@ using SharpVault.UI.Shared.Navigation;
 using SharpVault.UI.Shared.Services.Clients;
 using SharpVault.UI.Shared.Services.Clipboard;
 using SharpVault.UI.Shared.Services.Idle;
+using SharpVault.UI.Shared.Services.OneTimeLinks;
 using SharpVault.UI.Shared.Services.Users;
 
 namespace SharpVault.UI.Shared;
@@ -45,9 +46,12 @@ public static class SharpVaultUiRegistration
         AddApiClient<IDirectoryApiClient, DirectoryApiClient>(services, configureApiClient, configureApiClientBuilder);
         AddApiClient<IAdminTransfersApiClient, AdminTransfersApiClient>(services, configureApiClient, configureApiClientBuilder);
         AddApiClient<ITransferNoticesApiClient, TransferNoticesApiClient>(services, configureApiClient, configureApiClientBuilder);
+        AddApiClient<IOneTimeLinksApiClient, OneTimeLinksApiClient>(services, configureApiClient, configureApiClientBuilder);
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton(VaultUiSettings.Default);
         services.TryAddScoped<IClipboard, BrowserClipboard>();
+        services.TryAddScoped<IOneTimeLinkCrypto, BrowserOneTimeLinkCrypto>();
+        services.TryAddScoped<IOneTimeLinkBaseUri, NavigationOneTimeLinkBaseUri>();
         services.AddScoped<SecretClipboard>();
         services.AddScoped<ICurrentUserAccessor, CurrentUserAccessor>();
         services.AddScoped<IIdleMonitor, IdleMonitor>();

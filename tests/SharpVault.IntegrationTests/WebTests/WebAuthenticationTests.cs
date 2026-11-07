@@ -528,6 +528,7 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
         using var production = factory.WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Production");
+            builder.UseSetting("WebGateway:Key", TestWebGateway.Key);
             builder.UseSetting("AzureAd:ClientCredentials:0:SourceType", "ClientSecret");
             builder.UseSetting("AzureAd:ClientCredentials:0:ClientSecret", secret);
         });
@@ -542,7 +543,11 @@ public sealed class WebAuthenticationTests(WebTestFactory factory)
     [Fact]
     public void Startup_WebProductionWithoutCredential_Fails()
     {
-        using var production = factory.WithWebHostBuilder(builder => builder.UseEnvironment("Production"));
+        using var production = factory.WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Production");
+            builder.UseSetting("WebGateway:Key", TestWebGateway.Key);
+        });
 
         var exception = Assert.ThrowsAny<Exception>(() => production.CreateClient());
 

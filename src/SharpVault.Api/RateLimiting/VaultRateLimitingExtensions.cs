@@ -2,9 +2,13 @@
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
 using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
+using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
+using SharpVault.Api.Security;
 using SharpVault.Authentication.Identity;
 
 namespace SharpVault.Api.RateLimiting;
@@ -12,6 +16,7 @@ namespace SharpVault.Api.RateLimiting;
 public static class VaultRateLimitingExtensions
 {
     private const string UnknownPartition = "unknown";
+    private const int Ipv6PrefixBytes = 8;
 
     private static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
 
@@ -31,6 +36,7 @@ public static class VaultRateLimitingExtensions
             options.AddPolicy(RateLimitPolicies.Sharing, context => PartitionFor(context, limits => limits.ShareWritesPerMinute));
             options.AddPolicy(RateLimitPolicies.DirectorySearch, context => PartitionFor(context, limits => limits.DirectorySearchesPerMinute));
             options.AddPolicy(RateLimitPolicies.AdminActions, context => PartitionFor(context, limits => limits.AdminActionsPerMinute));
+            options.AddPolicy(RateLimitPolicies.OneTimeLinkOpen, OneTimeLinkOpenPartitionFor);
         });
         return builder;
     }
@@ -39,13 +45,44 @@ public static class VaultRateLimitingExtensions
     {
         var limits = context.RequestServices.GetRequiredService<IOptions<VaultRateLimitOptions>>().Value;
         var key = context.User.FindFirst(EntraClaimTypes.ObjectId)?.Value ?? UnknownPartition;
-        return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        return FixedWindowFor(key, permitLimit(limits));
+    }
+
+    private static RateLimitPartition<string> OneTimeLinkOpenPartitionFor(HttpContext context)
+    {
+        var limits = context.RequestServices.GetRequiredService<IOptions<VaultRateLimitOptions>>().Value;
+        return FixedWindowFor(ClientAddressPartition(context.User), limits.OneTimeLinkOpensPerMinute);
+    }
+
+    private static RateLimitPartition<string> FixedWindowFor(string key, int permitLimit) =>
+        RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = permitLimit(limits),
+            PermitLimit = permitLimit,
             Window = Window,
             QueueLimit = 0,
             AutoReplenishment = true,
         });
+
+    private static string ClientAddressPartition(ClaimsPrincipal user)
+    {
+        if (!IPAddress.TryParse(user.FindFirst(LinkGatewayClaims.ClientIp)?.Value, out var address))
+        {
+            return UnknownPartition;
+        }
+
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        return address.AddressFamily == AddressFamily.InterNetworkV6 ? Ipv6Prefix(address) : address.ToString();
+    }
+
+    private static string Ipv6Prefix(IPAddress address)
+    {
+        var bytes = address.GetAddressBytes();
+        Array.Clear(bytes, Ipv6PrefixBytes, bytes.Length - Ipv6PrefixBytes);
+        return new IPAddress(bytes).ToString();
     }
 
     private static ValueTask WriteRetryAfterAsync(OnRejectedContext context, CancellationToken cancellationToken)

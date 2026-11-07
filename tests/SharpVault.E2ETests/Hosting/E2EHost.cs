@@ -28,6 +28,7 @@ public class E2EHost : IAsyncLifetime
     private const string KeyAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     private const int KeyMaterialLength = 64;
     private const int HealthPollMilliseconds = 500;
+    private readonly string _webGatewayKey = NewKeyMaterial();
     private static readonly TimeSpan StartupTimeout = TimeSpan.FromSeconds(90);
     private static readonly string[] RateLimitSettings =
     [
@@ -36,6 +37,7 @@ public class E2EHost : IAsyncLifetime
         "ShareWritesPerMinute",
         "DirectorySearchesPerMinute",
         "AdminActionsPerMinute",
+        "OneTimeLinkOpensPerMinute",
     ];
 
     private readonly AzuriteContainer _azurite = new AzuriteBuilder(AzuriteImage).WithInMemoryPersistence().Build();
@@ -135,14 +137,23 @@ public class E2EHost : IAsyncLifetime
             ["AzureAd__ClientId"] = string.Empty,
             ["UserAccess__CacheTtl"] = "00:00:00",
             ["Encryption__DevelopmentKeyMaterial"] = NewKeyMaterial(),
+            ["WebGateway__Key"] = _webGatewayKey,
+            ["OneTimeLinks__Enabled"] = "true",
         };
         foreach (var setting in RateLimitSettings)
         {
             environment[$"VaultRateLimits__{setting}"] = RateLimitHighValue;
         }
 
+        foreach (var (key, value) in ExtraApiSettings)
+        {
+            environment[key] = value;
+        }
+
         return environment;
     }
+
+    protected virtual IReadOnlyDictionary<string, string> ExtraApiSettings { get; } = new Dictionary<string, string>();
 
     protected virtual IReadOnlyDictionary<string, string> ExtraWebSettings { get; } = new Dictionary<string, string>();
 
@@ -158,6 +169,8 @@ public class E2EHost : IAsyncLifetime
             ["SharpVaultApi__BaseAddress"] = ApiUrl + "/",
             ["AzureAd__TenantId"] = string.Empty,
             ["AzureAd__ClientId"] = string.Empty,
+            ["WebGateway__Key"] = _webGatewayKey,
+            ["OneTimeLinks__Enabled"] = "true",
         };
         foreach (var (key, value) in ExtraWebSettings)
         {

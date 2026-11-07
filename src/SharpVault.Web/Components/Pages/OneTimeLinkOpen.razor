@@ -1,0 +1,90 @@
+@page "/l/{LinkId}"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+
+<PageTitle>One-time link</PageTitle>
+
+<HeadContent>
+    <meta name="robots" content="noindex" />
+</HeadContent>
+
+<section id="otl-start">
+    <SvText Kind="SvTextKind.Title" HtmlTag="h1">Open a one-time link</SvText>
+    <SvText Secondary="true">This content can be seen once. If you close or refresh this page afterwards, it is gone.</SvText>
+    <SvButton Id="otl-open-button" Variant="SvButtonVariant.Primary" Icon="@SvIcons.Lock" ButtonType="ButtonType.Button">Open link</SvButton>
+</section>
+
+<section id="otl-passphrase-notice" hidden>
+    <SvAlert Id="otl-passphrase-warning" Kind="AlertKind.Warning">This link needs a passphrase. Opening it uses up the link, so get the passphrase from the sender first.</SvAlert>
+</section>
+
+<section id="otl-passphrase-form" hidden>
+    <div class="sv-browser-input">
+        <label for="otl-passphrase-input">Passphrase</label>
+        <input id="otl-passphrase-input" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+    </div>
+    <SvButton Id="otl-passphrase-submit" Variant="SvButtonVariant.Primary" Icon="@SvIcons.Key" ButtonType="ButtonType.Button">Open with passphrase</SvButton>
+    <div id="otl-passphrase-error" role="alert" hidden>
+        <SvAlert Id="otl-passphrase-wrong" Kind="AlertKind.Danger">That passphrase does not open this link. Try again.</SvAlert>
+    </div>
+</section>
+
+<section id="otl-unavailable" role="status" hidden>
+    <SvAlert Id="otl-unavailable-text" Kind="AlertKind.Info">This link is no longer available.</SvAlert>
+</section>
+
+<section id="otl-rate-limited" role="status" hidden>
+    <SvAlert Id="otl-rate-limited-text" Kind="AlertKind.Warning">Too many attempts. Wait a minute and try again.</SvAlert>
+</section>
+
+<section id="otl-unsupported" role="status" hidden>
+    <SvAlert Id="otl-unsupported-text" Kind="AlertKind.Danger">This browser cannot open this link. Use a current browser over HTTPS.</SvAlert>
+</section>
+
+<section id="otl-damaged" role="status" hidden>
+    <SvAlert Id="otl-damaged-text" Kind="AlertKind.Danger">This link could not be read. Ask the sender for a new link.</SvAlert>
+</section>
+
+<section id="otl-result" hidden>
+    <dl class="sv-fields">
+        <div id="otl-row-name" hidden>
+            <dt>Name</dt>
+            <dd><output id="otl-name"></output></dd>
+        </div>
+        <div id="otl-row-username" hidden>
+            <dt>Username</dt>
+            <dd>
+                <output id="otl-username"></output>
+                <SvButton Id="otl-copy-username" Variant="SvButtonVariant.Ghost" Icon="@SvIcons.Copy" ButtonType="ButtonType.Button">Copy username</SvButton>
+            </dd>
+        </div>
+        <div id="otl-row-url" hidden>
+            <dt>URL</dt>
+            <dd>
+                <output id="otl-url"></output>
+                <SvButton Id="otl-copy-url" Variant="SvButtonVariant.Ghost" Icon="@SvIcons.Copy" ButtonType="ButtonType.Button">Copy URL</SvButton>
+            </dd>
+        </div>
+        <div id="otl-row-value" hidden>
+            <dt>Value</dt>
+            <dd>
+                <output id="otl-value"></output>
+                <SvButton Id="otl-copy-value" Variant="SvButtonVariant.Ghost" Icon="@SvIcons.Copy" ButtonType="ButtonType.Button">Copy value</SvButton>
+            </dd>
+        </div>
+        <div id="otl-row-notes" hidden>
+            <dt>Notes</dt>
+            <dd>
+                <output id="otl-notes"></output>
+                <SvButton Id="otl-copy-notes" Variant="SvButtonVariant.Ghost" Icon="@SvIcons.Copy" ButtonType="ButtonType.Button">Copy notes</SvButton>
+            </dd>
+        </div>
+    </dl>
+</section>
+
+<script id="otl-open-script" type="module" src="@Assets["_content/SharpVault.UI.Shared/js/one-time-link-open.js"]"></script>
+
+@code {
+    [Parameter]
+    public string? LinkId { get; set; }
+}

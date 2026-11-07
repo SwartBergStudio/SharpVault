@@ -274,6 +274,9 @@ public sealed partial class ThemeSourceScanTests
             "src/SharpVault.UI.Shared/wwwroot/js/clipboard.js",
             "src/SharpVault.UI.Shared/wwwroot/js/idle-boot.js",
             "src/SharpVault.UI.Shared/wwwroot/js/idle-monitor.js",
+            "src/SharpVault.UI.Shared/wwwroot/js/one-time-link-create.js",
+            "src/SharpVault.UI.Shared/wwwroot/js/one-time-link-crypto.js",
+            "src/SharpVault.UI.Shared/wwwroot/js/one-time-link-open.js",
         ];
 
         var actual = UiSourceFiles.AllUiSharedWebRootFiles()

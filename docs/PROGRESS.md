@@ -96,7 +96,7 @@ This file tracks what is done, what is in progress and what comes next, so each 
   - Storage: `Vaults`, `SecretAuditLog` and `Maintenance` tables. Transactions of at most 100 actions. A structural folder change takes a per-vault lock with a touch of the key ring row (`TouchKeyRing`).
   - Web: `/vault`, `/vault/unfiled`, `/vault/secrets/new`, secret detail, edit, history and `/vault/recycle-bin` pages, in interactive server mode.
   - Access: `ISecretAccessPolicy`. The owner policy came first. Sharing (Stage 5) added the shared resolution (`ResolveSharedAsync`).
-  - Added after this stage: sharing (Stage 5) and transfers with `ReEncryptTo` (Stage 6). Still not built: the audit search and history screens (AUD-4, AUD-5), and one-time links.
+  - Added after this stage: sharing (Stage 5) and transfers with `ReEncryptTo` (Stage 6). Still not built: the audit search and history screens (AUD-4, AUD-5).
   - Counts recorded when the work was done: unit 4,443 passed and 2 skipped, integration 2,552 passed (see the G13t results below). These were not re-run in the docs pass.
 - Vault documentation pass (branch `feature/local-debug-auth`, not committed). Files: `docs/STORAGE.md` (tables, vault keys, transactions), `docs/ENCRYPTION.md` (status, storage, the D1 and D2 decision, the field table, unwrap counts, history ids and crypto-shredding), `docs/VAULT.md` (new), `docs/TESTING.md` (vault helpers and filters), `docs/LOCAL-DEV.md` (vault in local mode, key change, and the picker header list), and `README.md` (feature list, status and architecture). Statements were checked against the code and, where the notes named them, against the tests. Mismatches are listed below.
   - Doc wording changes:
@@ -168,7 +168,7 @@ This file tracks what is done, what is in progress and what comes next, so each 
   - Recycle: a binned item is hidden from recipients and its grants stay dormant. Purge erases both grant rows and writes `ShareErased`, and removes the inbox rows.
   - A Dismissed lock revokes the grants the locked user received, one audited revoke each.
   - Audit events: `SecretShared`, `SecretShareChanged`, `SecretShareRevoked`, `FolderShared`, `FolderShareChanged`, `FolderShareRevoked`, `ShareErased`.
-  - One-time share links are not built.
+  - One-time share links were added later (see [ONE-TIME-LINKS.md](ONE-TIME-LINKS.md)).
 - Transfers, Stage 6 (uncommitted, branch `feature/local-debug-auth`). Requirement ids TRF-1 to TRF-10, RSN-1, and LCK-1 to LCK-5 (minimal lock). Details: `docs/TRANSFERS.md`.
   - Admin lock and unlock with a category and a 20-character reason. Lock status is checked on each request. Scheduled locks (LCK-6) are not built.
   - Transfer requests need a second active admin. Approval, rejection, withdrawal (rejection by the requester), abort and a 7-day expiry. Four-eyes rules: the requester cannot approve, and the source and target cannot act on the transfer (404).
@@ -245,8 +245,25 @@ This file tracks what is done, what is in progress and what comes next, so each 
   23. **Test cleanup.** Seven test files and the listed methods were removed: appearance, wording and framework tests. The test rule is now logic only (see [TESTING.md](TESTING.md#rules)). The rule `RazorSources_IconOnlyButtons_HaveAccessibleName` was dead: it looked for a class that no longer exists, so it could never fail. `IconButton_BlankLabel_Throws` is the real guard.
   24. **Later changes (owner notes; not all checked in this pass).** `ReleaseFenceAsync` takes the fence and uses its ETag (item 2). `UserCountsDto.ItemCount` replaces `SecretCount`, and the label is "Shares on their items". Idle is tracked per session in `SessionActivityMap`. Signed-in users at `/` go to `/vault`, "Home" is gone from the side menu, and "Start page" on Access denied shows only when anonymous. Folder tree rows align.
 
+- One-time share links (OTL), branch `feature/one-time-share-links`, not committed. Requirements OTL-1 to OTL-9, the link part of LCK-3, and AUD-2 and AUD-3 for link create, open and revoke. Details: [ONE-TIME-LINKS.md](ONE-TIME-LINKS.md).
+  - The link key stays in the URL fragment. The browser encrypts and decrypts (AES-256-GCM, optional passphrase with PBKDF2-HMAC-SHA256 at 600,000 iterations). The server stores opaque bytes.
+  - Web-to-API gateway proof signed with `WebGateway:Key`. Open rows carry the visitor's address and user agent. Lock and unlock sweep the user's links, and the purge removes expired links.
+  - Defects found and fixed in this branch. Each entry names the test or build that showed the defect, and the fix was checked against it:
+    - Parallel opens of one link all succeeded. `TryConsumeAsync` ignored a 404 from the conditional delete, so 15 of 20 parallel opens returned the payload. Fixed. The same pattern in three other stores (share inbox, transfer notices, link notices) is fixed without a test, because it needs a row removed between read and delete.
+    - `TableShareInboxStore` did not compile (CS0136, a redeclared local). Fixed. Found by building the integration project.
+    - A create with no lifetime returned 400 when the admin maximum was under 24 hours, not the clamped default. Fixed.
+    - A passphrase was cleared when the create failed, so the retry published a link with no passphrase. Fixed in `one-time-link-create.js`. Found by review. The E2E retry test was red before and green after.
+    - An ambiguous link write deleted the expiry row, so a committed link could never be purged. Fixed. Found by review. Three Azurite tests, red before and green after.
+    - A failed index read was logged twice, the second time as a missing index row. Fixed.
+    - A null payload returned 500 instead of 400. Fixed.
+    - A failed revoke or open audit did not log the link id. Fixed. Link ids are not secrets.
+    - Test defects, not production: the expiry race test did not race; a rate-limit test did not prove the storage calls; the Web relay's gateway client was not routed in the test host; threats T37 and T38 had no tests.
+  - Not verified: see In progress.
+- Audit client address (`feature/audit-client-address`, defect O5). Signed-in audit rows held the Web host's address, because the API saw the Web as its caller. The Web now sends the address it captured in the signed proof. Behind an ingress without forwarded headers the address is still the ingress's. Rows written before the fix keep the Web host's address.
+
 ## In progress
 
+- **One-time links: not verified.** Real Azure Table Storage (Azurite only). Firefox and Safari. MAUI WebViews (not built). A visitor with no `User-Agent` header, end to end. An ingress that strips empty headers. Performance budgets (section 7.3) were not run, so no benchmark result is claimed. Mutation proofs were not run and are not claimed.
 - **Uncommitted tree.** Everything since `595d48a` is uncommitted on `feature/local-debug-auth`, at the owner's request. Nothing has been committed or pushed.
 - **Counts at the last full run (2026-11-06, uncommitted tree):** build 0 warnings. Unit 6,011 passed and 2 skipped (Unix only). Integration 4,515. AppHost 67. E2E 12 (`Category=E2E`, about 11 minutes). Performance 23 unit and 109 integration. Coverage: Application 97.7, Infrastructure 97.4, Authentication 98.4, Domain.Encryption 100.0, Infrastructure.Encryption 99.1, PasswordGeneration 97.1, all over their `ci.yml` limits. No vulnerable packages. `SiteTour` passed separately (`Category=SiteTour`).
 - **Failing-first records are partly reconstructed.** The working evidence file was overwritten in one review round. Its earlier section was rebuilt from agent reports, not original run output, and says so. The later review rounds are original records. Some entries are guards that passed before the change, and those are marked.
@@ -305,10 +322,12 @@ This file tracks what is done, what is in progress and what comes next, so each 
 - The two-host tests (`SharedSessionTests`) run in one test process. Separate processes and a real load balancer are not tested.
 - Static pages are dark only. The reason is that `app.css` has no colour tokens for a light scheme. It is not that CSS needs JavaScript (decision 44). [THEME.md](THEME.md) is corrected.
 - Entra-mode rejection of a local cookie is incidental. A cookie made by local sign-in is anonymous in Entra mode, because Identity.Web checks the cookie's `.AuthScheme`. `EntraModeWeb_CookieMintedInLocalMode_IsAnonymous` shows the outcome only, and no code rule states it.
+11. **One-time links, chosen without owner review (reversible).** O1 creator notice in-app only, O2 off by default, O3 shared HMAC key for the Web-to-API proof, O4 links outlive the secret, D6 passphrase minimum of 8 characters in the browser only, D12 formula-prefix rule for the AUD-4 CSV export. See [ONE-TIME-LINKS.md](ONE-TIME-LINKS.md#owner-decisions).
+
 **Build order.** Numbering follows the stages. Stages 1 to 6 are built on `feature/local-debug-auth` (not committed).
 
 0. `feature/local-debug-auth`: the owner's review, the full gate (see In progress), commits split by feature, then the pull request. Run the real browser check again if the UI changes.
-1. One-time share links (OTL): fragment keys, browser decryption, the open endpoint and its rate limit, and the audit for create, open and revoke.
+1. One-time share links (OTL): built on `feature/one-time-share-links`, awaiting review and commit (see Done).
 2. `feature/user-lock`: scheduled locks (LCK-6) and auditing denied attempts by locked users (D30). Ending open sessions on lock is done within about a minute (Done, item 8). Graph `revokeSignInSessions` is not built.
 3. `feature/audit-log`: audit search, filters, CSV export and user history (AUD-4, AUD-5). The vault's `SecretAuditLog` table is the index for per-secret history.
 4. `feature/admin-settings`: admin settings (ADM), including the guest policy (replaces `ConfiguredGuestAccessPolicy`, sign-in D5), the clipboard timeout (ADM-4), and the transfer request lifetime (ADM-3).
@@ -318,7 +337,7 @@ This file tracks what is done, what is in progress and what comes next, so each 
 
 - Configure a real Entra tenant and check sign-in end to end, following `docs/ENTRA-SETUP.md`. Check MSAL from a circuit with no `HttpContext`, the Graph directory search and the `User.ReadBasic.All` consent. If MSAL raises another exception type, widen the catch and add a test for it.
 - Before scaling out the Web: a shared distributed token cache, and the other items in [ENTRA-SETUP.md section 8](ENTRA-SETUP.md#8-running-more-than-one-instance). The revocation ledger is already shared through the API.
-- Deployment: a managed identity federated credential for the Web, Data Protection key storage, forwarded headers, HTTPS-only ingress (the foundation has no HTTPS redirect, D9, but it sends HSTS on every response), host filtering (`AllowedHosts` is `*`, and the OIDC redirect URI is built from the Host header), the Key Vault key and its role, `Encryption__KeyVaultKeyId` for each environment (see [ENCRYPTION.md](ENCRYPTION.md)), and the Table role, including the right to list tables.
+- Deployment: a managed identity federated credential for the Web, Data Protection key storage, forwarded headers (AUD-3 and OTL-7 addresses depend on this item on both hosts, and it is required before the first production deployment with links enabled), HTTPS-only ingress (the foundation has no HTTPS redirect, D9, but it sends HSTS on every response), host filtering (`AllowedHosts` is `*`, and the OIDC redirect URI is built from the Host header), the Key Vault key and its role, `Encryption__KeyVaultKeyId` for each environment (see [ENCRYPTION.md](ENCRYPTION.md)), and the Table role, including the right to list tables.
 - Key rewrap maintenance job using `RewrapDataKeyAsync` (D8). Old Key Vault key versions must stay enabled until it has migrated every wrapped key.
 - Ask to allow learn.microsoft.com in the session to confirm Key Vault throttling limits (D27).
 - Add `AccessGateBenchmarks` and `SignedInIdentityReaderBenchmarks` to `tests/SharpVault.Benchmarks` (sign-in D27, decision 70).

@@ -30,6 +30,8 @@ The launch profiles in `src/SharpVault.AppHost/Properties/launchSettings.json` s
 
 With no Entra ID settings, `api` and `web` start in local mode. The AppHost does not need any setting for this.
 
+The run mode also gives `api` and `web` a `WebGateway__Key` (the generated parameter `web-gateway-key`, kept in the AppHost user secrets like the development key), and sets `OneTimeLinks__Enabled` to `true` on `api`. Running the hosts by hand, outside the AppHost, sets neither, so one-time links are off. To try them that way, set the same `WebGateway:Key` of at least 32 characters on both hosts, and `OneTimeLinks:Enabled` on the API. Local addresses in the audit log are normally loopback. See [ONE-TIME-LINKS.md](ONE-TIME-LINKS.md).
+
 ## Local mode (no Entra ID)
 
 The authentication mode is decided from configuration when each host starts, by the same rule in both hosts:

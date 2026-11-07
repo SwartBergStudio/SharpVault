@@ -51,4 +51,8 @@ public enum AuditEventType
     ShareRevokedByTransfer = 64,
     TransferApprovalDenied = 65,
     SecretTransferredUnderNewId = 66,
+    OneTimeLinkSnapshotRevealed = 70,
+    OneTimeLinkCreated = 71,
+    OneTimeLinkOpened = 72,
+    OneTimeLinkRevoked = 73,
 }

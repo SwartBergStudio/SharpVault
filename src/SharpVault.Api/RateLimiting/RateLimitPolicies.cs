@@ -14,4 +14,6 @@ public static class RateLimitPolicies
     public const string DirectorySearch = "directory-search";
 
     public const string AdminActions = "admin-actions";
+
+    public const string OneTimeLinkOpen = "one-time-link-open";
 }

@@ -6,6 +6,7 @@ using Mapster;
 using Mediator;
 using SharpVault.Application.Common.Interfaces;
 using SharpVault.Application.Common.Models;
+using SharpVault.Application.Features.OneTimeLinks.Common;
 using SharpVault.Application.Features.Sharing.Common;
 using SharpVault.Application.Features.Users.Common;
 using SharpVault.Application.Features.Vault.Common;
@@ -42,7 +43,8 @@ public sealed class LockUserCommandHandler(
     VaultAuditWriter vaultAudit,
     ShareGrantService shares,
     IUserStore users,
-    IRequestMetadata requestMetadata) : IRequestHandler<LockUserCommand, Result<UserSummaryDto>>
+    IRequestMetadata requestMetadata,
+    OneTimeLinkRevoker links) : IRequestHandler<LockUserCommand, Result<UserSummaryDto>>
 {
     public async Task<Result<UserSummaryDto>> Handle(LockUserCommand request, CancellationToken cancellationToken)
     {
@@ -58,8 +60,15 @@ public sealed class LockUserCommandHandler(
         }
 
         var locked = await statuses.SetStatusAsync(request.UserId, UserStatus.Locked, UserAdminMessages.AlreadyLocked, cancellationToken);
-        if (!locked.IsSuccess && !IsRepeatDismissal(request, locked))
+        var alreadyLocked = !locked.IsSuccess && locked.Error == UserAdminMessages.AlreadyLocked;
+        if (!locked.IsSuccess && !alreadyLocked)
         {
+            return locked;
+        }
+
+        if (alreadyLocked && !IsRepeatDismissal(request, locked))
+        {
+            await links.RevokeAllForCreatorAsync(request.UserId, actor.UserId, requestMetadata.IpAddress, cancellationToken);
             return locked;
         }
 
@@ -72,6 +81,8 @@ public sealed class LockUserCommandHandler(
             ReasonCategory: request.Category.ToString(),
             Reason: request.Reason.Trim(),
             IpAddress: requestMetadata.IpAddress));
+
+        await links.RevokeAllForCreatorAsync(request.UserId, actor.UserId, requestMetadata.IpAddress, cancellationToken);
 
         if (request.Category == ReasonCategory.Dismissed)
         {

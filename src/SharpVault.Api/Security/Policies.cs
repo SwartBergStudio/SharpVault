@@ -8,4 +8,6 @@ public static class Policies
     public const string User = "SharpVaultUser";
 
     public const string Admin = "SharpVaultAdmin";
+
+    public const string LinkGateway = "SharpVaultLinkGateway";
 }

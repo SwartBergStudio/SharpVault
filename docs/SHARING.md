@@ -2,7 +2,7 @@
 
 Sharing lets a user give colleagues access to one of their secrets or folders. It is Stage 5 of the build. Requirement ids: SHR-1 to SHR-6 (see [REQUIREMENTS.md](REQUIREMENTS.md)). The rule behind every check is that only the owner's own partition is ever read for an item, and a recipient gets access only through a grant the owner or a manager created.
 
-One-time share links are not built.
+One-time share links are a separate feature, described in [ONE-TIME-LINKS.md](ONE-TIME-LINKS.md).
 
 ## Permissions
 

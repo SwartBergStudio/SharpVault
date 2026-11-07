@@ -1,0 +1,37 @@
+@inherits LoadableComponentBase<OneTimeLinkPageDto>
+@inject IOneTimeLinksApiClient Links
+
+<SvPageTitle Id="one-time-links-heading">One-time links</SvPageTitle>
+
+<OneTimeLinkNoticeBanner />
+
+<StatusBanner Id="one-time-links-status" Message="@_status" />
+
+<DataStateView TValue="OneTimeLinkPageDto" IdPrefix="one-time-links" EmptyTitle="No one-time links" EmptyDescription="Create one from a secret's page." State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+    <ChildContent>
+        <SvTable Id="one-time-links-table" TItem="OneTimeLinkDto" Items="_rows">
+            <Columns>
+                <SvColumn TItem="OneTimeLinkDto" Header="Item" Value="@NameOf" />
+                <SvColumn TItem="OneTimeLinkDto" Header="Created" Value="@CreatedText" />
+                <SvColumn TItem="OneTimeLinkDto" Header="Expires" Value="@ExpiresText" />
+                <SvColumn TItem="OneTimeLinkDto" Header="Revoke" Context="link">
+                    <SvButton Id="@($"one-time-link-revoke-{link.Id:D}")" Variant="SvButtonVariant.Danger" Icon="@SvIcons.Delete" Disabled="IsCommandRunning" OnClick="@(_ => OpenRevoke(link.Id))">Revoke</SvButton>
+                </SvColumn>
+            </Columns>
+        </SvTable>
+        @if (LoadMoreFailed)
+        {
+            <SvAlert Id="one-time-links-load-more-error" Kind="AlertKind.Danger">@LoadMoreText</SvAlert>
+        }
+        @if (_continuation is not null)
+        {
+            <div class="d-flex justify-center mt-4">
+                <SvButton Id="one-time-links-load-more" Variant="SvButtonVariant.Secondary" Busy="IsLoadingMore" Disabled="IsCommandRunning" OnClick="@HandleLoadMoreAsync">Load more</SvButton>
+            </div>
+        }
+    </ChildContent>
+</DataStateView>
+
+<ConfirmDialog IdPrefix="one-time-link-revoke-prompt" Title="Revoke this link?" Open="@(_pendingRevoke is not null)" Danger="true" ConfirmText="Revoke" Busy="@IsCommandRunning" OnConfirm="@ConfirmRevokeAsync" OnCancel="@CloseRevoke">
+    <p>Anyone with the link can no longer open it.</p>
+</ConfirmDialog>

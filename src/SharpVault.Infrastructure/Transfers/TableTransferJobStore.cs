@@ -199,8 +199,8 @@ public sealed class TableTransferJobStore(TableServiceClient tableServiceClient)
 
         try
         {
-            await _table.DeleteEntityAsync(partition, rowKey, entity.ETag, cancellationToken);
-            return StoreWriteResult.Written;
+            using var response = await _table.DeleteEntityAsync(partition, rowKey, entity.ETag, cancellationToken);
+            return response.Status == NotFoundStatus ? StoreWriteResult.NotFound : StoreWriteResult.Written;
         }
         catch (RequestFailedException exception) when (exception.Status == NotFoundStatus)
         {

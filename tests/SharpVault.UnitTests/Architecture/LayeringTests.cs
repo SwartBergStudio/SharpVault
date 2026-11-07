@@ -24,6 +24,7 @@ public sealed class LayeringTests
 
     private const string AuthenticationHandlerName = "Microsoft.AspNetCore.Authentication.AuthenticationHandler`1";
     private const string RazorImportsTypeName = "_Imports";
+    private const string LinkGatewayAuthenticationHandlerName = "SharpVault.Api.Security.LinkGatewayAuthenticationHandler";
     private const string ComponentBaseName = "Microsoft.AspNetCore.Components.ComponentBase";
 
     public static TheoryData<string> ProductionAssemblyNames { get; } =
@@ -234,6 +235,7 @@ public sealed class LayeringTests
         var handlers = ProductionAssemblyNamesList()
             .SelectMany(name => LoadTypes(name))
             .Where(type => DerivesFromGeneric(type, AuthenticationHandlerName))
+            .Where(type => type.FullName != LinkGatewayAuthenticationHandlerName)
             .Select(type => type.FullName)
             .ToList();
 

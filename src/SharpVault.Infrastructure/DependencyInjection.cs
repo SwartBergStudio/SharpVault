@@ -13,11 +13,13 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using SharpVault.Application.Common.Interfaces;
+using SharpVault.Application.Features.OneTimeLinks.Common;
 using SharpVault.Application.Features.Transfers.Common;
 using SharpVault.Application.Features.Vault.RecycleBin;
 using SharpVault.Infrastructure.Audit;
 using SharpVault.Infrastructure.Encryption;
 using SharpVault.Infrastructure.Maintenance;
+using SharpVault.Infrastructure.OneTimeLinks;
 using SharpVault.Infrastructure.Sharing;
 using SharpVault.Infrastructure.Storage;
 using SharpVault.Infrastructure.Transfers;
@@ -49,6 +51,12 @@ public static class DependencyInjection
         builder.Services.AddSingleton<ITransferJobStore, TableTransferJobStore>();
         builder.Services.AddSingleton<ITransferStagingStore, TableTransferStagingStore>();
         builder.Services.AddSingleton<ISessionRevocationLedger, TableSessionRevocationLedger>();
+        builder.Services.AddSingleton<IOneTimeLinkStore, TableOneTimeLinkStore>();
+        builder.Services.AddOptions<OneTimeLinkOptions>()
+            .Bind(builder.Configuration.GetSection(OneTimeLinkOptions.SectionName))
+            .ValidateOnStart();
+        builder.Services.AddSingleton<IValidateOptions<OneTimeLinkOptions>, OneTimeLinkOptionsValidator>();
+        builder.Services.AddHostedService<OneTimeLinkPurgeService>();
         builder.Services.AddHostedService<SessionRevocationPurgeService>();
         builder.Services.AddOptions<RecycleBinPurgeOptions>()
             .Bind(builder.Configuration.GetSection(RecycleBinPurgeOptions.SectionName))

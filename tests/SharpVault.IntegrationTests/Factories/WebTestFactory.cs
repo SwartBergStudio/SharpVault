@@ -23,6 +23,8 @@ public sealed class WebTestFactory : WebApplicationFactory<WebApp::Program>
 
     public CapturingLoggerProvider Logs { get; } = new();
 
+    public ApiOpenFault OpenFault { get; } = new();
+
     public void UseApi(ApiTestFactory api)
     {
         ArgumentNullException.ThrowIfNull(api);
@@ -44,6 +46,7 @@ public sealed class WebTestFactory : WebApplicationFactory<WebApp::Program>
     {
         builder.UseEnvironment(Environments.Development);
         TestIdentityProvider.ApplyWebSettings(builder);
+        builder.UseSetting("WebGateway:Key", TestWebGateway.Key);
         builder.UseSetting("Logging:LogLevel:Default", "Debug");
         builder.UseSetting("Logging:LogLevel:Microsoft", "Debug");
         builder.UseSetting("Logging:LogLevel:Microsoft.AspNetCore", "Debug");
@@ -61,7 +64,10 @@ public sealed class WebTestFactory : WebApplicationFactory<WebApp::Program>
             if (_api is not null)
             {
                 var api = _api;
-                services.UsePrimaryHandler(() => api.Server.CreateHandler(context => context.Connection.RemoteIpAddress = TestAddresses.WebHost));
+                var openFault = OpenFault;
+                services.UsePrimaryHandler(() => new ApiOpenFaultHandler(
+                    api.Server.CreateHandler(context => context.Connection.RemoteIpAddress = TestAddresses.WebHost),
+                    openFault));
             }
             else
             {

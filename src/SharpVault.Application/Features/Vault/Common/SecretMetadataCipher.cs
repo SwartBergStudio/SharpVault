@@ -67,6 +67,35 @@ public static class SecretMetadataCipher
         }
     }
 
+    public static bool TryDecryptName(
+        IDataKeySession metadataSession,
+        Guid secretId,
+        Guid ownerId,
+        byte[] envelope,
+        int storedVersion,
+        int expectedVersion,
+        [NotNullWhen(true)] out string? name)
+    {
+        ArgumentNullException.ThrowIfNull(metadataSession);
+        ArgumentNullException.ThrowIfNull(envelope);
+
+        name = null;
+        if (storedVersion != expectedVersion)
+        {
+            return false;
+        }
+
+        try
+        {
+            name = metadataSession.Decrypt(new EncryptionContext(VaultPurposes.SecretName, secretId, ownerId), envelope);
+            return true;
+        }
+        catch (SecretDecryptionException)
+        {
+            return false;
+        }
+    }
+
     public static void EncryptFolderName(IDataKeySession metadataSession, Folder folder, string name)
     {
         ArgumentNullException.ThrowIfNull(metadataSession);

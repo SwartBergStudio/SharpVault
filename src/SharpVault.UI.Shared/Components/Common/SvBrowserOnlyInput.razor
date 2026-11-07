@@ -1,0 +1,28 @@
+<div class="sv-browser-input">
+    <label for="@Id">@Label</label>
+    <input id="@Id" type="@InputType" readonly="@ReadOnly" autocomplete="@AutoComplete" spellcheck="false" />
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool Password { get; set; }
+
+    [Parameter]
+    public bool ReadOnly { get; set; }
+
+    private string InputType => Password ? "password" : "text";
+
+    private string AutoComplete => ReadOnly ? "off" : "new-password";
+
+    protected override void OnParametersSet()
+    {
+        ComponentIds.EnsureValid(Id, nameof(Id));
+        ArgumentException.ThrowIfNullOrWhiteSpace(Label);
+    }
+}

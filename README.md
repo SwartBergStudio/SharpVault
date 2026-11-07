@@ -50,7 +50,7 @@ The full specification is in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 - [x] Share secrets or whole folders with colleagues in your Entra tenant (view or edit; only the owner can give manage). Local development uses the four local accounts.
 - [x] Shared with me, grouped by owner, with filing into your own folders
 - [x] Revoke a share at any time
-- [ ] One-time share links for anyone, destroyed after one view or when they expire
+- [x] One-time share links for anyone, destroyed after one view or when they expire
 - [x] Each user sees only their own vault and what is shared with them
 
 ### Administration (see [docs/TRANSFERS.md](docs/TRANSFERS.md))

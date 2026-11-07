@@ -5,6 +5,7 @@ extern alias WebApp;
 
 using Microsoft.Extensions.DependencyInjection;
 using SharpVault.UI.Shared.Services.Clients;
+using WebApp::SharpVault.Web.OneTimeLinks;
 using WebApp::SharpVault.Web.Security;
 
 namespace SharpVault.IntegrationTests.Support;
@@ -34,6 +35,10 @@ internal static class ApiClientHandlers
         services.AddHttpClient<IAdminTransfersApiClient, AdminTransfersApiClient>()
             .ConfigurePrimaryHttpMessageHandler(handlerFactory);
         services.AddHttpClient<ITransferNoticesApiClient, TransferNoticesApiClient>()
+            .ConfigurePrimaryHttpMessageHandler(handlerFactory);
+        services.AddHttpClient<IOneTimeLinksApiClient, OneTimeLinksApiClient>()
+            .ConfigurePrimaryHttpMessageHandler(handlerFactory);
+        services.AddHttpClient<IOneTimeLinkGatewayClient, OneTimeLinkGatewayClient>()
             .ConfigurePrimaryHttpMessageHandler(handlerFactory);
         return services.UseSharedSessionHandler(handlerFactory);
     }

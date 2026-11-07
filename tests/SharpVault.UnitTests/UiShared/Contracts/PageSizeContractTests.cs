@@ -2,6 +2,7 @@
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
 using System.Reflection;
+using SharpVault.Application.Features.OneTimeLinks.Common;
 using SharpVault.Application.Features.Sharing.Common;
 using SharpVault.Application.Features.Sharing.SharedItems.Queries;
 using SharpVault.Application.Features.Transfers.Queries;
@@ -12,6 +13,7 @@ using SharpVault.UI.Shared.Components.Sharing;
 using SharpVault.UI.Shared.Components.Transfers;
 using SharpVault.UI.Shared.Components.Users;
 using SharpVault.UI.Shared.Components.Vault;
+using SharpVault.UI.Shared.Services.OneTimeLinks;
 
 namespace SharpVault.UnitTests.UiShared.Contracts;
 
@@ -30,6 +32,7 @@ public sealed class PageSizeContractTests
         [$"{nameof(SharedWithMeView)}.{nameof(SharedWithMeView.PageSize)}"] = ListSharedItemsQuery.MaxPageSize,
         [$"{nameof(SharedFiledPanel)}.{nameof(SharedFiledPanel.PageSize)}"] = ListSharedItemsQuery.MaxPageSize,
         [$"{nameof(SharedFolderView)}.{nameof(SharedFolderView.PageSize)}"] = SharingLimits.MaxPageSize,
+        [$"{nameof(OneTimeLinkUiLimits)}.{nameof(OneTimeLinkUiLimits.PageSize)}"] = OneTimeLinkLimits.MaxPageSize,
     };
 
     private static List<(string Key, int Value)> UiPageSizeConstants() =>

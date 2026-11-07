@@ -1,0 +1,25 @@
+@inherits LoadableComponentBase<OneTimeLinkSettingsDto>
+@inject IOneTimeLinksApiClient Links
+
+<DataStateView TValue="OneTimeLinkSettingsDto" IdPrefix="one-time-link-button" State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+    <Loading></Loading>
+    <Empty></Empty>
+    <Error></Error>
+    <ChildContent Context="settings">
+        @if (settings.Enabled)
+        {
+            <SvButton Id="otl-new-link" Variant="SvButtonVariant.Secondary" Icon="@SvIcons.Link" Href="@OneTimeLinkRoutes.New(OwnerId, SecretId)">New one-time link</SvButton>
+        }
+    </ChildContent>
+</DataStateView>
+
+@code {
+    [Parameter, EditorRequired]
+    public Guid OwnerId { get; set; }
+
+    [Parameter, EditorRequired]
+    public Guid SecretId { get; set; }
+
+    protected override Task<ApiResponse<OneTimeLinkSettingsDto>> LoadAsync(CancellationToken cancellationToken) =>
+        Links.GetSettingsAsync(cancellationToken);
+}

@@ -20,8 +20,7 @@ public static class ClientAddressClaim
             return;
         }
 
-        var unmapped = address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
-        principal.AddIdentity(new ClaimsIdentity([new Claim(Type, unmapped.ToString())]));
+        principal.AddIdentity(new ClaimsIdentity([new Claim(Type, ClientAddressUnmapping.Unmap(address).ToString())]));
     }
 
     public static string? Read(ClaimsPrincipal principal)

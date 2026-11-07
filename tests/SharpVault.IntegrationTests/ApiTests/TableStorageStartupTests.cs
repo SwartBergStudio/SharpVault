@@ -110,14 +110,14 @@ public sealed class TableStorageStartupTests(ApiTestFactory factory) : BaseInteg
     }
 
     [Fact]
-    public void Startup_TableNamesAll_ContainsTheEightTablesInOrder()
+    public void Startup_TableNamesAll_ContainsTheNineTablesInOrder()
     {
-        Assert.Equal([TableNames.Users, TableNames.AuditLog, TableNames.Vaults, TableNames.SecretAuditLog, TableNames.Maintenance, TableNames.ShareInbox, TableNames.TransferJobs, TableNames.SessionRevocations], TableNames.All);
-        Assert.Equal(["Users", "AuditLog", "Vaults", "SecretAuditLog", "Maintenance", "ShareInbox", "TransferJobs", "SessionRevocations"], TableNames.All);
+        Assert.Equal([TableNames.Users, TableNames.AuditLog, TableNames.Vaults, TableNames.SecretAuditLog, TableNames.Maintenance, TableNames.ShareInbox, TableNames.TransferJobs, TableNames.SessionRevocations, TableNames.OneTimeLinks], TableNames.All);
+        Assert.Equal(["Users", "AuditLog", "Vaults", "SecretAuditLog", "Maintenance", "ShareInbox", "TransferJobs", "SessionRevocations", "OneTimeLinks"], TableNames.All);
     }
 
     [Fact]
-    public async Task Startup_DefaultTableSet_CreatesAllEightTables()
+    public async Task Startup_DefaultTableSet_CreatesAllNineTables()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await foreach (var table in Factory.StorageAdminClient.QueryAsync(cancellationToken: cancellationToken))

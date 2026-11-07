@@ -1,11 +1,14 @@
 // SharpVault - Copyright (c) SwartBergStudio.
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Identity.Web;
 using SharpVault.Application.Common.Interfaces;
+using SharpVault.Application.Features.OneTimeLinks.Common;
 using SharpVault.Application.Features.Tenancy;
 using SharpVault.Application.Features.Users.Access;
 using SharpVault.Authentication.Identity;
@@ -66,6 +69,9 @@ public static class ApiAuthenticationExtensions
             .Bind(builder.Configuration.GetSection(TenancyOptions.SectionName))
             .ValidateOnStart();
         builder.AddWebGateway();
+        builder.Services.AddAuthentication()
+            .AddScheme<AuthenticationSchemeOptions, LinkGatewayAuthenticationHandler>(LinkGatewayDefaults.Scheme, _ => { });
+        builder.Services.AddSingleton<IValidateOptions<OneTimeLinkOptions>, OneTimeLinkGatewayRequirementValidator>();
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddSingleton<ClientAddressResolver>();
         builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
@@ -74,9 +80,11 @@ public static class ApiAuthenticationExtensions
 
         var userPolicy = BuildPolicy(scheme, AppRoles.User, AppRoles.Admin);
         var adminPolicy = BuildPolicy(scheme, AppRoles.Admin);
+        var linkPolicy = new AuthorizationPolicyBuilder(LinkGatewayDefaults.Scheme).RequireAuthenticatedUser().Build();
         builder.Services.AddAuthorizationBuilder()
             .AddPolicy(Policies.User, userPolicy)
             .AddPolicy(Policies.Admin, adminPolicy)
+            .AddPolicy(Policies.LinkGateway, linkPolicy)
             .SetDefaultPolicy(userPolicy)
             .SetFallbackPolicy(userPolicy);
         return builder;
