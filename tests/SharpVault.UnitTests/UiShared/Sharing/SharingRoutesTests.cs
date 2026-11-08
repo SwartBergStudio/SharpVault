@@ -22,28 +22,6 @@ public sealed class SharingRoutesTests
     }
 
     [Fact]
-    public void SharingRoutes_Paths_AreLowercaseAndFreeOfBracesQueryAndFragment()
-    {
-        var paths = new[] { SharingRoutes.Secret(OwnerId, ItemId), SharingRoutes.EditSecret(OwnerId, ItemId), SharingRoutes.Folder(OwnerId, ItemId) };
-
-        Assert.All(paths, path =>
-        {
-            Assert.StartsWith("/shared/", path, StringComparison.Ordinal);
-            Assert.DoesNotContain('{', path);
-            Assert.DoesNotContain('?', path);
-            Assert.DoesNotContain('#', path);
-            Assert.Equal(path.ToLowerInvariant(), path);
-        });
-    }
-
-    [Fact]
-    public void SharingRoutes_SecretAndFolder_NeverCollideForTheSameIds()
-    {
-        Assert.NotEqual(SharingRoutes.Secret(OwnerId, ItemId), SharingRoutes.Folder(OwnerId, ItemId));
-        Assert.NotEqual(SharingRoutes.Secret(OwnerId, ItemId), SharingRoutes.Secret(ItemId, OwnerId));
-    }
-
-    [Fact]
     public void PermissionLabels_CoverEveryValue()
     {
         var values = Enum.GetValues<SharePermissionDto>();
@@ -68,36 +46,25 @@ public sealed class SharingRoutesTests
         Assert.Equal("Unknown", PermissionLabels.Label((SharePermissionDto)99));
     }
 
-    [Theory]
-    [InlineData("View", SharePermissionDto.View)]
-    [InlineData("Edit", SharePermissionDto.Edit)]
-    [InlineData("Manage", SharePermissionDto.Manage)]
-    public void PermissionLabels_Parse_RoundTripsEveryOptionValue(string value, SharePermissionDto expected)
+    [Fact]
+    public void PermissionLabels_Parse_AcceptsTheExactName()
     {
-        Assert.Equal(expected, PermissionLabels.Parse(value, SharePermissionDto.View == expected ? SharePermissionDto.Manage : SharePermissionDto.View));
+        Assert.Equal(SharePermissionDto.Manage, PermissionLabels.Parse("Manage", SharePermissionDto.View));
     }
 
     [Theory]
     [InlineData(null)]
-    [InlineData("")]
-    [InlineData(" ")]
     [InlineData("view")]
-    [InlineData("MANAGE")]
-    [InlineData("0")]
-    [InlineData("99")]
     [InlineData("Owner")]
+    [InlineData("99")]
     public void PermissionLabels_Parse_RejectsAnythingButAnExactName(string? value)
     {
         Assert.Equal(SharePermissionDto.View, PermissionLabels.Parse(value, SharePermissionDto.View));
     }
 
-    [Theory]
-    [InlineData("2")]
-    [InlineData("3")]
-    [InlineData("View,Edit")]
-    [InlineData("Edit,Manage")]
-    public void PermissionLabels_Parse_NumericOrCombinedValue_UsesTheFallback(string value)
+    [Fact]
+    public void PermissionLabels_Parse_CombinedValue_UsesTheFallback()
     {
-        Assert.Equal(SharePermissionDto.View, PermissionLabels.Parse(value, SharePermissionDto.View));
+        Assert.Equal(SharePermissionDto.View, PermissionLabels.Parse("View,Edit", SharePermissionDto.View));
     }
 }

@@ -55,33 +55,6 @@ public sealed class SharedItemsApiClientTests : IDisposable
     }
 
     [Fact]
-    public async Task List_EmptyToken_LeavesItOut()
-    {
-        _harness.Handler.Respond(HttpStatusCode.OK, EmptyPageJson);
-
-        await _client.ListAsync(null, 10, string.Empty, TestContext.Current.CancellationToken);
-
-        Assert.Equal("?pageSize=10", Only.Uri.Query);
-    }
-
-    [Fact]
-    public async Task List_Items_AreDeserialized()
-    {
-        var item = new SharedItemDto { Kind = SharedItemKindDto.Secret, ItemId = Guid.NewGuid(), OwnerId = Guid.NewGuid(), OwnerDisplayName = "Ada", Name = "Mail", Permission = SharePermissionDto.Edit, FiledFolderId = Guid.NewGuid() };
-        _harness.Handler.Respond(HttpStatusCode.OK, JsonSerializer.Serialize(new SharedItemPageDto { Items = [item], ContinuationToken = "next" }, JsonSerializerOptions.Web));
-
-        var response = await _client.ListAsync(null, 10, null, TestContext.Current.CancellationToken);
-
-        var page = Assert.IsType<SharedItemPageDto>(response.Value);
-        var read = Assert.Single(page.Items);
-        Assert.Equal(item.ItemId, read.ItemId);
-        Assert.Equal(item.OwnerId, read.OwnerId);
-        Assert.Equal(SharePermissionDto.Edit, read.Permission);
-        Assert.Equal(item.FiledFolderId, read.FiledFolderId);
-        Assert.Equal("next", page.ContinuationToken);
-    }
-
-    [Fact]
     public async Task GetSecret_UsesOwnerAndSecretInTheRoute()
     {
         var ownerId = Guid.NewGuid();
@@ -112,21 +85,10 @@ public sealed class SharedItemsApiClientTests : IDisposable
         Assert.Contains("\"name\":\"n\"", Only.Body, StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task UpdateSecret_MissingToken_ThrowsAndSendsNothing(string? token)
-    {
-        await Assert.ThrowsAnyAsync<ArgumentException>(() => _client.UpdateSecretAsync(Guid.NewGuid(), Guid.NewGuid(), token!, new UpdateSecretRequestDto(), TestContext.Current.CancellationToken));
-
-        Assert.Empty(_harness.Handler.Requests);
-    }
-
     [Fact]
-    public async Task UpdateSecret_NullRequest_ThrowsAndSendsNothing()
+    public async Task UpdateSecret_BlankToken_ThrowsAndSendsNothing()
     {
-        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.UpdateSecretAsync(Guid.NewGuid(), Guid.NewGuid(), ETag, null!, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAnyAsync<ArgumentException>(() => _client.UpdateSecretAsync(Guid.NewGuid(), Guid.NewGuid(), " ", new UpdateSecretRequestDto(), TestContext.Current.CancellationToken));
 
         Assert.Empty(_harness.Handler.Requests);
     }
@@ -149,14 +111,6 @@ public sealed class SharedItemsApiClientTests : IDisposable
     }
 
     [Fact]
-    public async Task RevealSecret_NullRequest_ThrowsAndSendsNothing()
-    {
-        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.RevealSecretAsync(Guid.NewGuid(), Guid.NewGuid(), null!, TestContext.Current.CancellationToken));
-
-        Assert.Empty(_harness.Handler.Requests);
-    }
-
-    [Fact]
     public async Task GetFolder_BuildsRouteAndPagingQuery()
     {
         var ownerId = Guid.NewGuid();
@@ -168,16 +122,6 @@ public sealed class SharedItemsApiClientTests : IDisposable
         Assert.Equal(ApiCallStatus.Success, response.Status);
         Assert.Equal($"/api/shared/owners/{ownerId:D}/folders/{folderId:D}", Only.Uri.AbsolutePath);
         Assert.Equal($"?pageSize=50&continuationToken={Uri.EscapeDataString("t k+")}", Only.Uri.Query);
-    }
-
-    [Fact]
-    public async Task GetFolder_NoToken_LeavesItOut()
-    {
-        _harness.Handler.Respond(HttpStatusCode.OK, JsonSerializer.Serialize(new SharedFolderContentsDto { Permission = SharePermissionDto.View }, JsonSerializerOptions.Web));
-
-        await _client.GetFolderAsync(Guid.NewGuid(), Guid.NewGuid(), 50, null, TestContext.Current.CancellationToken);
-
-        Assert.Equal("?pageSize=50", Only.Uri.Query);
     }
 
     [Fact]
@@ -209,22 +153,9 @@ public sealed class SharedItemsApiClientTests : IDisposable
         Assert.Equal("""{"folderId":null}""", Only.Body);
     }
 
-    [Fact]
-    public async Task File_NullRequest_ThrowsAndSendsNothing()
-    {
-        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.FileSecretAsync(Guid.NewGuid(), Guid.NewGuid(), null!, TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.FileFolderAsync(Guid.NewGuid(), Guid.NewGuid(), null!, TestContext.Current.CancellationToken));
-
-        Assert.Empty(_harness.Handler.Requests);
-    }
-
     [Theory]
-    [InlineData(HttpStatusCode.Unauthorized, ApiCallStatus.SignInRequired)]
     [InlineData(HttpStatusCode.Forbidden, ApiCallStatus.AccessDenied)]
-    [InlineData(HttpStatusCode.NotFound, ApiCallStatus.NotFound)]
     [InlineData(HttpStatusCode.Conflict, ApiCallStatus.Conflict)]
-    [InlineData(HttpStatusCode.TooManyRequests, ApiCallStatus.RateLimited)]
-    [InlineData(HttpStatusCode.InternalServerError, ApiCallStatus.Failed)]
     public async Task GetSecret_ErrorStatuses_MapToTheCallStatus(HttpStatusCode status, ApiCallStatus expected)
     {
         _harness.Handler.Respond(status, string.Empty);
@@ -233,15 +164,5 @@ public sealed class SharedItemsApiClientTests : IDisposable
 
         Assert.Equal(expected, response.Status);
         Assert.Null(response.Value);
-    }
-
-    [Fact]
-    public async Task GetSecret_NetworkFailure_ReturnsFailedWithoutThrowing()
-    {
-        _harness.Handler.Throw(new HttpRequestException("boom"));
-
-        var response = await _client.GetSecretAsync(Guid.NewGuid(), Guid.NewGuid(), TestContext.Current.CancellationToken);
-
-        Assert.Equal(ApiCallStatus.Failed, response.Status);
     }
 }

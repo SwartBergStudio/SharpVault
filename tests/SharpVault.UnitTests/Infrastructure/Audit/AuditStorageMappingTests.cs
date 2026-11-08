@@ -9,8 +9,8 @@ namespace SharpVault.UnitTests.Infrastructure.Audit;
 
 public sealed class AuditStorageMappingTests
 {
-    private static readonly string[] EntityProperties = ["ActorId", "ETag", "EventType", "IpAddress", "OccurredAt", "OwnerId", "PartitionKey", "Reason", "ReasonCategory", "RecipientId", "RowKey", "SecretId", "SharePermission", "TargetId", "Timestamp", "TransferId"];
-    private static readonly string[] EntryProperties = ["ActorId", "EventType", "Id", "IpAddress", "OccurredAt", "OwnerId", "Reason", "ReasonCategory", "RecipientId", "SecretId", "SharePermission", "TargetId", "TransferId"];
+    private static readonly string[] EntityProperties = ["ActorId", "ETag", "EventType", "IpAddress", "OccurredAt", "OwnerId", "PartitionKey", "Reason", "ReasonCategory", "RecipientId", "RowKey", "SecretId", "SharePermission", "TargetId", "Timestamp", "TransferId", "UserAgent"];
+    private static readonly string[] EntryProperties = ["ActorId", "EventType", "Id", "IpAddress", "OccurredAt", "OwnerId", "Reason", "ReasonCategory", "RecipientId", "SecretId", "SharePermission", "TargetId", "TransferId", "UserAgent"];
 
     private static AuditEntry VaultEntry(Guid? owner, Guid? secret) => new()
     {

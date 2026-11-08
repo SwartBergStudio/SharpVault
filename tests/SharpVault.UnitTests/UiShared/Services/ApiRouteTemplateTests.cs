@@ -60,6 +60,8 @@ public sealed partial class ApiRouteTemplateTests
         Assert.ThrowsAny<ArgumentException>(() => template.Bind("secretId", Guid.NewGuid()));
     }
 
+    private const string SampleStringKey = "1000000000000000000_0123456789abcdef0123456789abcdef";
+
     [Fact]
     public void Bind_EveryApiRoute_CanBeFullyBoundFromItsOwnPlaceholders()
     {
@@ -74,7 +76,9 @@ public sealed partial class ApiRouteTemplateTests
             var route = template;
             foreach (Match placeholder in PlaceholderPattern().Matches(template))
             {
-                route = route.Bind(placeholder.Groups["name"].Value, Guid.NewGuid());
+                route = placeholder.Groups["constraint"].Success
+                    ? route.Bind(placeholder.Groups["name"].Value, Guid.NewGuid())
+                    : route.Replace(placeholder.Value, SampleStringKey);
             }
 
             Assert.DoesNotContain('{', route);
@@ -82,6 +86,6 @@ public sealed partial class ApiRouteTemplateTests
         }
     }
 
-    [GeneratedRegex(@"\{(?<name>[A-Za-z]+):guid\}", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 2000)]
+    [GeneratedRegex(@"\{(?<name>[A-Za-z]+)(?<constraint>:guid)?\}", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 2000)]
     private static partial Regex PlaceholderPattern();
 }

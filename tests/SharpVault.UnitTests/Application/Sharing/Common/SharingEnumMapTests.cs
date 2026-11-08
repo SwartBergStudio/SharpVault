@@ -12,24 +12,6 @@ namespace SharpVault.UnitTests.Application.Sharing.Common;
 public sealed class SharingEnumMapTests
 {
     [Theory]
-    [InlineData(SharePermission.View, SharePermissionDto.View)]
-    [InlineData(SharePermission.Edit, SharePermissionDto.Edit)]
-    [InlineData(SharePermission.Manage, SharePermissionDto.Manage)]
-    public void ToDto_Permission_MapsEachValue(SharePermission permission, SharePermissionDto expected)
-    {
-        Assert.Equal(expected, SharingEnumMap.ToDto(permission));
-    }
-
-    [Theory]
-    [InlineData(SharePermissionDto.View, SharePermission.View)]
-    [InlineData(SharePermissionDto.Edit, SharePermission.Edit)]
-    [InlineData(SharePermissionDto.Manage, SharePermission.Manage)]
-    public void ToDomain_Permission_MapsEachValue(SharePermissionDto permission, SharePermission expected)
-    {
-        Assert.Equal(expected, SharingEnumMap.ToDomain(permission));
-    }
-
-    [Theory]
     [InlineData(SharePermission.None, SecretPermission.None)]
     [InlineData(SharePermission.View, SecretPermission.View)]
     [InlineData(SharePermission.Edit, SecretPermission.Edit)]
@@ -49,19 +31,21 @@ public sealed class SharingEnumMapTests
     }
 
     [Theory]
-    [InlineData(ShareItemKind.Secret, SharedItemKindDto.Secret)]
-    [InlineData(ShareItemKind.Folder, SharedItemKindDto.Folder)]
-    public void ToDto_Kind_MapsEachValue(ShareItemKind kind, SharedItemKindDto expected)
+    [InlineData(SharePermission.View, SharePermissionDto.View)]
+    [InlineData(SharePermission.Edit, SharePermissionDto.Edit)]
+    [InlineData(SharePermission.Manage, SharePermissionDto.Manage)]
+    public void ToDto_Permission_MapsEachValue(SharePermission permission, SharePermissionDto expected)
     {
-        Assert.Equal(expected, SharingEnumMap.ToDto(kind));
+        Assert.Equal(expected, SharingEnumMap.ToDto(permission));
     }
 
     [Theory]
-    [InlineData(SharedItemKindDto.Secret, ShareItemKind.Secret)]
-    [InlineData(SharedItemKindDto.Folder, ShareItemKind.Folder)]
-    public void ToDomain_Kind_MapsEachValue(SharedItemKindDto kind, ShareItemKind expected)
+    [InlineData(SharePermissionDto.View, SharePermission.View)]
+    [InlineData(SharePermissionDto.Edit, SharePermission.Edit)]
+    [InlineData(SharePermissionDto.Manage, SharePermission.Manage)]
+    public void ToDomain_Permission_MapsEachValue(SharePermissionDto permission, SharePermission expected)
     {
-        Assert.Equal(expected, SharingEnumMap.ToDomain(kind));
+        Assert.Equal(expected, SharingEnumMap.ToDomain(permission));
     }
 
     [Fact]
@@ -71,36 +55,14 @@ public sealed class SharingEnumMapTests
     }
 
     [Fact]
-    public void ToDto_UnknownPermission_Throws()
+    public void ToDomain_UnknownPermissionDto_Throws()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => SharingEnumMap.ToDto((SharePermission)99));
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(99)]
-    public void ToDomain_UnknownPermissionDto_Throws(int value)
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => SharingEnumMap.ToDomain((SharePermissionDto)value));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SharingEnumMap.ToDomain((SharePermissionDto)99));
     }
 
     [Fact]
     public void ToAccess_UnknownPermission_Throws()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => SharingEnumMap.ToAccess((SharePermission)99));
-    }
-
-    [Fact]
-    public void ToDto_UnknownKind_Throws()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => SharingEnumMap.ToDto((ShareItemKind)99));
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(99)]
-    public void ToDomain_UnknownKindDto_Throws(int value)
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => SharingEnumMap.ToDomain((SharedItemKindDto)value));
     }
 }

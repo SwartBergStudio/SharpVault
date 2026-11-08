@@ -85,6 +85,8 @@ Sharing in Entra mode finds colleagues through Microsoft Graph (SHR-1). The API 
 | `UserAccess:CacheTtl` | optional (API) | `00:00:05` by default | Between 0 and 30 seconds. `0` disables the lock-status cache. |
 | `UserAccess:CacheMaxEntries` | optional (API) | `10000` by default | Between 100 and 1,000,000. |
 | `UserAccess:SignInRecordInterval` | optional (API) | `01:00:00` by default | Between 1 minute and 24 hours. A sign-in is recorded at most once per interval. |
+| `WebGateway:Key` | user secrets, environment or the secret store (API and Web) | The same value on both hosts, at least 32 characters after trimming | Required outside Development. Signs the Web-to-API proof for one-time links. Section 9. |
+| `OneTimeLinks:Enabled` | user secrets or environment (API) | `false` by default | Turns on one-time links. The API refuses to start when this is `true` and `WebGateway:Key` is missing or short. |
 
 Both hosts choose the mode when they start. With both `AzureAd:TenantId` and `AzureAd:ClientId` set, they use Entra ID and validate the values strictly. If only one of them is set, or both are empty outside Development, the host stops with an error. A malformed value also stops it. The API also needs `AzureAd:ClientId` set to its own client id, so the token audience check passes.
 
@@ -183,3 +185,12 @@ The repository does not run more than one Web or API instance today. This sectio
 | Idle tracking | Per process (`SessionActivityMap`), per session | Affinity keeps a circuit on one instance |
 
 The sensitive material stays in process memory. The ledger row holds only a user id, a random session id and a date.
+
+## 9. Web gateway key and one-time links
+
+The Web signs a proof for each one-time link open, and the API checks it with `WebGateway:Key`. Both hosts must have the same key.
+
+- Generate a value of at least 32 characters, and set `WebGateway__Key` on the API and on the Web. Outside Development both hosts refuse to start without it.
+- Keep the value in the secret store or in environment variables. Never in `appsettings*.json` and never in the repository. The hosts never log it.
+- To rotate, change it on both hosts in the same deployment. Until both match, opens fail and visitors see the generic not-found answer. No link is consumed.
+- The full deployment steps, forwarded headers and the limits are in [ONE-TIME-LINKS.md](ONE-TIME-LINKS.md#deployment).

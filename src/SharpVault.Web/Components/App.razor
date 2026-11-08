@@ -20,6 +20,10 @@
 </head>
 
 <body>
+    @if (PageRenderMode is not null)
+    {
+        <BootSkeleton />
+    }
     <Routes @rendermode="PageRenderMode" />
     <ReconnectModal />
     @if (IsSignedInStaticPage)

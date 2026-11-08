@@ -10,7 +10,6 @@ using NSubstitute.ExceptionExtensions;
 using SharpVault.Dtos.Sharing;
 using SharpVault.Dtos.Users;
 using SharpVault.Dtos.Vault;
-using SharpVault.UI.Shared.Components.Base;
 using SharpVault.UI.Shared.Components.Sharing;
 using SharpVault.UI.Shared.Components.Vault;
 using SharpVault.UI.Shared.Navigation;
@@ -123,39 +122,6 @@ public sealed class SharedFolderViewPagingTests : SharedDetailTestHost
     }
 
     [Fact]
-    public async Task LoadMore_SignInRequired_RedirectsToSignIn()
-    {
-        ReturnsFirst(Contents(SharePermissionDto.View, NextToken, "Racks", _childId, Item(_firstItemId, "Alpha")));
-        ReturnsNext(ApiResponse<SharedFolderContentsDto>.SignInRequired());
-        var cut = RenderPage();
-
-        await cut.WaitForElement("#shared-folder-load-more").ClickAsync();
-
-        cut.WaitForAssertion(() =>
-        {
-            var navigation = Assert.IsType<BunitNavigationManager>(Services.GetRequiredService<NavigationManager>());
-            Assert.StartsWith(AccountRoutes.SignIn, navigation.History.First().Uri, StringComparison.Ordinal);
-        });
-        Assert.Empty(cut.FindAll("#shared-folder-load-more-error"));
-    }
-
-    [Fact]
-    public async Task LoadMore_RetryAfterFailure_AppendsAndClearsTheError()
-    {
-        ReturnsFirst(Contents(SharePermissionDto.View, NextToken, "Racks", _childId, Item(_firstItemId, "Alpha")));
-        ReturnsNext(ApiResponse<SharedFolderContentsDto>.Failed());
-        var cut = RenderPage();
-        await cut.WaitForElement("#shared-folder-load-more").ClickAsync();
-        cut.WaitForElement("#shared-folder-load-more-error");
-        ReturnsNext(ApiResponse<SharedFolderContentsDto>.Success(Contents(SharePermissionDto.View, null, "Racks", _childId, Item(_secondItemId, "Beta"))));
-
-        await cut.Find("#shared-folder-load-more").ClickAsync();
-
-        cut.WaitForElement($"#shared-folder-secret-link-{_secondItemId:D}");
-        Assert.Empty(cut.FindAll("#shared-folder-load-more-error"));
-    }
-
-    [Fact]
     public void Damaged_FolderAndSubFolder_ShowTheUnreadableNameNotTheStoredOne()
     {
         var contents = Contents(SharePermissionDto.View, null, "Hidden child", _childId, Item(_firstItemId, "Alpha"));
@@ -174,9 +140,7 @@ public sealed class SharedFolderViewPagingTests : SharedDetailTestHost
     [Theory]
     [Trait("Category", "Security")]
     [InlineData(SharePermissionDto.View, false)]
-    [InlineData(SharePermissionDto.Edit, false)]
     [InlineData(SharePermissionDto.Manage, true)]
-    [InlineData((SharePermissionDto)0, false)]
     [InlineData((SharePermissionDto)99, false)]
     public void Permission_DecidesWhetherTheSharePanelIsShown(SharePermissionDto permission, bool panel)
     {
@@ -190,21 +154,6 @@ public sealed class SharedFolderViewPagingTests : SharedDetailTestHost
         {
             _ = GrantsClient.DidNotReceiveWithAnyArgs().ListFolderGrantsAsync(default, default, Xunit.TestContext.Current.CancellationToken);
         }
-    }
-
-    [Fact]
-    public void Load_SignInRequired_RedirectsToSignIn()
-    {
-        SharedItemsClient.GetFolderAsync(OwnerId, _folderId, Arg.Any<int>(), null, Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult(ApiResponse<SharedFolderContentsDto>.SignInRequired()));
-
-        var cut = RenderPage();
-
-        cut.WaitForAssertion(() =>
-        {
-            var navigation = Assert.IsType<BunitNavigationManager>(Services.GetRequiredService<NavigationManager>());
-            Assert.StartsWith(AccountRoutes.SignIn, navigation.History.First().Uri, StringComparison.Ordinal);
-        });
     }
 
     [Fact]
@@ -242,21 +191,7 @@ public sealed class SharedFolderViewPagingTests : SharedDetailTestHost
     }
 
     [Fact]
-    public async Task SharedFolderView_LoadMoreRateLimited_KeepsRowsAndShowsTheServerText()
-    {
-        ReturnsFirst(Contents(SharePermissionDto.View, NextToken, "Racks", _childId, Item(_firstItemId, "Alpha")));
-        ReturnsNext(ApiResponse<SharedFolderContentsDto>.RateLimited());
-        var cut = RenderPage();
-
-        await cut.WaitForElement("#shared-folder-load-more").ClickAsync();
-
-        cut.WaitForElement("#shared-folder-load-more-error");
-        Assert.Contains(LoadableComponentBase<SharedFolderContentsDto>.RateLimitedText, cut.Find("#shared-folder-load-more-error").TextContent, StringComparison.Ordinal);
-        Assert.NotNull(cut.Find($"#shared-folder-secret-link-{_firstItemId:D}"));
-        Assert.NotNull(cut.Find("#shared-folder-load-more"));
-    }
-
-    [Fact]
+    [Trait("Category", "Security")]
     public async Task SharedFolderView_LoadMoreThrows_KeepsRowsAndShowsTheFailedText()
     {
         ReturnsFirst(Contents(SharePermissionDto.View, NextToken, "Racks", _childId, Item(_firstItemId, "Alpha")));

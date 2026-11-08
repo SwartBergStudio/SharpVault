@@ -9,6 +9,8 @@ public static class TableNames
 
     public const string SessionRevocations = "SessionRevocations";
 
+    public const string OneTimeLinks = "OneTimeLinks";
+
     public const string AuditLog = "AuditLog";
 
     public const string Vaults = "Vaults";
@@ -21,5 +23,5 @@ public static class TableNames
 
     public const string TransferJobs = "TransferJobs";
 
-    public static IReadOnlyList<string> All { get; } = [Users, AuditLog, Vaults, SecretAuditLog, Maintenance, ShareInbox, TransferJobs, SessionRevocations];
+    public static IReadOnlyList<string> All { get; } = [Users, AuditLog, Vaults, SecretAuditLog, Maintenance, ShareInbox, TransferJobs, SessionRevocations, OneTimeLinks];
 }

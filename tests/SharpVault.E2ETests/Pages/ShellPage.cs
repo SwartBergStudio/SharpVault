@@ -15,6 +15,7 @@ public sealed class ShellPage(IPage page) : PageObject(page)
     private const string NavAdminUsersId = "nav-admin-users";
     private const string NavAdminTransfersId = "nav-admin-transfers";
     private const string AppShellId = "app-shell";
+    private const string BootSkeletonId = "boot-skeleton";
     private const string AccessDeniedHeadingId = "access-denied-heading";
     private const string SignedOutHeadingId = "signed-out-heading";
     private const string AdministratorsOnlyPanelId = "admin-users-forbidden";
@@ -22,6 +23,10 @@ public sealed class ShellPage(IPage page) : PageObject(page)
     private const string BlazorErrorBannerId = "blazor-error-ui";
 
     public Task WaitForShellAsync() => ShowsAsync(AppShellId);
+
+    public Task AssertBootSkeletonShownAsync() => ShowsAsync(BootSkeletonId);
+
+    public Task AssertBootSkeletonHiddenAsync() => HidesAsync(BootSkeletonId);
 
     public Task OpenVaultAsync() => ClickAsync(NavVaultId);
 

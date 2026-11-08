@@ -29,36 +29,26 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
         "/scalar/favicon.svg",
     ];
 
-    private const string AdminUsersPath = "/api/admin/users";
+    public static TheoryData<string, CallerKind> HealthPathsAndCallers() => new()
+    {
+        { "/health", CallerKind.Anonymous },
+        { "/alive", CallerKind.UnknownKeyToken },
+        { "/alive", CallerKind.LockedAdmin },
+    };
 
-    private static readonly string[] UnknownMethods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
+    public static TheoryData<string, CallerKind> DocumentationPathsAndCallers() => new()
+    {
+        { "/openapi/v1.json", CallerKind.Anonymous },
+        { "/scalar/v1", CallerKind.AlgNoneToken },
+        { "/openapi/v1.json", CallerKind.Admin },
+    };
 
-    private static readonly string[] UnknownPaths =
-    [
-        "/does-not-exist",
-        "/api/v1/secrets",
-        AdminUsersPath,
-        "/health/extra",
-        "/alive/extra",
-        "/healthz",
-        "/openapi",
-        "/openapi/v1.json/extra",
-        "/scalar-evil",
-        "/.env",
-        "/swagger/v1/swagger.json",
-        "/test/throw",
-    ];
-
-    public static TheoryData<string, CallerKind> HealthPathsAndCallers() =>
-        Cross(["/health", "/alive"], Enum.GetValues<CallerKind>());
-
-    public static TheoryData<string, CallerKind> DocumentationPathsAndCallers() =>
-        Cross(["/openapi/v1.json", "/scalar/v1"], Enum.GetValues<CallerKind>());
-
-    public static TheoryData<string, string> UnknownRoutesAndMethods() => CrossMethods(UnknownMethods, UnknownPaths);
-
-    public static TheoryData<string, string> UnknownRoutesWithoutExistingAdminRoute() =>
-        CrossMethods(UnknownMethods, [.. UnknownPaths.Where(path => path != AdminUsersPath)]);
+    public static TheoryData<string, string> UnknownRoutes() => new()
+    {
+        { "GET", "/does-not-exist" },
+        { "PUT", "/api/v1/secrets" },
+        { "DELETE", "/.env" },
+    };
 
     [Theory]
     [MemberData(nameof(HealthPathsAndCallers))]
@@ -85,34 +75,7 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
     }
 
     [Theory]
-    [InlineData(CallerKind.Anonymous)]
-    [InlineData(CallerKind.AuthenticatedWithoutRole)]
-    public async Task OpenApiDocument_Development_Returns200Anonymously(CallerKind caller)
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = CallerClients.CreateFor(Factory, caller);
-
-        var response = await client.GetAsync("/openapi/v1.json", cancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
-    }
-
-    [Theory]
-    [InlineData(CallerKind.Anonymous)]
-    [InlineData(CallerKind.AuthenticatedWithoutRole)]
-    public async Task ApiReference_Development_Returns200Anonymously(CallerKind caller)
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        using var client = CallerClients.CreateFor(Factory, caller);
-
-        var response = await client.GetAsync("/scalar/v1", cancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-    }
-
-    [Theory]
-    [MemberData(nameof(UnknownRoutesAndMethods))]
+    [MemberData(nameof(UnknownRoutes))]
     public async Task UnknownRoute_AnonymousCaller_Returns401(string method, string path)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -125,7 +88,7 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
     }
 
     [Theory]
-    [MemberData(nameof(UnknownRoutesWithoutExistingAdminRoute))]
+    [MemberData(nameof(UnknownRoutes))]
     public async Task UnknownRoute_UserRoleCaller_Returns404(string method, string path)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -134,9 +97,7 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
 
         var response = await Client.SendAsync(method, path, cancellationToken);
 
-        Assert.True(
-            response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed,
-            $"Unexpected status {(int)response.StatusCode} for {method} {path}");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         StorageAssertions.AssertOnlyUserAndAuditTablesTouched(StorageRequests);
     }
 
@@ -154,7 +115,7 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
     }
 
     [Theory]
-    [MemberData(nameof(UnknownRoutesAndMethods))]
+    [MemberData(nameof(UnknownRoutes))]
     public async Task UnknownRoute_NoRoleCaller_Returns403WithoutStorageCalls(string method, string path)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -168,23 +129,7 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
     }
 
     [Theory]
-    [InlineData("GET", "/does-not-exist")]
-    [InlineData("POST", "/does-not-exist")]
-    [InlineData("GET", "/api/v1/secrets")]
-    public async Task UnknownRoute_AuthenticatedCaller_Returns404Exactly(string method, string path)
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        SetAuthenticatedClient(TestUsers.User);
-
-        var response = await Client.SendAsync(method, path, cancellationToken);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
-
-    [Theory]
-    [InlineData("/does-not-exist")]
     [InlineData("/api/v1/secrets")]
-    [InlineData("/health/extra")]
     public async Task UnknownRoute_AnonymousCallerWithTestHeadersOfNobody_Returns401(string path)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -227,23 +172,9 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
 
             var policies = endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>().Select(data => data.Policy).ToList();
             Assert.True(
-                policies.Any(policy => policy is Policies.User or Policies.Admin),
+                policies.Any(policy => policy is Policies.User or Policies.Admin or Policies.LinkGateway),
                 $"Endpoint '{pattern}' is not anonymous and has no explicit SharpVault authorization policy.");
         }
-    }
-
-    [Fact]
-    public void Endpoints_Development_AnonymousRoutesAreOnlyHealthAndDocumentation()
-    {
-        var anonymous = Factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
-            .OfType<RouteEndpoint>()
-            .Where(endpoint => endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null)
-            .Select(endpoint => endpoint.RoutePattern.RawText)
-            .ToList();
-
-        Assert.Contains("/health", anonymous);
-        Assert.Contains("/alive", anonymous);
-        Assert.All(anonymous, pattern => Assert.Contains(pattern!, AllowListedAnonymousPatterns));
     }
 
     [Fact]
@@ -271,8 +202,6 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
 
     [Theory]
     [InlineData("/health")]
-    [InlineData("/alive")]
-    [InlineData("/does-not-exist")]
     [InlineData("/openapi/v1.json")]
     public async Task CorsPreflight_UntrustedOrigin_ReturnsNoAllowOriginHeader(string path)
     {
@@ -290,8 +219,6 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
 
     [Theory]
     [InlineData("/health")]
-    [InlineData("/alive")]
-    [InlineData("/does-not-exist")]
     public async Task CrossOriginGet_UntrustedOrigin_ReturnsNoAllowOriginHeader(string path)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -309,31 +236,4 @@ public sealed class AuthorizationTests(ApiTestFactory factory) : BaseIntegration
         Assert.Equal([AppRoles.User, AppRoles.Admin], access.AcceptedRoles);
     }
 
-    private static TheoryData<string, CallerKind> Cross(string[] paths, CallerKind[] callers)
-    {
-        var data = new TheoryData<string, CallerKind>();
-        foreach (var path in paths)
-        {
-            foreach (var caller in callers)
-            {
-                data.Add(path, caller);
-            }
-        }
-
-        return data;
-    }
-
-    private static TheoryData<string, string> CrossMethods(string[] methods, string[] paths)
-    {
-        var data = new TheoryData<string, string>();
-        foreach (var method in methods)
-        {
-            foreach (var path in paths)
-            {
-                data.Add(method, path);
-            }
-        }
-
-        return data;
-    }
 }

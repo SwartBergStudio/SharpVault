@@ -2,6 +2,7 @@
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
 using SharpVault.Api.Endpoints;
+using SharpVault.Api.Endpoints.OneTimeLinks;
 using SharpVault.Api.Endpoints.Sharing;
 using SharpVault.Api.Endpoints.Transfers;
 using SharpVault.Api.Endpoints.Vault;
@@ -50,6 +51,7 @@ app.MapShareGrantEndpoints();
 app.MapDirectoryEndpoints();
 app.MapAdminTransferEndpoints();
 app.MapTransferNoticeEndpoints();
+app.MapOneTimeLinkEndpoints();
 app.MapDefaultEndpoints();
 
 await app.RunAsync();

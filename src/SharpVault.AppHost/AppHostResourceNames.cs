@@ -13,6 +13,11 @@ public static class AppHostResourceNames
     public const string DevelopmentKeyMaterial = "development-key-material";
     public const string DevelopmentKeyMaterialVariable = "Encryption__DevelopmentKeyMaterial";
     public const int DevelopmentKeyMaterialLength = 64;
+    public const string WebGatewayKey = "web-gateway-key";
+    public const string WebGatewayKeyVariable = "WebGateway__Key";
+    public const int WebGatewayKeyLength = 64;
+    public const string OneTimeLinksEnabledVariable = "OneTimeLinks__Enabled";
+    public const string OneTimeLinksEnabledValue = "true";
     public const string TenantIdKey = "AzureAd:TenantId";
     public const string InstanceKey = "AzureAd:Instance";
     public const string ApiClientIdKey = "AzureAd:Api:ClientId";

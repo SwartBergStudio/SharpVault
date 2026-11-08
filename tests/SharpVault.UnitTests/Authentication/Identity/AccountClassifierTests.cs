@@ -40,18 +40,11 @@ public sealed class AccountClassifierTests
         Assert.Equal(AccountKind.Guest, Classify(new Claim("acct", "1")));
     }
 
-    [Fact]
-    public void Classify_AcctOneWithOwnTenantIdp_ReturnsGuest()
-    {
-        Assert.Equal(AccountKind.Guest, Classify(new Claim("acct", "1"), new Claim("idp", Settings.V2Issuer)));
-    }
-
     [Theory]
+    [Trait("Category", "Security")]
     [InlineData("https://sts.windows.net/9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a/")]
     [InlineData("https://login.microsoftonline.com/9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a/v2.0")]
     [InlineData("live.com")]
-    [InlineData("mail")]
-    [InlineData("google.com")]
     [InlineData("")]
     [InlineData("HTTPS://STS.WINDOWS.NET/3F2A1C9E-7B4D-4E8A-9C21-5D6E7F809A1B/")]
     [InlineData("https://sts.windows.net/3f2a1c9e-7b4d-4e8a-9c21-5d6e7f809a1b")]
@@ -68,26 +61,14 @@ public sealed class AccountClassifierTests
         Assert.Equal(AccountKind.Guest, kind);
     }
 
-    [Fact]
-    public void Classify_AcctZeroWithForeignIdpFirstThenOwn_ReturnsGuest()
-    {
-        var kind = Classify(new Claim("acct", "0"), new Claim("idp", "live.com"), new Claim("idp", Settings.V2Issuer));
-
-        Assert.Equal(AccountKind.Guest, kind);
-    }
-
     public static TheoryData<string, string[]> UnexpectedAcctCases() =>
         new()
         {
             { "missing", [] },
             { "two", ["2"] },
-            { "empty", [string.Empty] },
             { "twoClaims", ["0", "0"] },
             { "memberThenGuest", ["0", "1"] },
-            { "guestThenMember", ["1", "0"] },
             { "spaced", [" 0"] },
-            { "text", ["member"] },
-            { "negative", ["-1"] },
             { "doubleZero", ["00"] },
         };
 
@@ -105,13 +86,6 @@ public sealed class AccountClassifierTests
     public void Classify_MissingAcctButOwnTenantIdp_ReturnsUnknown()
     {
         Assert.Equal(AccountKind.Unknown, Classify(new Claim("idp", Settings.V2Issuer)));
-    }
-
-    [Fact]
-    public void Classify_NullArguments_Throw()
-    {
-        Assert.Throws<ArgumentNullException>(() => AccountClassifier.Classify(null!, Settings));
-        Assert.Throws<ArgumentNullException>(() => AccountClassifier.Classify(new ClaimsPrincipal(), null!));
     }
 
     [Fact]

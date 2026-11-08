@@ -95,6 +95,7 @@ public sealed class ApplicationRegistrationTests
         services.AddSingleton(Substitute.For<IMaintenanceLeaseStore>());
         services.AddSingleton(Substitute.For<ITransferJobStore>());
         services.AddSingleton(Substitute.For<ITransferStagingStore>());
+        services.AddSingleton(Substitute.For<IOneTimeLinkStore>());
         services.AddSingleton(Substitute.For<ISessionRevocationLedger>());
         services.AddSingleton(Substitute.For<IEnvelopeEncryptor>());
         services.AddScoped(_ => Substitute.For<IRequestMetadata>());

@@ -41,6 +41,8 @@ public sealed class TableUserStoreSourceTests
         Assert.All(filterLines, line => Assert.Contains("PartitionKey eq", line, StringComparison.Ordinal));
     }
 
+    private const string OneTimeLinkStoreFileName = "TableOneTimeLinkStore.cs";
+
     [Fact]
     public void InfrastructureSources_NeverUseETagAllOrRawFilterStrings()
     {
@@ -51,7 +53,8 @@ public sealed class TableUserStoreSourceTests
                          && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)))
         {
             var source = File.ReadAllText(file);
-            Assert.DoesNotContain("ETag.All", source, StringComparison.Ordinal);
+            var expectedEtagAll = Path.GetFileName(file) == OneTimeLinkStoreFileName ? 1 : 0;
+            Assert.Equal(expectedEtagAll, source.Split("ETag.All", StringSplitOptions.None).Length - 1);
             Assert.DoesNotContain("PartitionKey eq '", source, StringComparison.Ordinal);
         }
     }

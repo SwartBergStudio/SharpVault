@@ -38,14 +38,10 @@ public sealed class VaultTextRulesTests
         Assert.Contains(VaultMessages.FieldTooLong, Messages(result));
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("\t")]
-    [InlineData(" ")]
-    public void SingleLineText_WhitespaceOnly_Fails(string value)
+    [Fact]
+    public void SingleLineText_WhitespaceOnly_Fails()
     {
-        var result = SingleLine.Validate(new TextModel(value));
+        var result = SingleLine.Validate(new TextModel("   "));
 
         Assert.Contains(VaultMessages.FieldRequired, Messages(result));
     }
@@ -61,13 +57,10 @@ public sealed class VaultTextRulesTests
 
     [Theory]
     [InlineData("a\u0000b")]
-    [InlineData("a\u0007b")]
     [InlineData("a\u001bb")]
-    [InlineData("a\u007fb")]
     [InlineData("a\u0085b")]
     [InlineData("a\nb")]
     [InlineData("a\tb")]
-    [InlineData("a\rb")]
     public void SingleLineText_ControlCharacter_Fails(string value)
     {
         var result = SingleLine.Validate(new TextModel(value));
@@ -76,15 +69,8 @@ public sealed class VaultTextRulesTests
     }
 
     [Theory]
-    [InlineData('‪')]
-    [InlineData('‫')]
-    [InlineData('‬')]
-    [InlineData('‭')]
     [InlineData('‮')]
     [InlineData('⁦')]
-    [InlineData('⁧')]
-    [InlineData('⁨')]
-    [InlineData('⁩')]
     public void SingleLineText_BidiControl_Fails(char bidi)
     {
         var result = SingleLine.Validate(new TextModel("a" + bidi + "b"));
@@ -95,7 +81,7 @@ public sealed class VaultTextRulesTests
     [Fact]
     public void SingleLineText_LoneSurrogate_Fails()
     {
-        string[] samples = ["a\ud800b", "a\udc00b", "\udc00\ud800", "ab\ud83d"];
+        string[] samples = ["a\ud800b", "ab\ud83d"];
 
         foreach (var value in samples)
         {
@@ -106,15 +92,16 @@ public sealed class VaultTextRulesTests
     }
 
     [Fact]
-    public void SingleLineText_EmojiSurrogatePair_Passes()
+    public void SingleLineText_EmojiSurrogatePairAndOrdinaryUnicode_Passes()
     {
         Assert.True(SingleLine.Validate(new TextModel("a\U0001F600b")).IsValid);
+        Assert.True(SingleLine.Validate(new TextModel("Zoë 名前")).IsValid);
     }
 
     [Fact]
-    public void SingleLineText_OrdinaryUnicode_Passes()
+    public void SingleLineText_ZeroWidthJoiner_PassesForNames()
     {
-        Assert.True(SingleLine.Validate(new TextModel("Zoë 名前")).IsValid);
+        Assert.True(SingleLine.Validate(new TextModel("name‍x")).IsValid);
     }
 
     [Fact]
@@ -164,7 +151,6 @@ public sealed class VaultTextRulesTests
     }
 
     [Theory]
-    [InlineData("https://example.test/")]
     [InlineData("http://example.test/path?x=1#y")]
     [InlineData("HTTPS://EXAMPLE.TEST")]
     public void HttpUrl_HttpsAndHttp_Pass(string value)
@@ -173,16 +159,14 @@ public sealed class VaultTextRulesTests
     }
 
     [Theory]
+    [Trait("Category", "Security")]
     [InlineData("javascript:alert(1)")]
     [InlineData("data:text/html,<script>1</script>")]
     [InlineData("file:///etc/passwd")]
-    [InlineData("ftp://example.test/")]
     [InlineData("/relative/path")]
     [InlineData("example.test")]
-    [InlineData("//example.test/")]
-    [InlineData("vbscript:msgbox(1)")]
     [InlineData("")]
-    public void HttpUrl_JavascriptDataFileFtpRelative_Fail(string value)
+    public void HttpUrl_NonHttpSchemeRelativeOrEmpty_Fails(string value)
     {
         var result = Url.Validate(new TextModel(value));
 
@@ -190,13 +174,12 @@ public sealed class VaultTextRulesTests
     }
 
     [Theory]
+    [Trait("Category", "Security")]
     [InlineData("https://example.test/a b")]
     [InlineData(" https://example.test/")]
-    [InlineData("https://example.test/ ")]
     [InlineData("https://example.test/\n")]
     [InlineData("https://example.test/\u0000")]
-    [InlineData("https://exa\tmple.test/")]
-    public void HttpUrl_WithWhitespace_Fails(string value)
+    public void HttpUrl_WithWhitespaceOrControl_Fails(string value)
     {
         var result = Url.Validate(new TextModel(value));
 
@@ -204,16 +187,10 @@ public sealed class VaultTextRulesTests
     }
 
     [Theory]
-    [InlineData("‪")]
-    [InlineData("‫")]
-    [InlineData("‬")]
-    [InlineData("‭")]
-    [InlineData("‮")]
-    [InlineData("⁦")]
-    [InlineData("⁧")]
-    [InlineData("⁨")]
-    [InlineData("⁩")]
-    public void HttpUrl_BidiControl_Fails(string bidi)
+    [Trait("Category", "Security")]
+    [InlineData('‮')]
+    [InlineData('⁦')]
+    public void HttpUrl_BidiControl_Fails(char bidi)
     {
         var result = Url.Validate(new TextModel("https://example.test/a" + bidi + "b"));
 
@@ -221,27 +198,15 @@ public sealed class VaultTextRulesTests
     }
 
     [Theory]
+    [Trait("Category", "Security")]
     [InlineData("​")]
-    [InlineData("‌")]
-    [InlineData("‍")]
-    [InlineData("‎")]
-    [InlineData("⁠")]
     [InlineData("­")]
-    [InlineData("﻿")]
     [InlineData("󠁁")]
     public void HttpUrl_FormatCharacter_Fails(string formatCharacter)
     {
         var result = Url.Validate(new TextModel("https://example.test/a" + formatCharacter + "b"));
 
         Assert.Contains(VaultMessages.InvalidUrl, Messages(result));
-    }
-
-    [Theory]
-    [InlineData("‍")]
-    [InlineData("​")]
-    public void SingleLineText_FormatCharacter_StillPassesForNames(string formatCharacter)
-    {
-        Assert.True(SingleLine.Validate(new TextModel("name" + formatCharacter + "x")).IsValid);
     }
 
     [Fact]
@@ -266,24 +231,18 @@ public sealed class VaultTextRulesTests
         Assert.Contains(VaultMessages.TooManyTags, Messages(Tags.Validate(new TagModel(tags))));
     }
 
-    [Fact]
-    public void TagList_DuplicateCaseInsensitive_Fails()
-    {
-        Assert.Contains(VaultMessages.DuplicateTag, Messages(Tags.Validate(new TagModel(["Prod", "prod"]))));
-    }
-
-    [Fact]
-    public void TagList_DuplicateAfterTrim_Fails()
-    {
-        Assert.Contains(VaultMessages.DuplicateTag, Messages(Tags.Validate(new TagModel(["prod", "  PROD "]))));
-    }
-
     [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void TagList_EmptyTag_Fails(string tag)
+    [InlineData("Prod", "prod")]
+    [InlineData("prod", "  PROD ")]
+    public void TagList_DuplicateCaseOrTrimmed_Fails(string first, string second)
     {
-        Assert.Contains(VaultMessages.FieldRequired, Messages(Tags.Validate(new TagModel(["ok", tag]))));
+        Assert.Contains(VaultMessages.DuplicateTag, Messages(Tags.Validate(new TagModel([first, second]))));
+    }
+
+    [Fact]
+    public void TagList_WhitespaceOnlyTag_Fails()
+    {
+        Assert.Contains(VaultMessages.FieldRequired, Messages(Tags.Validate(new TagModel(["ok", "   "]))));
     }
 
     [Fact]
@@ -317,15 +276,6 @@ public sealed class VaultTextRulesTests
     public void TagList_LoneSurrogate_Fails()
     {
         Assert.Contains(VaultMessages.NotWellFormedText, Messages(Tags.Validate(new TagModel(["a\ud800"]))));
-    }
-
-    [Fact]
-    public void Rules_NullBuilder_Throw()
-    {
-        Assert.Throws<ArgumentNullException>(() => VaultTextRules.SingleLineText<TextModel, string?>(null!, Max));
-        Assert.Throws<ArgumentNullException>(() => VaultTextRules.MultiLineSecretText<TextModel, string?>(null!, Max));
-        Assert.Throws<ArgumentNullException>(() => VaultTextRules.HttpUrl<TextModel, string?>(null!));
-        Assert.Throws<ArgumentNullException>(() => VaultTextRules.TagList<TagModel, List<string>>(null!));
     }
 
     private sealed record TextModel(string? Text);

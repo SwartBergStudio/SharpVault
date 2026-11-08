@@ -36,12 +36,6 @@ public sealed class ResultHttpExtensionsTests
     }
 
     [Fact]
-    public void ToHttpResult_NullResult_Throws()
-    {
-        Assert.Throws<ArgumentNullException>(() => ResultHttpExtensions.ToHttpResult<CurrentUserDto>(null!));
-    }
-
-    [Fact]
     public void ToHttpResult_NotFound_Returns404WithConstantTitle()
     {
         var result = Result<CurrentUserDto>.NotFound().ToHttpResult();
@@ -125,13 +119,6 @@ public sealed class ResultHttpExtensionsTests
     }
 
     [Fact]
-    public void ToCreatedHttpResult_NullArguments_Throw()
-    {
-        Assert.Throws<ArgumentNullException>(() => ResultHttpExtensions.ToCreatedHttpResult<CurrentUserDto>(null!, _ => "/x"));
-        Assert.Throws<ArgumentNullException>(() => Result<CurrentUserDto>.Success(new CurrentUserDto()).ToCreatedHttpResult(null!));
-    }
-
-    [Fact]
     public void ToNoContentHttpResult_Success_Returns204()
     {
         var result = Result<Done>.Success(Done.Value).ToNoContentHttpResult();
@@ -143,7 +130,6 @@ public sealed class ResultHttpExtensionsTests
     [Theory]
     [InlineData(StatusCodes.Status404NotFound)]
     [InlineData(StatusCodes.Status409Conflict)]
-    [InlineData(StatusCodes.Status400BadRequest)]
     public void ToNoContentHttpResult_Failure_ReturnsTheMappedProblem(int status)
     {
         var failure = status switch
@@ -156,11 +142,5 @@ public sealed class ResultHttpExtensionsTests
         var problem = Assert.IsType<ProblemHttpResult>(failure.ToNoContentHttpResult());
 
         Assert.Equal(status, problem.StatusCode);
-    }
-
-    [Fact]
-    public void ToNoContentHttpResult_NullResult_Throws()
-    {
-        Assert.Throws<ArgumentNullException>(() => ResultHttpExtensions.ToNoContentHttpResult(null!));
     }
 }

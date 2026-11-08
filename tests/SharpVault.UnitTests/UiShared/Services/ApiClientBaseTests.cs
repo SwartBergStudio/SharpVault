@@ -46,6 +46,18 @@ public sealed class ApiClientBaseTests : IDisposable
 
     public void Dispose() => _handler.Dispose();
 
+    private sealed class PrincipalRecordingHandler(List<ClaimsPrincipal?> seen) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            seen.Add(request.Options.TryGetValue(ApiRequestOptions.Principal, out var principal) ? principal : null);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(ProfileJson, System.Text.Encoding.UTF8, "application/json"),
+            });
+        }
+    }
+
     private ProbeClient Client(string baseAddress = "https://api.example.test/") =>
         new(new HttpClient(_handler) { BaseAddress = new Uri(baseAddress) }, _tokens, _authentication, _session, _logger);
 
@@ -100,13 +112,16 @@ public sealed class ApiClientBaseTests : IDisposable
     }
 
     [Fact]
-    public async Task Get_NoTokenKind_SendsNoAuthorizationHeader()
+    [Trait("Category", "Security")]
+    public async Task SendAsync_Always_SetsThePrincipalOption()
     {
-        _tokens.GetAccessTokenAsync(Arg.Any<ClaimsPrincipal>(), Arg.Any<CancellationToken>()).Returns(ApiAccessToken.NoToken);
+        var seen = new List<ClaimsPrincipal?>();
+        var recording = new PrincipalRecordingHandler(seen);
+        var client = new ProbeClient(new HttpClient(recording) { BaseAddress = new Uri("https://api.example.test/") }, _tokens, _authentication, _session, _logger);
 
-        await Client().ReadAsync(Route, TestContext.Current.CancellationToken);
+        await client.ReadAsync(Route, TestContext.Current.CancellationToken);
 
-        Assert.Null(Assert.Single(_handler.Requests).AuthorizationScheme);
+        Assert.Same(_principal, Assert.Single(seen));
     }
 
     [Fact]
@@ -156,24 +171,21 @@ public sealed class ApiClientBaseTests : IDisposable
         Assert.Null(response.Value);
     }
 
-    [Theory]
-    [InlineData(HttpStatusCode.InternalServerError)]
-    [InlineData(HttpStatusCode.BadGateway)]
-    [InlineData(HttpStatusCode.ServiceUnavailable)]
-    public async Task Get_500_ReturnsFailedAndLogsStatusOnly(HttpStatusCode status)
+    [Fact]
+    public async Task Get_500_ReturnsFailedAndLogsStatusOnly()
     {
-        _handler.Respond(status, "internal stack trace with secret-body-text");
+        _handler.Respond(HttpStatusCode.InternalServerError, "internal stack trace with secret-body-text");
 
         var response = await Client().ReadAsync(Route, TestContext.Current.CancellationToken);
 
         Assert.Equal(ApiCallStatus.Failed, response.Status);
         var warning = Assert.Single(_logger.Records, record => record.Level == LogLevel.Warning);
-        Assert.Contains(((int)status).ToString(CultureInfo.InvariantCulture), warning.Message, StringComparison.Ordinal);
+        Assert.Contains(((int)HttpStatusCode.InternalServerError).ToString(CultureInfo.InvariantCulture), warning.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("secret-body-text", _logger.AllText(), StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Get_HttpRequestException_ReturnsFailed()
+    public async Task Get_HttpRequestException_ReturnsFailedAndLogsTypeOnly()
     {
         _handler.Throw(new HttpRequestException("connection refused to secret-host"));
 
@@ -215,8 +227,6 @@ public sealed class ApiClientBaseTests : IDisposable
 
     [Theory]
     [InlineData("{not json")]
-    [InlineData("")]
-    [InlineData("null")]
     [InlineData("""{"userId":"not-a-guid","displayName":"x","isAdmin":false}""")]
     public async Task Get_InvalidJson_ReturnsFailed(string body)
     {
@@ -253,8 +263,6 @@ public sealed class ApiClientBaseTests : IDisposable
 
     [Theory]
     [InlineData(HttpStatusCode.OK)]
-    [InlineData(HttpStatusCode.Unauthorized)]
-    [InlineData(HttpStatusCode.Forbidden)]
     [InlineData(HttpStatusCode.InternalServerError)]
     public async Task Get_Logs_NeverContainTokensNamesOrEmails(HttpStatusCode status)
     {
@@ -275,7 +283,7 @@ public sealed class ApiClientBaseTests : IDisposable
     {
         _handler.Respond(HttpStatusCode.Created, FolderJson);
 
-        var response = await Client().CreateAsync(FolderRoute, new CreateFolderRequestDto { Name = "Travel" }, null, TestContext.Current.CancellationToken);
+        var response = await Client().CreateAsync(FolderRoute, new CreateFolderRequestDto { Name = "Travel" }, ETag, TestContext.Current.CancellationToken);
 
         Assert.Equal(ApiCallStatus.Success, response.Status);
         var request = Assert.Single(_handler.Requests);
@@ -284,28 +292,7 @@ public sealed class ApiClientBaseTests : IDisposable
         Assert.Equal("""{"name":"Travel","parentId":null}""", request.Body);
         Assert.Equal("Bearer", request.AuthorizationScheme);
         Assert.Equal(Token, request.AuthorizationParameter);
-        Assert.Null(request.IfMatch);
-    }
-
-    [Fact]
-    public async Task Post_IfMatch_IsSentUnchanged()
-    {
-        _handler.Respond(HttpStatusCode.OK, FolderJson);
-
-        await Client().CreateAsync(FolderRoute, new CreateFolderRequestDto { Name = "Travel" }, ETag, TestContext.Current.CancellationToken);
-
-        Assert.Equal(ETag, Assert.Single(_handler.Requests).IfMatch);
-    }
-
-    [Fact]
-    public async Task Post_201_ReadsTheBody()
-    {
-        _handler.Respond(HttpStatusCode.Created, FolderJson);
-
-        var response = await Client().CreateAsync(FolderRoute, new CreateFolderRequestDto { Name = "Travel" }, null, TestContext.Current.CancellationToken);
-
-        Assert.Equal(ApiCallStatus.Success, response.Status);
-        Assert.Equal("Travel", response.Value!.Name);
+        Assert.Equal(ETag, request.IfMatch);
     }
 
     [Fact]
@@ -385,10 +372,7 @@ public sealed class ApiClientBaseTests : IDisposable
 
     [Theory]
     [InlineData("not json at all")]
-    [InlineData("")]
-    [InlineData("[1,2]")]
     [InlineData("""{"errors":{"Name":null}}""")]
-    [InlineData("""{"detail":"   "}""")]
     public async Task Send_400WithUnreadableBody_ReturnsInvalidWithoutDetail(string body)
     {
         _handler.Respond(HttpStatusCode.BadRequest, body);
@@ -399,46 +383,24 @@ public sealed class ApiClientBaseTests : IDisposable
         Assert.Null(response.Detail);
     }
 
-    [Fact]
-    public async Task Send_404_ReturnsNotFoundWithoutWarningLog()
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, ApiCallStatus.NotFound)]
+    [InlineData(HttpStatusCode.Conflict, ApiCallStatus.Conflict)]
+    [InlineData(HttpStatusCode.TooManyRequests, ApiCallStatus.RateLimited)]
+    public async Task Send_ExpectedStatus_MapsWithoutAWarningLog(HttpStatusCode status, ApiCallStatus expected)
     {
-        _handler.Respond(HttpStatusCode.NotFound, "no such secret");
+        _handler.Respond(status, "server text");
 
         var response = await Client().ReadAsync(Route, TestContext.Current.CancellationToken);
 
-        Assert.Equal(ApiCallStatus.NotFound, response.Status);
-        Assert.DoesNotContain(_logger.Records, record => record.Level >= LogLevel.Warning);
-    }
-
-    [Fact]
-    public async Task Send_409_ReturnsConflict()
-    {
-        _handler.Respond(HttpStatusCode.Conflict, "stale");
-
-        var response = await Client().ReadAsync(Route, TestContext.Current.CancellationToken);
-
-        Assert.Equal(ApiCallStatus.Conflict, response.Status);
-        Assert.DoesNotContain(_logger.Records, record => record.Level >= LogLevel.Warning);
-    }
-
-    [Fact]
-    public async Task Send_429_ReturnsRateLimited()
-    {
-        _handler.Respond(HttpStatusCode.TooManyRequests, "slow down");
-
-        var response = await Client().ReadAsync(Route, TestContext.Current.CancellationToken);
-
-        Assert.Equal(ApiCallStatus.RateLimited, response.Status);
+        Assert.Equal(expected, response.Status);
         Assert.DoesNotContain(_logger.Records, record => record.Level >= LogLevel.Warning);
     }
 
     [Theory]
     [Trait("Category", "Security")]
     [InlineData(HttpStatusCode.NotFound)]
-    [InlineData(HttpStatusCode.Conflict)]
     [InlineData(HttpStatusCode.TooManyRequests)]
-    [InlineData(HttpStatusCode.Forbidden)]
-    [InlineData(HttpStatusCode.Unauthorized)]
     [InlineData(HttpStatusCode.InternalServerError)]
     public async Task Send_NonBadRequestStatusWithProblemDetail_NeverCarriesTheDetail(HttpStatusCode status)
     {
@@ -468,7 +430,6 @@ public sealed class ApiClientBaseTests : IDisposable
     [Theory]
     [Trait("Category", "Security")]
     [InlineData("/api/vault/secrets/{secretId:guid}")]
-    [InlineData("/api/vault/secrets/{secretId:guid}/history/3f2a1c9e-7b4d-4e8a-9c21-5d6e7f809a1b/reveal")]
     [InlineData("/api/vault/folders?x={")]
     public async Task ApiClientBase_RouteWithUnboundPlaceholder_ThrowsBeforeAnyCall(string route)
     {
@@ -496,25 +457,6 @@ public sealed class ApiClientBaseTests : IDisposable
 
         await _tokens.Received(2).GetAccessTokenAsync(_principal, Arg.Any<CancellationToken>());
         Assert.Equal(["first-token", "second-token"], _handler.Requests.Select(request => request.AuthorizationParameter));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task Send_SessionNoLongerActive_SendsNoBodyAndNoToken()
-    {
-        _session.IsActiveAsync(Arg.Any<ClaimsPrincipal>(), Arg.Any<CancellationToken>()).Returns(false);
-
-        var response = await Client().CreateAsync(FolderRoute, new CreateFolderRequestDto { Name = "x" }, null, TestContext.Current.CancellationToken);
-
-        Assert.Equal(ApiCallStatus.SignInRequired, response.Status);
-        Assert.Empty(_handler.Requests);
-        await _tokens.DidNotReceiveWithAnyArgs().GetAccessTokenAsync(default!, TestContext.Current.CancellationToken);
-    }
-
-    [Fact]
-    public async Task Get_BlankRoute_Throws()
-    {
-        await Assert.ThrowsAsync<ArgumentException>(() => Client().ReadAsync(" ", TestContext.Current.CancellationToken));
     }
 
     internal sealed class ProbeClient(

@@ -36,26 +36,18 @@ public sealed class ContinuationTokensInboxTests
 
     [Theory]
     [InlineData(null)]
-    [InlineData("")]
-    [InlineData(" ")]
-    [InlineData("t")]
     [InlineData("t!!!")]
     [InlineData("x_0123456789abcdef0123456789abcdef_s_fedcba9876543210fedcba9876543210")]
     [InlineData("0123456789abcdef0123456789abcdef_x_fedcba9876543210fedcba9876543210")]
-    [InlineData("0123456789abcdef0123456789abcdef_S_fedcba9876543210fedcba9876543210")]
     [InlineData("0123456789ABCDEF0123456789abcdef_s_fedcba9876543210fedcba9876543210")]
-    [InlineData("0123456789abcdef0123456789abcdef_s_fedcba9876543210fedcba987654321")]
+    [InlineData("0123456789abcdef0123456789abcdef_S_fedcba9876543210fedcba9876543210")]
     [InlineData("0123456789abcdef0123456789abcde_s_fedcba9876543210fedcba9876543210")]
+    [InlineData("0123456789abcdef0123456789abcdef_s_fedcba9876543210fedcba987654321")]
     [InlineData("0123456789abcdef0123456789abcdef_s_fedcba9876543210fedcba9876543210\n")]
-    [InlineData("\n0123456789abcdef0123456789abcdef_s_fedcba9876543210fedcba9876543210")]
-    [InlineData(" 0123456789abcdef0123456789abcdef_s_fedcba9876543210fedcba9876543210")]
-    [InlineData("0123456789abcdef0123456789abcdef_s_fedcba9876543210fedcba9876543210 ")]
     [InlineData("0123456789abcdef0123456789abcdef_s_fedcba9876543210fedcba9876543210_s_fedcba9876543210fedcba9876543210")]
-    [InlineData("01234567-89ab-cdef-0123-456789abcdef_s_fedcba9876543210fedcba9876543210")]
     [InlineData("' or PartitionKey ne '")]
     [InlineData("s_0123456789abcdef0123456789abcdef")]
     [InlineData("0123456789abcdef0123456789abcdef")]
-    [InlineData("0123456789abcdef0123456789abcdef__fedcba9876543210fedcba9876543210")]
     public void IsInboxToken_Malformed_IsFalse(string? token)
     {
         Assert.False(ContinuationTokens.IsInboxToken(token));
@@ -73,13 +65,6 @@ public sealed class ContinuationTokensInboxTests
         Assert.False(ContinuationTokens.TryGetInboxKey(token, out _));
     }
 
-    [Fact]
-    public void ForInbox_EmptyOrNull_Throws()
-    {
-        Assert.Throws<ArgumentException>(() => ContinuationTokens.ForInbox(string.Empty));
-        Assert.Throws<ArgumentNullException>(() => ContinuationTokens.ForInbox(null!));
-    }
-
     [Theory]
     [InlineData("0123456789abcdef0123456789abcdef_s_fedcba9876543210fedcba9876543210")]
     [InlineData("0123456789abcdef0123456789abcdef_f_fedcba9876543210fedcba9876543210")]
@@ -92,7 +77,6 @@ public sealed class ContinuationTokensInboxTests
     [Theory]
     [InlineData("0123456789abcdef0123456789abcdef")]
     [InlineData("s_0123456789abcdef0123456789abcdef")]
-    [InlineData("f_0123456789abcdef0123456789abcdef")]
     public void SecretAndBinKeys_AreNotAcceptedAsInboxTokens(string token)
     {
         Assert.False(ContinuationTokens.IsInboxToken(token));

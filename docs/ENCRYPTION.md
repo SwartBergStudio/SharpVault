@@ -221,9 +221,9 @@ Your Azure identity needs the Key Vault Crypto User role on that key. This is a 
 
 ## One-time links
 
-One-time link contents are encrypted in the browser with a key that lives in the URL fragment. The browser uses Web Crypto AES-GCM, with a 12-byte IV and the ciphertext followed by the tag, which has the same shape as the envelope format above. The server stores that blob as opaque bytes and checks only its size.
+One-time link contents are encrypted in the browser with a key that lives in the URL fragment. The browser uses Web Crypto AES-GCM, with a 12-byte IV and the ciphertext followed by the tag, which has the same shape as the envelope format above. The server stores that blob as opaque bytes. At create it checks only the size (30 to 131,072 bytes) and that the first byte is `0x80` or higher. It does not check the rest of the blob, and it never decrypts it.
 
-The server core never receives a link key and never decrypts link payloads. It rejects version bytes `0x80` to `0xFF`. JavaScript interop with Web Crypto is limited to this one case (OTL-3).
+The server core never receives a link key and never decrypts link payloads. It still rejects version bytes `0x80` to `0xFF` for vault values, because those are not vault formats. See [ONE-TIME-LINKS.md](ONE-TIME-LINKS.md). JavaScript interop with Web Crypto is limited to this one case (OTL-3).
 
 ## Residual risks
 

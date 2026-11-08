@@ -19,4 +19,6 @@ public static class Routes
     public const string SharedSecretPrefix = "/shared/";
     public const string SecretsSegment = "/secrets/";
     public const string VaultSecretPrefix = "/vault/secrets/";
+    public const string OneTimeLinks = "/one-time-links";
+    public const string OneTimeLinkNewPrefix = "/one-time-links/new/";
 }

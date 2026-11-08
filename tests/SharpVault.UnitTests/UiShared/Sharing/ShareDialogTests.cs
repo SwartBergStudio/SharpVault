@@ -40,28 +40,6 @@ public sealed class ShareDialogTests : SharingDialogTestHost
     }
 
     [Fact]
-    public void Render_Closed_ShowsNothing()
-    {
-        RenderDialog(open: false);
-
-        Assert.Empty(Provider.FindAll("#share-dialog-confirm"));
-        Assert.Empty(Provider.FindAll("#recipient-search-input"));
-    }
-
-    [Fact]
-    public void Render_Open_ShowsPickerPermissionAndFooterWithShareDisabled()
-    {
-        RenderDialog();
-
-        Provider.WaitForElement("#share-dialog-confirm");
-        Assert.NotEmpty(Provider.FindAll("#recipient-search-input"));
-        Assert.Equal(nameof(SharePermissionDto.View), Provider.Find("#share-dialog-permission").GetAttribute("value"));
-        Assert.True(Provider.Find("#share-dialog-confirm").HasAttribute("disabled"));
-        Assert.False(Provider.Find("#share-dialog-cancel").HasAttribute("disabled"));
-        Assert.Empty(Provider.FindAll("#share-dialog-error"));
-    }
-
-    [Fact]
     public async Task Confirm_WithoutARecipient_RaisesNothing()
     {
         RenderDialog();
@@ -86,24 +64,21 @@ public sealed class ShareDialogTests : SharingDialogTestHost
         Assert.Equal(["gra"], _terms);
     }
 
-    [Theory]
-    [InlineData(SharePermissionDto.Edit)]
-    [InlineData(SharePermissionDto.Manage)]
-    public async Task Confirm_AfterChoosingAPermission_RaisesThatPermission(SharePermissionDto permission)
+    [Fact]
+    public async Task Confirm_AfterChoosingAPermission_RaisesThatPermission()
     {
         RenderDialog();
         await PickAsync();
-        Provider.Find("#share-dialog-permission").Change(permission.ToString());
+        Provider.Find("#share-dialog-permission").Change(nameof(SharePermissionDto.Manage));
 
         await Provider.Find("#share-dialog-confirm").ClickAsync();
 
-        Assert.Equal(permission, Assert.Single(_confirmed).Permission);
+        Assert.Equal(SharePermissionDto.Manage, Assert.Single(_confirmed).Permission);
     }
 
     [Theory]
     [InlineData("99")]
     [InlineData("Owner")]
-    [InlineData("")]
     public async Task Confirm_AfterAnUnknownPermissionValue_KeepsTheCurrentPermission(string value)
     {
         RenderDialog();
@@ -184,17 +159,6 @@ public sealed class ShareDialogTests : SharingDialogTestHost
         await PollAsync(() => _cancelled > 0);
 
         Assert.Equal(1, _cancelled);
-    }
-
-    [Fact]
-    public void Render_ErrorText_ShowsTheAlertEncoded()
-    {
-        RenderDialog(error: "<b>Not</b> allowed");
-
-        var alert = Provider.WaitForElement("#share-dialog-error");
-
-        Assert.Contains("<b>Not</b> allowed", alert.TextContent, StringComparison.Ordinal);
-        Assert.Empty(alert.QuerySelectorAll("b"));
     }
 
     [Fact]

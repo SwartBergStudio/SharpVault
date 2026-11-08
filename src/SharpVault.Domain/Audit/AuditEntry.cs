@@ -30,4 +30,6 @@ public sealed class AuditEntry
     public Guid? TransferId { get; set; }
 
     public string? ReasonCategory { get; set; }
+
+    public string? UserAgent { get; set; }
 }

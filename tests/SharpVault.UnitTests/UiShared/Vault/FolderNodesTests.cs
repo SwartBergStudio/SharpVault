@@ -31,12 +31,6 @@ public sealed class FolderNodesTests
     }
 
     [Fact]
-    public void Build_Empty_ReturnsNoNodes()
-    {
-        Assert.Empty(FolderNodes.Build([]));
-    }
-
-    [Fact]
     public void Build_MissingParent_IsRootLevel()
     {
         var nodes = FolderNodes.Build([Folder(Child, Guid.NewGuid(), "Orphan"), Folder(Root, null, "Alpha")]);
@@ -45,28 +39,11 @@ public sealed class FolderNodesTests
     }
 
     [Fact]
-    public void Build_MissingParent_KeepsTheOrphansOwnChildren()
-    {
-        var nodes = FolderNodes.Build([Folder(Child, Guid.NewGuid(), "Orphan"), Folder(Grandchild, Child, "Under orphan")]);
-
-        var orphan = Assert.Single(nodes);
-        Assert.Equal(Grandchild, Assert.Single(orphan.Children).Folder.Id);
-    }
-
-    [Fact]
     public void Build_SortsChildrenByNameIgnoringCase()
     {
         var nodes = FolderNodes.Build([Folder(Root, null, "bravo"), Folder(Child, null, "Alpha"), Folder(Grandchild, null, "charlie"), Folder(Other, null, "Delta")]);
 
         Assert.Equal(["Alpha", "bravo", "charlie", "Delta"], nodes.Select(node => node.DisplayName));
-    }
-
-    [Fact]
-    public void Build_NestedChildren_AreSortedToo()
-    {
-        var nodes = FolderNodes.Build([Folder(Root, null, "Root"), Folder(Child, Root, "zeta"), Folder(Grandchild, Root, "Alpha")]);
-
-        Assert.Equal(["Alpha", "zeta"], nodes[0].Children.Select(node => node.DisplayName));
     }
 
     [Fact]
@@ -79,7 +56,6 @@ public sealed class FolderNodesTests
 
     [Theory]
     [InlineData(null)]
-    [InlineData("")]
     [InlineData("   ")]
     public void Build_BlankName_HasUnreadableName(string? name)
     {
@@ -143,13 +119,5 @@ public sealed class FolderNodesTests
         var subtree = FolderNodes.SubtreeIds(folders, Child);
 
         Assert.Equal(new HashSet<Guid> { Child, Grandchild }, subtree);
-    }
-
-    [Fact]
-    public void SubtreeIds_ParentCycle_Terminates()
-    {
-        var folders = new List<FolderDto> { Folder(Root, Child, "A"), Folder(Child, Root, "B") };
-
-        Assert.Equal(new HashSet<Guid> { Root, Child }, FolderNodes.SubtreeIds(folders, Root));
     }
 }

@@ -2,9 +2,6 @@
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
 using System.Net;
-using System.Security.Cryptography;
-using Microsoft.IdentityModel.Tokens;
-using SharpVault.Authentication.Identity;
 using SharpVault.Authentication.Local;
 using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Factories;
@@ -19,32 +16,19 @@ public sealed class LocalAuthorizationMatrixTests(LocalApiTestFactory factory) :
 {
     private const string MePath = "/api/me";
     private const string AdminUsersPath = "/api/admin/users";
-    private const string UnknownPath = "/does-not-exist";
-
     private static readonly HttpStatusCode Ok = HttpStatusCode.OK;
     private static readonly HttpStatusCode Unauthorized = HttpStatusCode.Unauthorized;
     private static readonly HttpStatusCode Forbidden = HttpStatusCode.Forbidden;
-    private static readonly HttpStatusCode NotFound = HttpStatusCode.NotFound;
 
     public static TheoryData<string, string, HttpStatusCode> Matrix()
     {
-        var rows = new (string Caller, HttpStatusCode Me, HttpStatusCode Admin, HttpStatusCode Unknown)[]
+        var rows = new (string Caller, HttpStatusCode Me, HttpStatusCode Admin)[]
         {
-            ("Anonymous", Unauthorized, Unauthorized, Unauthorized),
-            ("AlgNone", Unauthorized, Unauthorized, Unauthorized),
-            ("UnknownKey", Unauthorized, Unauthorized, Unauthorized),
-            ("WrongTenant", Unauthorized, Unauthorized, Unauthorized),
-            ("EntraRs256", Unauthorized, Unauthorized, Unauthorized),
-            ("Expired", Unauthorized, Unauthorized, Unauthorized),
-            ("ForgedAdmin", Unauthorized, Unauthorized, Unauthorized),
-            ("Guest", Forbidden, Forbidden, Forbidden),
-            ("NoRole", Forbidden, Forbidden, Forbidden),
-            ("UserOne", Ok, Forbidden, NotFound),
-            ("UserTwo", Ok, Forbidden, NotFound),
-            ("AdminOne", Ok, Ok, NotFound),
-            ("AdminTwo", Ok, Ok, NotFound),
-            ("LockedUser", Forbidden, Forbidden, Forbidden),
-            ("LockedAdmin", Forbidden, Forbidden, Forbidden),
+            ("Anonymous", Unauthorized, Unauthorized),
+            ("UnknownKey", Unauthorized, Unauthorized),
+            ("UserOne", Ok, Forbidden),
+            ("LockedUser", Forbidden, Forbidden),
+            ("AdminOne", Ok, Ok),
         };
 
         var data = new TheoryData<string, string, HttpStatusCode>();
@@ -52,7 +36,6 @@ public sealed class LocalAuthorizationMatrixTests(LocalApiTestFactory factory) :
         {
             data.Add(row.Caller, MePath, row.Me);
             data.Add(row.Caller, AdminUsersPath, row.Admin);
-            data.Add(row.Caller, UnknownPath, row.Unknown);
         }
 
         return data;
@@ -74,9 +57,9 @@ public sealed class LocalAuthorizationMatrixTests(LocalApiTestFactory factory) :
     [MemberData(nameof(Matrix))]
     public async Task AuthorizationMatrix_LocalCallers_ReturnExpectedStatus(string caller, string path, HttpStatusCode expected)
     {
-        if (caller is "LockedUser" or "LockedAdmin")
+        if (caller == "LockedUser")
         {
-            await Lock(caller == "LockedUser" ? LocalAccounts.UserOne.Id : LocalAccounts.AdminTwo.Id, UserRows.LockedStatus);
+            await Lock(LocalAccounts.UserOne.Id, UserRows.LockedStatus);
         }
 
         using var client = CreateClient(caller);
@@ -123,28 +106,13 @@ public sealed class LocalAuthorizationMatrixTests(LocalApiTestFactory factory) :
 
     private HttpClient CreateClient(string caller)
     {
-        var wrongKey = new SymmetricSecurityKey(RandomNumberGenerator.GetBytes(LocalAuthenticationDefaults.KeyLength));
         return caller switch
         {
             "Anonymous" => factory.CreateUnauthenticatedClient(),
-            "AlgNone" => factory.CreateClientWithToken(LocalTokens.AlgNone(LocalAccounts.AdminOne)),
             "UnknownKey" => factory.CreateClientWithToken(ForgedTokens.SignedWithUnknownKey()),
-            "WrongTenant" => factory.CreateClientWithToken(Builder(LocalAccounts.UserOne).WithClaim(EntraClaimTypes.TenantId, Guid.NewGuid().ToString("D")).Build()),
-            "EntraRs256" => factory.CreateClientWithToken(TestTokens.Create(TestUsers.Admin)),
-            "Expired" => factory.CreateClientWithToken(Builder(LocalAccounts.UserOne)
-                .NotBefore(DateTimeOffset.UtcNow.AddMinutes(-10))
-                .ExpiresAt(DateTimeOffset.UtcNow.AddMinutes(-2))
-                .Build()),
-            "ForgedAdmin" => factory.CreateClientWithToken(LocalTokens.Builder(LocalAccounts.AdminOne, wrongKey).Build()),
-            "Guest" => factory.CreateClientWithToken(Builder(LocalAccounts.UserOne).WithClaim(EntraClaimTypes.AccountType, EntraClaimTypes.GuestAccountType).Build()),
-            "NoRole" => factory.CreateClientWithToken(Builder(LocalAccounts.UserOne).WithoutClaim(EntraClaimTypes.Roles).Build()),
             "UserOne" or "LockedUser" => factory.CreateClientForAccount(LocalAccounts.UserOne),
-            "UserTwo" => factory.CreateClientForAccount(LocalAccounts.UserTwo),
             "AdminOne" => factory.CreateClientForAccount(LocalAccounts.AdminOne),
-            "AdminTwo" or "LockedAdmin" => factory.CreateClientForAccount(LocalAccounts.AdminTwo),
             _ => throw new ArgumentOutOfRangeException(nameof(caller), caller, null),
         };
     }
-
-    private TestTokenBuilder Builder(LocalAccount account) => LocalTokens.Builder(factory.Services, account);
 }

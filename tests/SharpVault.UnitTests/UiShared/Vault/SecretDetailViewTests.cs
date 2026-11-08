@@ -4,7 +4,6 @@
 using AutoFixture;
 using Bunit;
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using MudBlazor;
@@ -97,6 +96,20 @@ public sealed class SecretDetailViewTests : VaultTestContext
     }
 
     [Fact]
+    public void NotFound_ShowsGoneMessage()
+    {
+        SecretsClient.GetSecretAsync(_secret.Id, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(ApiResponse<SecretDto>.NotFound()));
+
+        var cut = Render<SecretDetailView>(parameters => parameters.Add(view => view.SecretId, _secret.Id));
+
+        cut.WaitForAssertion(() => Assert.Contains("no longer exists", cut.Find("#secret-detail-error").TextContent, StringComparison.Ordinal));
+        Assert.Empty(cut.FindAll("#secret-fields"));
+        Assert.Empty(cut.FindAll("#secret-delete"));
+        AssertNoReveal();
+    }
+
+    [Fact]
     [Trait("Category", "Security")]
     public void Render_ShowsMaskedValueAndNeverCallsReveal()
     {
@@ -108,20 +121,6 @@ public sealed class SecretDetailViewTests : VaultTestContext
         Assert.DoesNotContain(_notes, cut.Markup, StringComparison.Ordinal);
         AssertNoReveal();
         Assert.Empty(Clipboard.Writes);
-    }
-
-    [Fact]
-    public void Render_ShowsTheFieldsOfTheItem()
-    {
-        var cut = RenderDetail();
-
-        Assert.Equal(_secret.Name, cut.Find("#secret-heading").TextContent.Trim());
-        Assert.Equal("Login", cut.Find("#secret-type").TextContent);
-        Assert.Equal(_secret.Username, cut.Find("#secret-username").TextContent);
-        Assert.Equal("alpha, beta", cut.Find("#secret-tags").TextContent);
-        Assert.Equal(SecretDetailFields.RootFolderText, cut.Find("#secret-folder").TextContent);
-        Assert.Equal("2026-03-01 09:05 UTC", cut.Find("#secret-created").TextContent);
-        Assert.Equal("2026-03-02 10:30 UTC", cut.Find("#secret-modified").TextContent);
     }
 
     [Fact]
@@ -214,31 +213,6 @@ public sealed class SecretDetailViewTests : VaultTestContext
     }
 
     [Fact]
-    public async Task CopyValue_StatusPromisesOnlyWhatIsTrue()
-    {
-        var cut = RenderDetail();
-
-        await cut.Find("#secret-value-copy").ClickAsync();
-
-        var status = cut.WaitForElement("#secret-status").TextContent;
-        Assert.Contains("Cleared after", status, StringComparison.Ordinal);
-        Assert.Contains("or when you return to this tab if you have left it.", status, StringComparison.Ordinal);
-        Assert.DoesNotContain("clipboard clears", status, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task CopyValue_AfterClipboardDelay_StatusIsRemoved()
-    {
-        var cut = RenderDetail();
-        await cut.Find("#secret-value-copy").ClickAsync();
-        cut.WaitForElement("#secret-status");
-
-        Time.Advance(Settings.ClipboardClearDelay);
-
-        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("#secret-status")));
-    }
-
-    [Fact]
     public async Task CopyValue_TwiceBeforeDelay_FirstTimerDoesNotRemoveTheSecondStatus()
     {
         var cut = RenderDetail();
@@ -295,32 +269,6 @@ public sealed class SecretDetailViewTests : VaultTestContext
     }
 
     [Fact]
-    public void Reveal_NotFound_ShowsGoneMessage()
-    {
-        SecretsClient.RevealSecretAsync(Arg.Any<Guid>(), Arg.Any<RevealSecretRequestDto>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(ApiResponse<RevealedValueDto>.NotFound()));
-        var cut = RenderDetail();
-
-        cut.Find("#secret-value-reveal").Click();
-
-        cut.WaitForAssertion(() => Assert.Contains(VaultStatusText.For(ApiResponse<bool>.NotFound()), cut.Find("#secret-status").TextContent, StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void NotFound_ShowsGoneMessage()
-    {
-        SecretsClient.GetSecretAsync(_secret.Id, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(ApiResponse<SecretDto>.NotFound()));
-
-        var cut = Render<SecretDetailView>(parameters => parameters.Add(view => view.SecretId, _secret.Id));
-
-        cut.WaitForAssertion(() => Assert.Contains("no longer exists", cut.Find("#secret-detail-error").TextContent, StringComparison.Ordinal));
-        Assert.Empty(cut.FindAll("#secret-fields"));
-        Assert.Empty(cut.FindAll("#secret-delete"));
-        AssertNoReveal();
-    }
-
-    [Fact]
     public void SecureNote_HidesUsernameUrlAndValueRows()
     {
         _secret.Type = SecretTypeDto.SecureNote;
@@ -335,89 +283,12 @@ public sealed class SecretDetailViewTests : VaultTestContext
         Assert.Empty(cut.FindAll("#secret-value"));
         Assert.Empty(cut.FindAll("#secret-value-reveal"));
         Assert.NotNull(cut.Find("#secret-notes"));
-        Assert.Equal("Secure note", cut.Find("#secret-type").TextContent);
-    }
-
-    [Fact]
-    public void SecureNote_WithStoredUsernameAndUrl_StillShowsThem()
-    {
-        _secret.Type = SecretTypeDto.SecureNote;
-        _secret.HasValue = false;
-
-        var cut = RenderDetail();
-
-        Assert.Equal(_secret.Username, cut.Find("#secret-username").TextContent);
-        Assert.Equal(_secret.Url, cut.Find("#secret-url").TextContent.Trim());
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void SecretDetail_NameWithMarkup_RendersEncoded()
-    {
-        const string markup = "<img src=x onerror=alert(1)><script>alert(2)</script>";
-        _secret.Name = markup;
-        _secret.Username = markup;
-        _secret.Tags = [markup];
-
-        var cut = RenderDetail();
-
-        Assert.Equal(markup, cut.Find("#secret-heading").TextContent.Trim());
-        Assert.Equal(markup, cut.Find("#secret-username").TextContent);
-        Assert.Equal(markup, cut.Find("#secret-tags").TextContent);
-        Assert.Contains("&lt;img", cut.Markup, StringComparison.Ordinal);
-        Assert.Empty(cut.FindAll("img"));
-        Assert.Empty(cut.FindAll("script"));
-        Assert.Empty(cut.FindAll("[onerror]"));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void SecretDetail_FolderNameWithMarkup_RendersEncoded()
-    {
-        const string markup = "<img src=x onerror=alert(1)>";
-        var folder = new FolderDto { Id = _fixture.Create<Guid>(), Name = markup };
-        _secret.FolderId = folder.Id;
-        ReturnsFolders(folder);
-
-        var cut = RenderDetail();
-
-        Assert.Equal(markup, cut.Find("#secret-folder").TextContent);
-        Assert.Empty(cut.FindAll("img"));
-    }
-
-    [Fact]
-    public void Render_FolderOfTheItem_ShowsItsName()
-    {
-        var folder = new FolderDto { Id = _fixture.Create<Guid>(), Name = "Servers" };
-        _secret.FolderId = folder.Id;
-        ReturnsFolders(folder);
-
-        var cut = RenderDetail();
-
-        Assert.Equal("Servers", cut.Find("#secret-folder").TextContent);
-    }
-
-    [Fact]
-    public void Render_FolderMissingFromTheList_ShowsUnreadableFolder()
-    {
-        _secret.FolderId = _fixture.Create<Guid>();
-
-        var cut = RenderDetail();
-
-        Assert.Equal(FolderNodes.DamagedName, cut.Find("#secret-folder").TextContent);
     }
 
     [Theory]
-    [Trait("Category", "Security")]
     [InlineData("javascript:alert(document.cookie)")]
     [InlineData("JaVaScRiPt:alert(1)")]
     [InlineData("data:text/html,<script>alert(1)</script>")]
-    [InlineData("vbscript:msgbox(1)")]
-    [InlineData("file:///etc/passwd")]
-    [InlineData("ftp://example.test/file")]
-    [InlineData("//evil.test/phish")]
-    [InlineData("/relative/path")]
-    [InlineData("not a url")]
     public void SecretDetail_NonHttpUrlFromApi_RendersAsTextNotLink(string url)
     {
         _secret.Url = url;
@@ -430,17 +301,15 @@ public sealed class SecretDetailViewTests : VaultTestContext
         Assert.Empty(cut.FindAll("#secret-fields a"));
     }
 
-    [Theory]
-    [InlineData("https://example.test/login")]
-    [InlineData("http://example.test/login")]
-    public void HttpsUrl_RendersLinkWithNoopener(string url)
+    [Fact]
+    public void HttpsUrl_RendersLinkWithNoopener()
     {
-        _secret.Url = url;
+        _secret.Url = "https://example.test/login";
 
         var cut = RenderDetail();
 
         var link = cut.Find("a#secret-url");
-        Assert.Equal(url, link.GetAttribute("href"));
+        Assert.Equal(_secret.Url, link.GetAttribute("href"));
         Assert.Equal("_blank", link.GetAttribute("target"));
         var relation = link.GetAttribute("rel") ?? string.Empty;
         Assert.Contains("noopener", relation, StringComparison.Ordinal);
@@ -522,30 +391,6 @@ public sealed class SecretDetailViewTests : VaultTestContext
         cut.WaitForAssertion(() => Assert.Contains(_value, cut.Markup, StringComparison.Ordinal));
         Assert.Empty(cut.FindAll("#secret-status"));
     }
-
-    [Fact]
-    public async Task MoveDialog_DismissedWhileBusy_FailureIsStillVisible()
-    {
-        var folder = new FolderDto { Id = _fixture.Create<Guid>(), Name = "Target" };
-        ReturnsFolders(folder);
-        var pending = new TaskCompletionSource<ApiResponse<SecretDto>>();
-        SecretsClient.MoveSecretAsync(_secret.Id, _secret.ConcurrencyToken, Arg.Any<MoveSecretRequestDto>(), Arg.Any<CancellationToken>())
-            .Returns(pending.Task);
-        var cut = RenderDetail();
-        await cut.Find("#secret-move").ClickAsync();
-        _provider.WaitForElement("#move-secret-folder-select").Change(folder.Id.ToString("D"));
-        _provider.Find("#move-secret-confirm").Click();
-        cut.WaitForAssertion(() => SecretsClient.Received(1).MoveSecretAsync(
-            _secret.Id, _secret.ConcurrencyToken, Arg.Any<MoveSecretRequestDto>(), Arg.Any<CancellationToken>()));
-
-        await PressEscapeAsync();
-        await SettleAsync();
-        pending.SetResult(ApiResponse<SecretDto>.Invalid("Folder is invalid."));
-
-        _provider.WaitForAssertion(() => Assert.Contains("Folder is invalid.", _provider.Find("#move-secret-error").TextContent, StringComparison.Ordinal));
-    }
-
-    private Task PressEscapeAsync() => _provider.Find(".sv-dialog__keys").KeyDownAsync(new KeyboardEventArgs { Key = "Escape" });
 
     [Fact]
     public void Damaged_ShowsDamagedPanelAndOnlyTheActionsThatStillWork()

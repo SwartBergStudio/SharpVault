@@ -1,0 +1,24 @@
+<div id="@Id" class="sv-skeleton" role="status">
+    <span class="sv-visually-hidden">@Label</span>
+    <div aria-hidden="true">
+        @for (var row = 0; row < Rows; row++)
+        {
+            <MudSkeleton SkeletonType="SkeletonType.Text" Height="@RowHeight" />
+        }
+    </div>
+</div>
+
+@code {
+    private const string RowHeight = "2.5rem";
+
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Label { get; set; } = "Loading";
+
+    [Parameter]
+    public int Rows { get; set; } = 3;
+
+    protected override void OnParametersSet() => ComponentIds.EnsureValid(Id, nameof(Id));
+}

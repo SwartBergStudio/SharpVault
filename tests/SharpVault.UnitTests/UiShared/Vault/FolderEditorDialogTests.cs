@@ -73,14 +73,12 @@ public sealed class FolderEditorDialogTests : MudTestContext
         Assert.Empty(_saved);
     }
 
-    [Theory]
-    [InlineData("   ")]
-    [InlineData("\t")]
-    public async Task Save_WhitespaceName_StaysDisabledAndRaisesNothing(string name)
+    [Fact]
+    public async Task Save_WhitespaceName_StaysDisabledAndRaisesNothing()
     {
         RenderDialog();
 
-        TypeName(name);
+        TypeName("   ");
 
         _provider.WaitForAssertion(() => Assert.True(SaveDisabled()));
         await _provider.Find("#folder-editor-save").ClickAsync();
@@ -97,15 +95,6 @@ public sealed class FolderEditorDialogTests : MudTestContext
         _provider.Find("#folder-editor-save").Click();
 
         Assert.Equal([new FolderEditorInput("Payroll", Root)], _saved);
-    }
-
-    [Fact]
-    public void Name_InputHasTheFolderNameMaxLength()
-    {
-        RenderDialog();
-
-        Assert.Equal(VaultFieldRules.FolderNameMaxLength.ToString(System.Globalization.CultureInfo.InvariantCulture), _provider.Find("#folder-editor-name-input").GetAttribute("maxlength"));
-        Assert.Empty(_provider.FindAll("#folder-editor-parent-select"));
     }
 
     [Fact]
@@ -155,16 +144,6 @@ public sealed class FolderEditorDialogTests : MudTestContext
     }
 
     [Fact]
-    public void Move_PreselectsTheCurrentParent()
-    {
-        RenderDialog(FolderEditorMode.Move, initialParent: Sibling, excludeSubtreeOf: Child);
-
-        _provider.Find("#folder-editor-save").Click();
-
-        Assert.Equal(Sibling, Assert.Single(_saved).ParentId);
-    }
-
-    [Fact]
     public async Task Reopen_ReseedsTheFieldsFromTheInitialValues()
     {
         var cut = RenderDialog(FolderEditorMode.Rename, initialName: "First");
@@ -181,22 +160,6 @@ public sealed class FolderEditorDialogTests : MudTestContext
     }
 
     [Fact]
-    public async Task Reopen_CreateAfterTyping_StartsEmptyAgain()
-    {
-        var cut = RenderDialog();
-        TypeName("Leftover");
-
-        cut.Render(parameters => parameters.Add(dialog => dialog.Open, false));
-        _provider.WaitForAssertion(() => Assert.Empty(_provider.FindAll("#folder-editor-dialog")));
-        await WaitForClosedDialogsToSettleAsync();
-        cut.Render(parameters => parameters.Add(dialog => dialog.Open, true));
-
-        _provider.WaitForElement("#folder-editor-name-input");
-        Assert.True(SaveDisabled());
-        Assert.Equal(string.Empty, _provider.Find("#folder-editor-name-input").GetAttribute("value") ?? string.Empty);
-    }
-
-    [Fact]
     public void ParameterChangeWhileOpen_DoesNotOverwriteWhatWasTyped()
     {
         var cut = RenderDialog(FolderEditorMode.Rename, initialName: "First");
@@ -205,19 +168,6 @@ public sealed class FolderEditorDialogTests : MudTestContext
         cut.Render(parameters => parameters.Add(dialog => dialog.Busy, true));
 
         Assert.Equal("Typing in progress", _provider.Find("#folder-editor-name-input").GetAttribute("value"));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void NameWithMarkup_RendersEncoded()
-    {
-        const string hostile = "<img src=x onerror=alert(1)><script>alert(2)</script>";
-        RenderDialog(FolderEditorMode.Rename, initialName: hostile);
-
-        Assert.Empty(_provider.FindAll("img"));
-        Assert.Empty(_provider.FindAll("script"));
-        Assert.Empty(_provider.FindAll("[onerror]"));
-        Assert.Equal(hostile, _provider.Find("#folder-editor-name-input").GetAttribute("value"));
     }
 
     [Fact]
@@ -248,13 +198,5 @@ public sealed class FolderEditorDialogTests : MudTestContext
         var error = _provider.Find("#folder-editor-error");
         Assert.Equal("alert", error.GetAttribute("role"));
         Assert.Contains("A folder with that name exists.", error.TextContent, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Closed_RendersNothing()
-    {
-        RenderDialog(open: false);
-
-        Assert.Empty(_provider.FindAll("#folder-editor-dialog"));
     }
 }

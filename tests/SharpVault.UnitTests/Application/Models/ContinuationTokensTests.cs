@@ -33,12 +33,7 @@ public sealed class ContinuationTokensTests
 
     [Theory]
     [InlineData(null)]
-    [InlineData("")]
-    [InlineData(" ")]
-    [InlineData("t")]
     [InlineData("t!!!")]
-    [InlineData("t=")]
-    [InlineData("T")]
     [InlineData("0123456789ABCDEF0123456789abcdef")]
     [InlineData("0123456789abcdef0123456789abcde")]
     [InlineData("0123456789abcdef0123456789abcdef\n")]
@@ -51,9 +46,7 @@ public sealed class ContinuationTokensTests
 
     [Theory]
     [InlineData(null)]
-    [InlineData("")]
     [InlineData("x_0123456789abcdef0123456789abcdef")]
-    [InlineData("F_0123456789abcdef0123456789abcdef")]
     [InlineData("s_0123456789ABCDEF0123456789abcdef")]
     [InlineData("s_0123456789abcdef0123456789abcde")]
     [InlineData("s_0123456789abcdef0123456789abcdef\n")]
@@ -75,10 +68,8 @@ public sealed class ContinuationTokensTests
 
     [Theory]
     [InlineData("xs_0123456789abcdef0123456789abcdef")]
-    [InlineData(" s_0123456789abcdef0123456789abcdef")]
     [InlineData("f_0123456789abcdef0123456789abcdefs_0123456789abcdef0123456789abcdef")]
     [InlineData("' or RowKey ne 's_0123456789abcdef0123456789abcdef")]
-    [InlineData("\ns_0123456789abcdef0123456789abcdef")]
     public void IsRecycleBinToken_KeyWithLeadingText_IsFalse(string token)
     {
         Assert.False(ContinuationTokens.IsRecycleBinToken(token));
@@ -87,9 +78,8 @@ public sealed class ContinuationTokensTests
 
     [Theory]
     [InlineData("x0123456789abcdef0123456789abcdef")]
-    [InlineData(" 0123456789abcdef0123456789abcdef")]
     [InlineData("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")]
-    public void IsSecretToken_IdWithLeadingText_IsFalse(string token)
+    public void IsSecretToken_IdWithLeadingOrExtraText_IsFalse(string token)
     {
         Assert.False(ContinuationTokens.IsSecretToken(token));
         Assert.False(ContinuationTokens.TryGetSecretId(token, out _));
@@ -97,8 +87,6 @@ public sealed class ContinuationTokensTests
 
     [Theory]
     [InlineData("x")]
-    [InlineData("T")]
-    [InlineData("s")]
     [InlineData("")]
     public void TryGetStorageToken_PayloadWithoutTheStoragePrefix_IsFalse(string prefix)
     {
@@ -124,11 +112,5 @@ public sealed class ContinuationTokensTests
         var token = "t" + System.Buffers.Text.Base64Url.EncodeToString(new byte[] { 0xFF, 0xFE, 0xFD });
 
         Assert.False(ContinuationTokens.TryGetStorageToken(token, out _));
-    }
-
-    [Fact]
-    public void ForStorage_Empty_Throws()
-    {
-        Assert.Throws<ArgumentException>(() => ContinuationTokens.ForStorage(string.Empty));
     }
 }

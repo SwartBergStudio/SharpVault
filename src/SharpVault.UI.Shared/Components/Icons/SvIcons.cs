@@ -39,4 +39,5 @@ public static class SvIcons
     public const string People = MudBlazor.Icons.Material.Filled.People;
     public const string Transfer = MudBlazor.Icons.Material.Filled.SwapHoriz;
     public const string Unlock = MudBlazor.Icons.Material.Filled.LockOpen;
+    public const string Link = MudBlazor.Icons.Material.Filled.Link;
 }

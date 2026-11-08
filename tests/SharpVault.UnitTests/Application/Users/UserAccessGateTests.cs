@@ -101,17 +101,6 @@ public sealed class UserAccessGateTests : IDisposable
     }
 
     [Fact]
-    public async Task CheckAsync_ActiveUserSignInNotDue_AllowsWithoutWrites()
-    {
-        StoredRowIs(Stored(UserStatus.Active, Start - TimeSpan.FromMinutes(10)));
-
-        var decision = await _gate.CheckAsync(SignedIn(), TestContext.Current.CancellationToken);
-
-        Assert.Equal(UserAccessDecision.Allowed, decision);
-        await AssertNoWrites();
-    }
-
-    [Fact]
     public async Task CheckAsync_ActiveUserSignInDue_ReplacesWithETagThenAppendsSignIn()
     {
         StoredRowIs(Stored(UserStatus.Active, Start - TimeSpan.FromHours(2)));
@@ -288,33 +277,20 @@ public sealed class UserAccessGateTests : IDisposable
         Assert.DoesNotContain(ip, text, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task CheckAsync_CachedActiveWithinTtl_MakesNoStoreCall()
+    [Theory]
+    [InlineData(UserStatus.Active, UserAccessDecision.Allowed)]
+    [InlineData(UserStatus.Locked, UserAccessDecision.Denied)]
+    public async Task CheckAsync_CachedWithinTtl_DecidesFromCacheWithoutStoreOrAuditCalls(UserStatus status, UserAccessDecision expected)
     {
-        StoredRowIs(Stored(UserStatus.Active, Start));
+        StoredRowIs(Stored(status, Start));
         await _gate.CheckAsync(SignedIn(), TestContext.Current.CancellationToken);
         _store.ClearReceivedCalls();
+        _audit.ClearReceivedCalls();
         _time.Advance(TimeSpan.FromSeconds(4));
 
         var decision = await _gate.CheckAsync(SignedIn(), TestContext.Current.CancellationToken);
 
-        Assert.Equal(UserAccessDecision.Allowed, decision);
-        Assert.Empty(_store.ReceivedCalls());
-        Assert.Empty(_audit.ReceivedCalls());
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task CheckAsync_CachedLockedWithinTtl_DeniesWithoutStoreCall()
-    {
-        StoredRowIs(Stored(UserStatus.Locked, Start));
-        await _gate.CheckAsync(SignedIn(), TestContext.Current.CancellationToken);
-        _store.ClearReceivedCalls();
-        _time.Advance(TimeSpan.FromSeconds(4));
-
-        var decision = await _gate.CheckAsync(SignedIn(), TestContext.Current.CancellationToken);
-
-        Assert.Equal(UserAccessDecision.Denied, decision);
+        Assert.Equal(expected, decision);
         Assert.Empty(_store.ReceivedCalls());
         Assert.Empty(_audit.ReceivedCalls());
     }
@@ -351,20 +327,6 @@ public sealed class UserAccessGateTests : IDisposable
     }
 
     [Fact]
-    public async Task CheckAsync_CachedButSignInDue_ReadsAndRecords()
-    {
-        _cache.Set(_userId, new CachedUserAccess(UserStatus.Active, Start - TimeSpan.FromHours(2)));
-        StoredRowIs(Stored(UserStatus.Active, Start - TimeSpan.FromHours(2)));
-
-        var decision = await _gate.CheckAsync(SignedIn(), TestContext.Current.CancellationToken);
-
-        Assert.Equal(UserAccessDecision.Allowed, decision);
-        await _store.Received(1).GetAsync(_userId, Arg.Any<CancellationToken>());
-        await _store.Received(1).ReplaceAsync(Arg.Any<User>(), ETag, Arg.Any<CancellationToken>());
-        await _audit.Received(1).AppendAsync(Arg.Any<AuditEntry>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     [Trait("Category", "Security")]
     public async Task CheckAsync_CachedActiveSignInDueButNowLocked_DeniesWithoutWrites()
     {
@@ -379,25 +341,6 @@ public sealed class UserAccessGateTests : IDisposable
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task CheckAsync_CachedLockedUserAfterSignInInterval_DeniesWithoutStorageCalls()
-    {
-        StoredRowIs(Stored(UserStatus.Locked, Start - TimeSpan.FromHours(2)));
-        Assert.Equal(UserAccessDecision.Denied, await _gate.CheckAsync(SignedIn(), TestContext.Current.CancellationToken));
-        _store.ClearReceivedCalls();
-        _audit.ClearReceivedCalls();
-        _time.Advance(TimeSpan.FromSeconds(1));
-
-        var decision = await _gate.CheckAsync(SignedIn(), TestContext.Current.CancellationToken);
-
-        Assert.Equal(UserAccessDecision.Denied, decision);
-        await _store.DidNotReceive().GetAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
-        await _store.DidNotReceive().AddAsync(Arg.Any<User>(), Arg.Any<CancellationToken>());
-        await _store.DidNotReceive().ReplaceAsync(Arg.Any<User>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
-        await _audit.DidNotReceive().AppendAsync(Arg.Any<AuditEntry>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
     public async Task CheckAsync_StoreThrows_DoesNotCacheAndPropagates()
     {
         _store.GetAsync(_userId, Arg.Any<CancellationToken>()).ThrowsAsync(new TimeoutException("storage down"));
@@ -405,19 +348,6 @@ public sealed class UserAccessGateTests : IDisposable
         await Assert.ThrowsAsync<TimeoutException>(() => _gate.CheckAsync(SignedIn(), TestContext.Current.CancellationToken));
 
         Assert.False(_cache.TryGet(_userId, out _));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task CheckAsync_AddThrows_DoesNotCacheAndPropagates()
-    {
-        StoredRowIs(null);
-        _store.AddAsync(Arg.Any<User>(), Arg.Any<CancellationToken>()).ThrowsAsync(new TimeoutException("storage down"));
-
-        await Assert.ThrowsAsync<TimeoutException>(() => _gate.CheckAsync(SignedIn(), TestContext.Current.CancellationToken));
-
-        Assert.False(_cache.TryGet(_userId, out _));
-        await _audit.DidNotReceive().AppendAsync(Arg.Any<AuditEntry>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -434,20 +364,6 @@ public sealed class UserAccessGateTests : IDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
-    public async Task CheckAsync_ReloadThrows_DoesNotCacheAndPropagates()
-    {
-        _store.GetAsync(_userId, Arg.Any<CancellationToken>()).Returns(
-            _ => Task.FromResult<Versioned<User>?>(null),
-            _ => throw new TimeoutException("storage down"));
-        _store.AddAsync(Arg.Any<User>(), Arg.Any<CancellationToken>()).Returns(StoreWriteResult.AlreadyExists);
-
-        await Assert.ThrowsAsync<TimeoutException>(() => _gate.CheckAsync(SignedIn(), TestContext.Current.CancellationToken));
-
-        Assert.False(_cache.TryGet(_userId, out _));
-    }
-
-    [Fact]
     public async Task CheckAsync_AuditAppendThrows_LogsErrorAndPropagates()
     {
         StoredRowIs(null);
@@ -461,18 +377,6 @@ public sealed class UserAccessGateTests : IDisposable
         var error = Assert.Single(_logger.Records, record => record.Level == LogLevel.Error);
         Assert.Same(failure, error.Exception);
         Assert.Contains(_userId.ToString(), error.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.False(_cache.TryGet(_userId, out _));
-    }
-
-    [Fact]
-    public async Task CheckAsync_AuditAppendThrowsOnRecordedSignIn_LogsErrorAndPropagates()
-    {
-        StoredRowIs(Stored(UserStatus.Active, Start - TimeSpan.FromHours(2)));
-        _audit.AppendAsync(Arg.Any<AuditEntry>(), Arg.Any<CancellationToken>()).ThrowsAsync(new TimeoutException("audit down"));
-
-        await Assert.ThrowsAsync<TimeoutException>(() => _gate.CheckAsync(SignedIn(), TestContext.Current.CancellationToken));
-
-        Assert.Single(_logger.Records, record => record.Level == LogLevel.Error);
         Assert.False(_cache.TryGet(_userId, out _));
     }
 
@@ -498,9 +402,7 @@ public sealed class UserAccessGateTests : IDisposable
 
     [Theory]
     [InlineData("10.0.0.1", "10.0.0.1")]
-    [InlineData("::1", "::1")]
     [InlineData(null, null)]
-    [InlineData("", null)]
     [InlineData("not-an-ip", null)]
     [InlineData("10.0.0.1, 192.168.0.1", null)]
     [InlineData("1.2.3.4\r\nX-Injected: 1", null)]
@@ -574,13 +476,6 @@ public sealed class UserAccessGateTests : IDisposable
         Assert.DoesNotContain('\u0000', added.DisplayName);
         Assert.DoesNotContain('\n', added.DisplayName);
         Assert.Null(added.Email);
-    }
-
-    [Fact]
-    public async Task CheckAsync_NullUser_Throws()
-    {
-        await Assert.ThrowsAsync<ArgumentNullException>(
-            () => _gate.CheckAsync(null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]

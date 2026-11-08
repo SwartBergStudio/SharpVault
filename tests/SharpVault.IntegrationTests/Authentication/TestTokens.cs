@@ -53,7 +53,7 @@ public static class TestTokens
 
     public static string ForObjectId(Guid objectId)
     {
-        var user = TestUsers.All.FirstOrDefault(candidate => candidate.ObjectId == objectId)
+        var user = TestUsers.All.Append(TestUsers.SecondAdmin).FirstOrDefault(candidate => candidate.ObjectId == objectId)
             ?? throw new InvalidOperationException("No test user has the requested object id.");
         return Create(user);
     }

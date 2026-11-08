@@ -8,6 +8,7 @@ namespace SharpVault.E2ETests.Pages;
 public abstract class PageObject(IPage page)
 {
     public const float TimeoutMilliseconds = 15000;
+    private const int UrlPollMilliseconds = 50;
     private const string IdSelectorPrefix = "#";
     private const string OptionRoleName = "Option";
 
@@ -99,17 +100,24 @@ public abstract class PageObject(IPage page)
         }
     }
 
-    protected async Task WaitForUrlNotAsync(string fragment)
+    public static async Task WaitForUrlAsync(IPage page, Func<string, bool> matches, string expected)
     {
-        try
+        var deadline = DateTimeOffset.UtcNow.AddMilliseconds(TimeoutMilliseconds);
+        while (!matches(page.Url))
         {
-            await Page.WaitForURLAsync(url => !url.Contains(fragment, StringComparison.Ordinal), new() { Timeout = TimeoutMilliseconds });
-        }
-        catch (Exception exception) when (exception is Microsoft.Playwright.PlaywrightException or TimeoutException)
-        {
-            throw new InvalidOperationException($"The page did not leave \"{fragment}\". URL: {Page.Url}. {exception.Message}", exception);
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                throw new InvalidOperationException($"The page did not reach {expected}. URL: {page.Url}.");
+            }
+
+            await Task.Delay(UrlPollMilliseconds, TestContext.Current.CancellationToken);
         }
     }
+
+    protected Task WaitForUrlAsync(Func<string, bool> matches, string expected) => WaitForUrlAsync(Page, matches, expected);
+
+    protected Task WaitForUrlNotAsync(string fragment) =>
+        WaitForUrlAsync(url => !url.Contains(fragment, StringComparison.Ordinal), $"a URL without \"{fragment}\"");
 
     protected async Task GoToAsync(string url)
     {

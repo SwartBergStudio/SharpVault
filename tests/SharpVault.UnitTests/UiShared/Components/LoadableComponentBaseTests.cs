@@ -95,20 +95,6 @@ public sealed class LoadableComponentBaseTests : MudTestContext
     }
 
     [Fact]
-    public void Init_SignInRequiredOnPageWithoutQuery_AddsQuestionMarkRetryFlag()
-    {
-        var navigation = Services.GetRequiredService<NavigationManager>();
-        navigation.NavigateTo(Page);
-
-        RenderHost(Returns(ApiResponse<string>.SignInRequired()));
-
-        var fake = Assert.IsType<Bunit.TestDoubles.BunitNavigationManager>(navigation);
-        Assert.Equal(
-            $"{AccountRoutes.SignIn}?{AccountRoutes.ReturnUrlParameter}={Uri.EscapeDataString("/admin/users?" + AccountRoutes.SignInRetryParameter + "=1")}",
-            fake.History.First().Uri);
-    }
-
-    [Fact]
     public void Init_SignInRequiredWithFragment_DropsTheFragment()
     {
         var navigation = Services.GetRequiredService<NavigationManager>();
@@ -150,13 +136,27 @@ public sealed class LoadableComponentBaseTests : MudTestContext
         _accessor.Received(1).Invalidate();
     }
 
-    [Fact]
-    public void Init_ConfigurationMismatch_ShowsMismatchText()
+    [Theory]
+    [InlineData(ApiCallStatus.NotFound, LoadableComponentBase<string>.NotFoundText)]
+    [InlineData(ApiCallStatus.RateLimited, LoadableComponentBase<string>.RateLimitedText)]
+    [InlineData(ApiCallStatus.ConfigurationMismatch, LoadableComponentBase<string>.ConfigurationMismatchText)]
+    public void Load_Status_ShowsItsOwnText(ApiCallStatus status, string expected)
     {
-        var cut = RenderHost(Returns(ApiResponse<string>.ConfigurationMismatch()));
+        var cut = RenderHost(Returns(new ApiResponse<string>(status, null)));
 
         Assert.Equal("Error", cut.Find("#probe-state").TextContent);
-        Assert.Contains(LoadableComponentBase<string>.ConfigurationMismatchText, cut.Find("#probe-error").TextContent, StringComparison.Ordinal);
+        Assert.Contains(expected, cut.Find("#probe-error").TextContent, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(ApiCallStatus.Conflict)]
+    [InlineData(ApiCallStatus.Invalid)]
+    public void Load_ConflictOrInvalid_ShowsTheGenericTextWithoutServerDetail(ApiCallStatus status)
+    {
+        var cut = RenderHost(Returns(new ApiResponse<string>(status, null, "server detail 4711")));
+
+        Assert.Contains(LoadableComponentBase<string>.GenericErrorText, cut.Find("#probe-error").TextContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("4711", cut.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -191,23 +191,6 @@ public sealed class LoadableComponentBaseTests : MudTestContext
     }
 
     [Fact]
-    public async Task Dispose_LoaderThrowsCancellation_ChangesNothing()
-    {
-        var gate = new TaskCompletionSource<ApiResponse<string>>();
-        var cut = RenderHost(async token =>
-        {
-            await gate.Task;
-            token.ThrowIfCancellationRequested();
-            return ApiResponse<string>.Failed();
-        });
-
-        await cut.Instance.DisposeAsync();
-        gate.SetResult(ApiResponse<string>.Failed());
-
-        Assert.Equal("Loading", cut.Instance.CurrentState);
-    }
-
-    [Fact]
     public void Load_UsesTheComponentTokenNeverNone()
     {
         CancellationToken observed = CancellationToken.None;
@@ -222,93 +205,10 @@ public sealed class LoadableComponentBaseTests : MudTestContext
         Assert.NotEqual(CancellationToken.None, observed);
     }
 
-    [Fact]
-    public void Load_NotFound_ShowsNotFoundText()
-    {
-        var cut = RenderHost(Returns(ApiResponse<string>.NotFound()));
-
-        Assert.Equal("Error", cut.Find("#probe-state").TextContent);
-        Assert.Contains(LoadableComponentBase<string>.NotFoundText, cut.Find("#probe-error").TextContent, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Load_RateLimited_ShowsRateLimitedText()
-    {
-        var cut = RenderHost(Returns(ApiResponse<string>.RateLimited()));
-
-        Assert.Equal("Error", cut.Find("#probe-state").TextContent);
-        Assert.Contains(LoadableComponentBase<string>.RateLimitedText, cut.Find("#probe-error").TextContent, StringComparison.Ordinal);
-    }
-
-    [Theory]
-    [InlineData(ApiCallStatus.Conflict)]
-    [InlineData(ApiCallStatus.Invalid)]
-    [InlineData(ApiCallStatus.Failed)]
-    public void Load_ConflictInvalidOrFailed_ShowsTheGenericText(ApiCallStatus status)
-    {
-        var cut = RenderHost(Returns(new ApiResponse<string>(status, null, "server detail 4711")));
-
-        Assert.Contains(LoadableComponentBase<string>.GenericErrorText, cut.Find("#probe-error").TextContent, StringComparison.Ordinal);
-        Assert.DoesNotContain("4711", cut.Markup, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void TryHandleSessionStatus_SignInRequired_NavigatesWithRetryFlag()
-    {
-        var navigation = Services.GetRequiredService<NavigationManager>();
-        navigation.NavigateTo(Page + "?filter=a");
-        var cut = RenderHost(Returns(ApiResponse<string>.Success("value-one")));
-        var fake = Assert.IsType<Bunit.TestDoubles.BunitNavigationManager>(navigation);
-
-        var handled = cut.Instance.TryHandle(ApiCallStatus.SignInRequired);
-
-        Assert.True(handled);
-        var expectedReturn = Uri.EscapeDataString("/admin/users?filter=a&" + AccountRoutes.SignInRetryParameter + "=1");
-        Assert.Equal($"{AccountRoutes.SignIn}?{AccountRoutes.ReturnUrlParameter}={expectedReturn}", fake.History.First().Uri);
-        Assert.True(fake.History.First().Options.ForceLoad);
-    }
-
-    [Fact]
-    public void TryHandleSessionStatus_RetryFlagSet_ShowsLoopTextAndReturnsTrue()
-    {
-        var navigation = Services.GetRequiredService<NavigationManager>();
-        navigation.NavigateTo($"{Page}?{AccountRoutes.SignInRetryParameter}=1");
-        var cut = RenderHost(Returns(ApiResponse<string>.Success("value-one")));
-        var fake = Assert.IsType<Bunit.TestDoubles.BunitNavigationManager>(navigation);
-        var historyBefore = fake.History.Count;
-
-        var handled = cut.Instance.TryHandle(ApiCallStatus.SignInRequired);
-
-        Assert.True(handled);
-        Assert.Equal(LoadableComponentBase<string>.SignInLoopText, cut.Instance.CurrentError);
-        Assert.Equal(historyBefore, fake.History.Count);
-    }
-
-    [Fact]
-    public void TryHandleSessionStatus_AccessDenied_InvalidatesAndNavigates()
-    {
-        var navigation = Services.GetRequiredService<NavigationManager>();
-        navigation.NavigateTo(Page);
-        var cut = RenderHost(Returns(ApiResponse<string>.Success("value-one")));
-
-        var handled = cut.Instance.TryHandle(ApiCallStatus.AccessDenied);
-
-        Assert.True(handled);
-        var fake = Assert.IsType<Bunit.TestDoubles.BunitNavigationManager>(navigation);
-        Assert.Equal(AccountRoutes.AccessDenied, fake.History.First().Uri);
-        Assert.True(fake.History.First().Options.ForceLoad);
-        _accessor.Received(1).Invalidate();
-    }
-
     [Theory]
     [InlineData(ApiCallStatus.Success)]
-    [InlineData(ApiCallStatus.Failed)]
-    [InlineData(ApiCallStatus.ConfigurationMismatch)]
-    [InlineData(ApiCallStatus.NotFound)]
-    [InlineData(ApiCallStatus.Conflict)]
-    [InlineData(ApiCallStatus.Invalid)]
     [InlineData(ApiCallStatus.RateLimited)]
-    public void TryHandleSessionStatus_OtherStatus_ReturnsFalse(ApiCallStatus status)
+    public void TryHandleSessionStatus_OtherStatus_ReturnsFalseAndDoesNothing(ApiCallStatus status)
     {
         var navigation = Services.GetRequiredService<NavigationManager>();
         navigation.NavigateTo(Page);

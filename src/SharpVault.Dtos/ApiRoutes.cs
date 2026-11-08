@@ -88,4 +88,20 @@ public static class ApiRoutes
     public const string TransferNotice = "/api/transfers/notices/{transferId:guid}";
 
     public const string TransferOwnedShares = "/api/transfers/shares";
+
+    public const string OneTimeLinkSettings = "/api/one-time-links/settings";
+
+    public const string OneTimeLinkSecretSnapshot = "/api/one-time-links/owners/{ownerId:guid}/secrets/{secretId:guid}/snapshot";
+
+    public const string OneTimeLinkSecret = "/api/one-time-links/owners/{ownerId:guid}/secrets/{secretId:guid}";
+
+    public const string OneTimeLinks = "/api/one-time-links";
+
+    public const string OneTimeLink = "/api/one-time-links/{linkId:guid}";
+
+    public const string OneTimeLinkNotices = "/api/one-time-links/notices";
+
+    public const string OneTimeLinkNotice = "/api/one-time-links/notices/{noticeId}";
+
+    public const string OneTimeLinkOpen = "/api/one-time-links/{linkId:guid}/open";
 }

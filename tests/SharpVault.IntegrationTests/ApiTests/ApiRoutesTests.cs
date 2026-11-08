@@ -57,6 +57,14 @@ public sealed partial class ApiRoutesTests(ApiTestFactory factory)
         [nameof(ApiRoutes.FolderGrants)] = ["GET", "POST"],
         [nameof(ApiRoutes.FolderGrant)] = ["DELETE", "PUT"],
         [nameof(ApiRoutes.DirectoryUsers)] = ["GET"],
+        [nameof(ApiRoutes.OneTimeLinkSettings)] = ["GET"],
+        [nameof(ApiRoutes.OneTimeLinkSecretSnapshot)] = ["POST"],
+        [nameof(ApiRoutes.OneTimeLinkSecret)] = ["POST"],
+        [nameof(ApiRoutes.OneTimeLinks)] = ["GET"],
+        [nameof(ApiRoutes.OneTimeLink)] = ["DELETE"],
+        [nameof(ApiRoutes.OneTimeLinkNotices)] = ["GET"],
+        [nameof(ApiRoutes.OneTimeLinkNotice)] = ["DELETE"],
+        [nameof(ApiRoutes.OneTimeLinkOpen)] = ["POST"],
     };
 
     private static IReadOnlyList<(string Name, string Value)> AllRoutes() =>
@@ -64,6 +72,8 @@ public sealed partial class ApiRoutesTests(ApiTestFactory factory)
             .GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(field => field.IsLiteral && field.FieldType == typeof(string))
             .Select(field => (field.Name, (string)field.GetRawConstantValue()!))];
+
+    private static readonly string[] StringKeyedRoutes = [nameof(ApiRoutes.OneTimeLinkNotice)];
 
     [GeneratedRegex(@"\{[A-Za-z]+\}", RegexOptions.CultureInvariant)]
     private static partial Regex UnconstrainedPlaceholder();
@@ -122,7 +132,7 @@ public sealed partial class ApiRoutesTests(ApiTestFactory factory)
     [Fact]
     public void Constants_VaultRoutes_ConstrainEveryIdToGuid()
     {
-        foreach (var (name, value) in AllRoutes())
+        foreach (var (name, value) in AllRoutes().Where(route => !StringKeyedRoutes.Contains(route.Name)))
         {
             Assert.False(UnconstrainedPlaceholder().IsMatch(value), $"{name} has an unconstrained placeholder.");
         }

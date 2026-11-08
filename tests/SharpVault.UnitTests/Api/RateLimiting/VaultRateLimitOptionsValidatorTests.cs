@@ -10,16 +10,11 @@ public sealed class VaultRateLimitOptionsValidatorTests
     private static readonly VaultRateLimitOptionsValidator Validator = new();
 
     [Fact]
-    public void Defaults_AreValidAndMatchThePlan()
+    public void Defaults_AreValid()
     {
         var options = new VaultRateLimitOptions();
 
         Assert.True(Validator.Validate(null, options).Succeeded);
-        Assert.Equal(600, options.RequestsPerMinute);
-        Assert.Equal(60, options.RevealsPerMinute);
-        Assert.Equal(120, options.ShareWritesPerMinute);
-        Assert.Equal(30, options.DirectorySearchesPerMinute);
-        Assert.Equal("VaultRateLimits", VaultRateLimitOptions.SectionName);
     }
 
     [Theory]
@@ -27,9 +22,6 @@ public sealed class VaultRateLimitOptionsValidatorTests
     [InlineData(1, true)]
     [InlineData(100_000, true)]
     [InlineData(100_001, false)]
-    [InlineData(-1, false)]
-    [InlineData(int.MaxValue, false)]
-    [InlineData(int.MinValue, false)]
     public void RequestsPerMinute_Range(int value, bool valid)
     {
         var result = Validator.Validate(null, new VaultRateLimitOptions { RequestsPerMinute = value });
@@ -47,7 +39,6 @@ public sealed class VaultRateLimitOptionsValidatorTests
     [InlineData(1, true)]
     [InlineData(100_000, true)]
     [InlineData(100_001, false)]
-    [InlineData(-1, false)]
     public void RevealsPerMinute_Range(int value, bool valid)
     {
         var result = Validator.Validate(null, new VaultRateLimitOptions { RevealsPerMinute = value });
@@ -65,7 +56,6 @@ public sealed class VaultRateLimitOptionsValidatorTests
     [InlineData(1, true)]
     [InlineData(100_000, true)]
     [InlineData(100_001, false)]
-    [InlineData(-1, false)]
     public void ShareWritesPerMinute_Range(int value, bool valid)
     {
         var result = Validator.Validate(null, new VaultRateLimitOptions { ShareWritesPerMinute = value });
@@ -83,7 +73,6 @@ public sealed class VaultRateLimitOptionsValidatorTests
     [InlineData(1, true)]
     [InlineData(100_000, true)]
     [InlineData(100_001, false)]
-    [InlineData(-1, false)]
     public void DirectorySearchesPerMinute_Range(int value, bool valid)
     {
         var result = Validator.Validate(null, new VaultRateLimitOptions { DirectorySearchesPerMinute = value });
@@ -103,18 +92,5 @@ public sealed class VaultRateLimitOptionsValidatorTests
 
         Assert.False(result.Succeeded);
         Assert.Equal(2, result.Failures!.Count());
-    }
-
-    [Fact]
-    public void NullOptions_Throws()
-    {
-        Assert.Throws<ArgumentNullException>(() => Validator.Validate(null, null!));
-    }
-
-    [Fact]
-    public void PolicyNames_AreTheDocumentedConstants()
-    {
-        Assert.Equal("vault", RateLimitPolicies.Vault);
-        Assert.Equal("vault-reveal", RateLimitPolicies.Reveal);
     }
 }

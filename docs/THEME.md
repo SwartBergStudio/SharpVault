@@ -111,7 +111,7 @@ The four states are `LoadState.Loading`, `Empty`, `Error` and `Loaded`. `DataSta
 
 | State | Renders | Element ids |
 |---|---|---|
-| Loading | `BusyIndicator`, or the `Loading` fragment | `{prefix}-loading` |
+| Loading | `LoadingSkeleton`, or the `Loading` fragment | `{prefix}-loading` |
 | Empty | `EmptyState` with `EmptyTitle`, or the `Empty` fragment | `{prefix}-empty` |
 | Error | `SvAlert` (danger) with `ErrorText`, a Try again button, or the `Error` fragment | `{prefix}-error`, `{prefix}-retry` |
 | Loaded | `ChildContent(Value)` | (the content's own ids) |

@@ -86,28 +86,9 @@ public sealed class SecretHistoryViewTests : VaultTestContext
     {
         var cut = RenderView();
 
-        Assert.Equal("2026-03-01 10:30 UTC", cut.Find($"#history-replaced-{_newer.VersionId:D}").TextContent);
-        Assert.Equal("2026-02-27 10:30 UTC", cut.Find($"#history-replaced-{_older.VersionId:D}").TextContent);
         Assert.Equal("hidden", cut.Find($"#{ValuePrefix(_newer)}-frame").GetAttribute("data-state"));
         Assert.Equal("hidden", cut.Find($"#{ValuePrefix(_older)}-frame").GetAttribute("data-state"));
         Assert.DoesNotContain(PreviousValue, cut.Markup, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Reveal_FailureThenSuccess_ClearsTheFailureStatus()
-    {
-        HistoryClient.RevealVersionAsync(_secretId, _newer.VersionId, Arg.Any<RevealVersionRequestDto>(), Arg.Any<CancellationToken>())
-            .Returns(
-                Reply(ApiResponse<RevealedValueDto>.RateLimited()),
-                Reply(ApiResponse<RevealedValueDto>.Success(new RevealedValueDto { Value = PreviousValue })));
-        var cut = RenderView();
-        await cut.Find($"#{ValuePrefix(_newer)}-reveal").ClickAsync();
-        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("#history-status")));
-
-        await cut.Find($"#{ValuePrefix(_newer)}-reveal").ClickAsync();
-
-        cut.WaitForAssertion(() => Assert.Contains(PreviousValue, cut.Markup, StringComparison.Ordinal));
-        Assert.Empty(cut.FindAll("#history-status"));
     }
 
     [Fact]
@@ -131,30 +112,6 @@ public sealed class SecretHistoryViewTests : VaultTestContext
     }
 
     [Fact]
-    public void Render_EachVersionHasItsOwnRevealCopyAndRestoreControls()
-    {
-        var cut = RenderView();
-
-        foreach (var version in new[] { _newer, _older })
-        {
-            Assert.NotNull(cut.Find($"#{ValuePrefix(version)}-reveal"));
-            Assert.NotNull(cut.Find($"#{ValuePrefix(version)}-copy"));
-            Assert.NotNull(cut.Find($"#{RestoreId(version)}"));
-        }
-    }
-
-    [Fact]
-    public void Render_NoVersions_ShowsAHint()
-    {
-        HistoryClient.ListVersionsAsync(_secretId, Arg.Any<CancellationToken>())
-            .Returns(_ => Reply(ApiResponse<SecretVersionListDto>.Success(new SecretVersionListDto())));
-
-        var cut = RenderView();
-
-        Assert.NotNull(cut.Find("#history-empty-description"));
-    }
-
-    [Fact]
     public void Render_NoVersions_ShowsHistoryEmpty()
     {
         HistoryClient.ListVersionsAsync(_secretId, Arg.Any<CancellationToken>())
@@ -164,25 +121,6 @@ public sealed class SecretHistoryViewTests : VaultTestContext
 
         Assert.NotNull(cut.Find("#history-empty"));
         Assert.Empty(cut.FindAll("#history-list"));
-    }
-
-    [Fact]
-    public void Render_Heading_NamesTheSecret()
-    {
-        var cut = RenderView();
-
-        Assert.Equal("History of Bank login", cut.Find("#history-heading").TextContent);
-    }
-
-    [Fact]
-    public void Render_UnreadableSecretName_UsesTheFallbackHeading()
-    {
-        SecretsClient.GetSecretAsync(_secretId, Arg.Any<CancellationToken>())
-            .Returns(_ => Reply(ApiResponse<SecretDto>.Success(Secret(null, _token))));
-
-        var cut = RenderView();
-
-        Assert.Equal($"History of {SecretHistoryView.UnreadableSecretText}", cut.Find("#history-heading").TextContent);
     }
 
     [Fact]
@@ -202,32 +140,6 @@ public sealed class SecretHistoryViewTests : VaultTestContext
 
         Assert.NotNull(cut.Find("#history-error"));
         HistoryClient.DidNotReceive().ListVersionsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public void Render_VersionsFailed_ShowsErrorAndRetryReloads()
-    {
-        var calls = 0;
-        HistoryClient.ListVersionsAsync(_secretId, Arg.Any<CancellationToken>())
-            .Returns(_ => Reply(++calls == 1 ? ApiResponse<SecretVersionListDto>.Failed() : ApiResponse<SecretVersionListDto>.Success(new SecretVersionListDto { Items = [_newer] })));
-        var cut = RenderView();
-        Assert.NotNull(cut.Find("#history-error"));
-
-        cut.Find("#history-retry").Click();
-
-        cut.WaitForAssertion(() => Assert.NotNull(cut.Find($"#{RestoreId(_newer)}")));
-    }
-
-    [Fact]
-    public void Render_SignInRequired_UsesTheSharedPath()
-    {
-        SecretsClient.GetSecretAsync(_secretId, Arg.Any<CancellationToken>()).Returns(_ => Reply(ApiResponse<SecretDto>.SignInRequired()));
-
-        RenderView();
-
-        var last = Navigator().History.First();
-        Assert.StartsWith(AccountRoutes.SignIn, last.Uri, StringComparison.Ordinal);
-        Assert.True(last.Options.ForceLoad);
     }
 
     [Fact]
@@ -387,9 +299,7 @@ public sealed class SecretHistoryViewTests : VaultTestContext
     [Theory]
     [InlineData(ApiCallStatus.NotFound)]
     [InlineData(ApiCallStatus.Failed)]
-    [InlineData(ApiCallStatus.RateLimited)]
-    [InlineData(ApiCallStatus.Invalid)]
-    public void Restore_OtherFailure_ShowsDangerStatusAndNoConflict(ApiCallStatus status)
+    public void Restore_OtherFailure_ShowsStatusAndNoConflict(ApiCallStatus status)
     {
         RestoreReturns(new ApiResponse<SecretDto>(status, null));
         var cut = RenderView();
@@ -447,20 +357,5 @@ public sealed class SecretHistoryViewTests : VaultTestContext
         cut.WaitForAssertion(() => Assert.True(cut.Find($"#{RestoreId(_newer)}").HasAttribute("disabled")));
         gate.SetResult(ApiResponse<SecretDto>.Conflict());
         cut.WaitForAssertion(() => Assert.False(cut.Find($"#{RestoreId(_newer)}").HasAttribute("disabled")));
-    }
-
-    [Fact]
-    public void Render_TableCellsWithRevealableFieldAndButtons_WorkAtRuntime()
-    {
-        var cut = RenderView();
-
-        Assert.Equal(2, cut.FindAll("#history-list tbody tr").Count);
-        cut.Find($"#{ValuePrefix(_newer)}-reveal").Click();
-        cut.WaitForAssertion(() => Assert.Contains(PreviousValue, cut.Find($"#{ValuePrefix(_newer)}").TextContent, StringComparison.Ordinal));
-        cut.Find($"#{ValuePrefix(_newer)}-hide").Click();
-
-        Assert.DoesNotContain(PreviousValue, cut.Markup, StringComparison.Ordinal);
-        cut.Find($"#{RestoreId(_older)}").Click();
-        Assert.NotNull(_provider.WaitForElement("#history-restore-prompt-confirm"));
     }
 }

@@ -36,13 +36,13 @@ public sealed class VaultPage(IPage page, string webUrl) : PageObject(page)
     public async Task FollowBrandLinkFromUnfiledAsync()
     {
         await Element(UnfiledLinkId).ClickAsync();
-        await Page.WaitForURLAsync(url => new Uri(url).AbsolutePath == Routes.Unfiled, new() { Timeout = TimeoutMilliseconds });
+        await WaitForUrlAsync(url => new Uri(url).AbsolutePath == Routes.Unfiled, Routes.Unfiled);
         await Element(BrandLinkId).ClickAsync();
     }
 
     public async Task WaitForLandingAsync()
     {
-        await Page.WaitForURLAsync(url => new Uri(url).AbsolutePath == Routes.Vault, new() { Timeout = TimeoutMilliseconds });
+        await WaitForUrlAsync(url => new Uri(url).AbsolutePath == Routes.Vault, Routes.Vault);
         await ShowsAsync(NewItemId);
     }
 
@@ -69,7 +69,7 @@ public sealed class VaultPage(IPage page, string webUrl) : PageObject(page)
             throw new InvalidOperationException($"Could not open folder \"{name}\" at {Page.Url}: {exception.Message}", exception);
         }
 
-        await Page.WaitForURLAsync(url => url.Contains(Routes.Vault + "/folders/", StringComparison.Ordinal), new() { Timeout = TimeoutMilliseconds });
+        await WaitForUrlAsync(url => url.Contains(Routes.Vault + "/folders/", StringComparison.Ordinal), "a folder URL");
     }
 
     public async Task CreateLoginAsync(string name, string username, string value)

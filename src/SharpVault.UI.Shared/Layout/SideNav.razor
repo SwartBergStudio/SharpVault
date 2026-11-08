@@ -5,6 +5,7 @@
                 <SvNavLink Id="nav-vault" Href="@VaultRoutes.Vault" ExactMatch="true" Icon="@SvIcons.Vault">Vault</SvNavLink>
                 <SvNavLink Id="nav-shared" Href="@SharingRoutes.Shared" Icon="@SvIcons.People">Shared with me</SvNavLink>
                 <SvNavLink Id="nav-recycle-bin" Href="@VaultRoutes.RecycleBin" Icon="@SvIcons.Delete">Recycle bin</SvNavLink>
+                <SvNavLink Id="nav-one-time-links" Href="@OneTimeLinkRoutes.Links" Icon="@SvIcons.Link">One-time links</SvNavLink>
                 <SvNavLink Id="nav-account" Href="@AccountRoutes.Account" Icon="@SvIcons.User">Account</SvNavLink>
                 @if (CurrentUser is { IsAdmin: true })
                 {

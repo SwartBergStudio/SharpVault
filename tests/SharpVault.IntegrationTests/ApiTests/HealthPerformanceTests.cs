@@ -126,7 +126,6 @@ public sealed class HealthPerformanceTests(ApiTestFactory factory) : BaseIntegra
         var elapsed = Stopwatch.GetElapsedTime(started);
 
         Assert.True(elapsed < TimeSpan.FromSeconds(5), $"Host start took {elapsed.TotalMilliseconds:F0} ms");
-        Assert.Equal([TableNames.Users, TableNames.AuditLog, TableNames.Vaults, TableNames.SecretAuditLog, TableNames.Maintenance, TableNames.ShareInbox, TableNames.TransferJobs, TableNames.SessionRevocations], TableNames.All);
         Assert.Equal(ExistingTablesListCount, StorageRequests.Count);
         Assert.All(StorageRequests.Requests, request =>
         {

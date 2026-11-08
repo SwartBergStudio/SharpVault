@@ -50,39 +50,6 @@ public sealed partial class AuthenticationRepositoryTests
         "src/SharpVault.AppHost/AppHostResourceNames.cs",
     ];
 
-    public static TheoryData<string> CommentCheckedFiles()
-    {
-        var data = new TheoryData<string>();
-        foreach (var directory in CommentFreeDirectories)
-        {
-            foreach (var file in Directory.EnumerateFiles(Path.Combine(RepositoryRoot.Path, directory), "*.cs", SearchOption.AllDirectories).Where(path => !IsBuildOutput(path)).Order(StringComparer.Ordinal))
-            {
-                data.Add(Relative(file));
-            }
-        }
-
-        foreach (var file in CommentFreeFiles)
-        {
-            data.Add(file);
-        }
-
-        return data;
-    }
-
-    public static TheoryData<string> AuthenticationSourcesExceptKeyStore()
-    {
-        var data = new TheoryData<string>();
-        var folder = Path.Combine(RepositoryRoot.Path, "src", "SharpVault.Authentication");
-        foreach (var file in Directory.EnumerateFiles(folder, "*.cs", SearchOption.AllDirectories)
-            .Where(path => !IsBuildOutput(path) && !path.EndsWith(KeyStoreFile, StringComparison.Ordinal))
-            .Order(StringComparer.Ordinal))
-        {
-            data.Add(Relative(file));
-        }
-
-        return data;
-    }
-
     [Fact]
     public void Repository_Files_ContainNoUseLocalAccountKey()
     {
@@ -138,34 +105,38 @@ public sealed partial class AuthenticationRepositoryTests
         }
     }
 
-    [Theory]
-    [MemberData(nameof(CommentCheckedFiles))]
-    public void AuthenticationSources_Files_ContainNoComments(string relativePath)
+    [Fact]
+    public void AuthenticationSources_AllFiles_ContainNoComments()
     {
-        var lines = File.ReadAllLines(Path.Combine(RepositoryRoot.Path, relativePath));
+        foreach (var relativePath in CommentCheckedFiles())
+        {
+            var lines = File.ReadAllLines(Path.Combine(RepositoryRoot.Path, relativePath));
 
-        var comments = lines
-            .Select((text, index) => (Text: text, Number: index + 1))
-            .Where(line => line.Number > 2 && (InlineComment().IsMatch(line.Text) || line.Text.Contains("/*", StringComparison.Ordinal) || line.Text.Contains("#region", StringComparison.Ordinal)))
-            .Select(line => $"{relativePath}:{line.Number}")
-            .ToList();
+            var comments = lines
+                .Select((text, index) => (Text: text, Number: index + 1))
+                .Where(line => line.Number > 2 && (InlineComment().IsMatch(line.Text) || line.Text.Contains("/*", StringComparison.Ordinal) || line.Text.Contains("#region", StringComparison.Ordinal)))
+                .Select(line => $"{relativePath}:{line.Number}")
+                .ToList();
 
-        Assert.NotEmpty(lines);
-        Assert.Empty(comments);
-        Assert.Equal("// SharpVault - Copyright (c) SwartBergStudio.", lines[0]);
-        Assert.Equal("// Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.", lines[1]);
+            Assert.NotEmpty(lines);
+            Assert.Empty(comments);
+            Assert.Equal("// SharpVault - Copyright (c) SwartBergStudio.", lines[0]);
+            Assert.Equal("// Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.", lines[1]);
+        }
     }
 
-    [Theory]
-    [MemberData(nameof(AuthenticationSourcesExceptKeyStore))]
-    public void AuthenticationProject_Source_UsesNoSystemRandomAndNoFileWritesOutsideTheKeyStore(string relativePath)
+    [Fact]
+    public void AuthenticationProject_Sources_UseNoSystemRandomAndNoFileWritesOutsideTheKeyStore()
     {
-        var content = File.ReadAllText(Path.Combine(RepositoryRoot.Path, relativePath));
-
-        Assert.DoesNotMatch(SystemRandom(), content);
-        foreach (var api in FileWriteApis)
+        foreach (var relativePath in AuthenticationSourcesExceptKeyStore())
         {
-            Assert.DoesNotContain(api, content, StringComparison.Ordinal);
+            var content = File.ReadAllText(Path.Combine(RepositoryRoot.Path, relativePath));
+
+            Assert.DoesNotMatch(SystemRandom(), content);
+            foreach (var api in FileWriteApis)
+            {
+                Assert.DoesNotContain(api, content, StringComparison.Ordinal);
+            }
         }
     }
 
@@ -183,6 +154,33 @@ public sealed partial class AuthenticationRepositoryTests
 
     [GeneratedRegex(@"\bnew\s+Random\b|\bRandom\.Shared\b")]
     private static partial Regex SystemRandom();
+
+    private static IEnumerable<string> CommentCheckedFiles()
+    {
+        foreach (var directory in CommentFreeDirectories)
+        {
+            foreach (var file in Directory.EnumerateFiles(Path.Combine(RepositoryRoot.Path, directory), "*.cs", SearchOption.AllDirectories).Where(path => !IsBuildOutput(path)).Order(StringComparer.Ordinal))
+            {
+                yield return Relative(file);
+            }
+        }
+
+        foreach (var file in CommentFreeFiles)
+        {
+            yield return file;
+        }
+    }
+
+    private static IEnumerable<string> AuthenticationSourcesExceptKeyStore()
+    {
+        var folder = Path.Combine(RepositoryRoot.Path, "src", "SharpVault.Authentication");
+        foreach (var file in Directory.EnumerateFiles(folder, "*.cs", SearchOption.AllDirectories)
+            .Where(path => !IsBuildOutput(path) && !path.EndsWith(KeyStoreFile, StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal))
+        {
+            yield return Relative(file);
+        }
+    }
 
     private static string Relative(string file) => Path.GetRelativePath(RepositoryRoot.Path, file).Replace('\\', '/');
 

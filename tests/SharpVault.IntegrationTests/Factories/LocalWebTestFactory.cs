@@ -48,6 +48,7 @@ public sealed class LocalWebTestFactory : WebApplicationFactory<WebApp::Program>
         builder.UseSetting("AzureAd:ClientId", string.Empty);
         builder.UseSetting("LocalAuth:KeyFilePath", LocalKeyFile.Path);
         builder.UseSetting("SharpVaultApi:BaseAddress", "https://localhost/");
+        builder.UseSetting("WebGateway:Key", TestWebGateway.Key);
         builder.UseSetting("Logging:LogLevel:Default", "Debug");
         builder.UseSetting("Logging:LogLevel:Microsoft", "Debug");
         builder.UseSetting("Logging:LogLevel:Microsoft.AspNetCore", "Debug");
@@ -63,7 +64,7 @@ public sealed class LocalWebTestFactory : WebApplicationFactory<WebApp::Program>
             if (_api is not null)
             {
                 var api = _api;
-                services.UsePrimaryHandler(() => api.Server.CreateHandler());
+                services.UsePrimaryHandler(() => api.Server.CreateHandler(context => context.Connection.RemoteIpAddress = TestAddresses.WebHost));
                 return;
             }
 

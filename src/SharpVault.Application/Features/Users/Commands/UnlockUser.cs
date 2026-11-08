@@ -5,6 +5,7 @@ using FluentValidation;
 using Mediator;
 using SharpVault.Application.Common.Interfaces;
 using SharpVault.Application.Common.Models;
+using SharpVault.Application.Features.OneTimeLinks.Common;
 using SharpVault.Application.Features.Users.Common;
 using SharpVault.Domain.Audit;
 using SharpVault.Domain.Users;
@@ -35,7 +36,9 @@ public sealed class UnlockUserCommandHandler(
     AdminActorGuard guard,
     UserStatusWriter statuses,
     AdminAuditWriter audit,
-    IRequestMetadata requestMetadata) : IRequestHandler<UnlockUserCommand, Result<UserSummaryDto>>
+    IRequestMetadata requestMetadata,
+    IUserStore users,
+    OneTimeLinkRevoker links) : IRequestHandler<UnlockUserCommand, Result<UserSummaryDto>>
 {
     public async Task<Result<UserSummaryDto>> Handle(UnlockUserCommand request, CancellationToken cancellationToken)
     {
@@ -43,6 +46,12 @@ public sealed class UnlockUserCommandHandler(
         if (actor is null)
         {
             return Result<UserSummaryDto>.Forbidden();
+        }
+
+        var target = await users.GetAsync(request.UserId, cancellationToken);
+        if (target?.Value.Status == UserStatus.Locked)
+        {
+            await links.RevokeAllForCreatorAsync(request.UserId, actor.UserId, requestMetadata.IpAddress, cancellationToken);
         }
 
         var unlocked = await statuses.SetStatusAsync(request.UserId, UserStatus.Active, UserAdminMessages.AlreadyActive, cancellationToken);

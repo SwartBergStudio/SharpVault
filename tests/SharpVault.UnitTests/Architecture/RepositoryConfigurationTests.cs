@@ -73,6 +73,9 @@ public sealed partial class RepositoryConfigurationTests
             "src/SharpVault.UI.Shared/wwwroot/js/clipboard.js",
             "src/SharpVault.UI.Shared/wwwroot/js/idle-boot.js",
             "src/SharpVault.UI.Shared/wwwroot/js/idle-monitor.js",
+            "src/SharpVault.UI.Shared/wwwroot/js/one-time-link-create.js",
+            "src/SharpVault.UI.Shared/wwwroot/js/one-time-link-crypto.js",
+            "src/SharpVault.UI.Shared/wwwroot/js/one-time-link-open.js",
             "src/SharpVault.Web/Components/Layout/ReconnectModal.razor.js",
         ];
 

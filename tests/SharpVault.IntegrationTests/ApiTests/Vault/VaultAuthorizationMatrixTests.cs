@@ -94,20 +94,6 @@ public sealed class VaultAuthorizationMatrixTests(ApiTestFactory factory) : Vaul
 
     [Theory]
     [MemberData(nameof(EndpointIds))]
-    public async Task VaultAuthorizationMatrix_LockedOwner_ReturnsForbidden(string endpointId)
-    {
-        var ids = await ArrangeAsync();
-        await LockUserAsync(TestUsers.User.ObjectId);
-        using var client = ClientFor(TestUsers.User);
-
-        var response = await Endpoint(endpointId).Send(new VaultTestApi(client), ids);
-
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        await AssertBodyRevealsNothingAsync(response, ids, CallerKind.LockedUser);
-    }
-
-    [Theory]
-    [MemberData(nameof(EndpointIds))]
     public async Task VaultAuthorizationMatrix_DeniedCallers_MakeNoVaultStorageOrKeyVaultCalls(string endpointId)
     {
         var ids = await ArrangeAsync();

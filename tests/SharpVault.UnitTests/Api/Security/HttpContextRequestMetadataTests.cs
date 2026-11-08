@@ -3,7 +3,10 @@
 
 using System.Net;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using SharpVault.Api.Security;
+using SharpVault.Authentication.WebGateway;
 
 namespace SharpVault.UnitTests.Api.Security;
 
@@ -14,12 +17,15 @@ public sealed class HttpContextRequestMetadataTests
         public HttpContext? HttpContext { get; set; } = context;
     }
 
+    private static ClientAddressResolver Resolver() =>
+        new(Options.Create(new WebGatewayOptions()), TimeProvider.System, NullLogger<ClientAddressResolver>.Instance);
+
     private static HttpContextRequestMetadata For(IPAddress? address, Action<HttpContext>? configure = null)
     {
         var context = new DefaultHttpContext();
         context.Connection.RemoteIpAddress = address;
         configure?.Invoke(context);
-        return new HttpContextRequestMetadata(new FixedAccessor(context));
+        return new HttpContextRequestMetadata(new FixedAccessor(context), Resolver());
     }
 
     [Theory]
@@ -34,7 +40,7 @@ public sealed class HttpContextRequestMetadataTests
     [Fact]
     public void IpAddress_NoContext_IsNull()
     {
-        Assert.Null(new HttpContextRequestMetadata(new FixedAccessor(null)).IpAddress);
+        Assert.Null(new HttpContextRequestMetadata(new FixedAccessor(null), Resolver()).IpAddress);
     }
 
     [Fact]

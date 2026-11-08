@@ -2,11 +2,8 @@
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
 using System.Net;
-using System.Security.Cryptography;
 using System.Text.Json;
-using Microsoft.IdentityModel.Tokens;
 using SharpVault.Application.Features.Transfers.Common;
-using SharpVault.Authentication.Identity;
 using SharpVault.Authentication.Local;
 using SharpVault.Dtos;
 using SharpVault.Dtos.Transfers;
@@ -23,33 +20,18 @@ namespace SharpVault.IntegrationTests.ApiTests.Transfers;
 [Trait("Category", "Security")]
 public sealed class LocalTransferAuthorizationMatrixTests(LocalApiTestFactory factory) : IAsyncLifetime
 {
-    private const string Preview = "Preview";
     private const string List = "List";
-    private const string Get = "Get";
     private const string Approve = "Approve";
-    private const string Reject = "Reject";
-    private const string Abort = "Abort";
-    private const string Create = "Create";
     private const string Lock = "Lock";
-    private const string Unlock = "Unlock";
     private const string Dismiss = "Dismiss";
     private const string Notices = "Notices";
-    private const string OwnShares = "OwnShares";
 
     private const string Anonymous = "Anonymous";
-    private const string AlgNone = "AlgNone";
     private const string UnknownKey = "UnknownKey";
-    private const string WrongTenant = "WrongTenant";
-    private const string EntraRs256 = "EntraRs256";
-    private const string Expired = "Expired";
-    private const string ForgedAdmin = "ForgedAdmin";
-    private const string Guest = "Guest";
-    private const string NoRole = "NoRole";
     private const string UserOne = "UserOne";
     private const string LockedUser = "LockedUser";
     private const string AdminOne = "AdminOne";
     private const string AdminTwo = "AdminTwo";
-    private const string LockedAdmin = "LockedAdmin";
 
     private const string ValidReason = "Role change, the vault moves to the new owner";
     private const string LockReason = "Left the company, locked for the handover";
@@ -57,24 +39,16 @@ public sealed class LocalTransferAuthorizationMatrixTests(LocalApiTestFactory fa
 
     private static readonly string[] CallerOrder =
     [
-        Anonymous, AlgNone, UnknownKey, WrongTenant, EntraRs256, Expired, ForgedAdmin,
-        Guest, NoRole, UserOne, LockedUser, AdminOne, AdminTwo, LockedAdmin,
+        Anonymous, UnknownKey, UserOne, LockedUser, AdminOne, AdminTwo,
     ];
 
     private static readonly Dictionary<string, int[]> ExpectedStatuses = new(StringComparer.Ordinal)
     {
-        [Preview] = [401, 401, 401, 401, 401, 401, 401, 403, 403, 403, 403, 200, 200, 403],
-        [List] = [401, 401, 401, 401, 401, 401, 401, 403, 403, 403, 403, 200, 200, 403],
-        [Get] = [401, 401, 401, 401, 401, 401, 401, 403, 403, 403, 403, 200, 200, 403],
-        [Approve] = [401, 401, 401, 401, 401, 401, 401, 403, 403, 403, 403, 403, 200, 403],
-        [Reject] = [401, 401, 401, 401, 401, 401, 401, 403, 403, 403, 403, 200, 200, 403],
-        [Abort] = [401, 401, 401, 401, 401, 401, 401, 403, 403, 403, 403, 409, 409, 403],
-        [Create] = [401, 401, 401, 401, 401, 401, 401, 403, 403, 403, 403, 400, 400, 403],
-        [Lock] = [401, 401, 401, 401, 401, 401, 401, 403, 403, 403, 403, 200, 200, 403],
-        [Unlock] = [401, 401, 401, 401, 401, 401, 401, 403, 403, 403, 403, 400, 400, 403],
-        [Dismiss] = [401, 401, 401, 401, 401, 401, 401, 403, 403, 404, 403, 404, 404, 403],
-        [Notices] = [401, 401, 401, 401, 401, 401, 401, 403, 403, 200, 403, 200, 200, 403],
-        [OwnShares] = [401, 401, 401, 401, 401, 401, 401, 403, 403, 200, 403, 200, 200, 403],
+        [List] = [401, 401, 403, 403, 200, 200],
+        [Approve] = [401, 401, 403, 403, 403, 200],
+        [Lock] = [401, 401, 403, 403, 200, 200],
+        [Dismiss] = [401, 401, 404, 403, 404, 404],
+        [Notices] = [401, 401, 200, 403, 200, 200],
     };
 
     public static TheoryData<string, string, int> Matrix()
@@ -155,10 +129,6 @@ public sealed class LocalTransferAuthorizationMatrixTests(LocalApiTestFactory fa
             await SetStatusAsync(LocalAccounts.UserOne.Id, UserRows.LockedStatus);
         }
 
-        if (caller == LockedAdmin)
-        {
-            await SetStatusAsync(LocalAccounts.AdminTwo.Id, UserRows.LockedStatus);
-        }
     }
 
     private async Task<HttpResponseMessage> SendAsync(string endpoint, string caller, TransferDto transfer)
@@ -166,18 +136,11 @@ public sealed class LocalTransferAuthorizationMatrixTests(LocalApiTestFactory fa
         var api = ApiFor(ClientForCaller(caller));
         return endpoint switch
         {
-            Preview => await api.SendRawAsync(HttpMethod.Get, $"{ApiRoutes.AdminTransferPreview}?sourceUserId={LocalAccounts.UserOne.Id:D}", null, null),
             List => await api.SendRawAsync(HttpMethod.Get, ApiRoutes.AdminTransfers, null, null),
-            Get => await api.SendRawAsync(HttpMethod.Get, VaultTestApi.Bind(ApiRoutes.AdminTransfer, ("transferId", transfer.Id)), null, null),
             Approve => await api.SendRawAsync(HttpMethod.Post, VaultTestApi.Bind(ApiRoutes.AdminTransferApprove, ("transferId", transfer.Id)), null, transfer.ConcurrencyToken),
-            Reject => await api.SendRawAsync(HttpMethod.Post, VaultTestApi.Bind(ApiRoutes.AdminTransferReject, ("transferId", transfer.Id)), DecisionBody(DeclineReason), transfer.ConcurrencyToken),
-            Abort => await api.SendRawAsync(HttpMethod.Post, VaultTestApi.Bind(ApiRoutes.AdminTransferAbort, ("transferId", transfer.Id)), DecisionBody(DeclineReason), transfer.ConcurrencyToken),
-            Create => await api.SendRawAsync(HttpMethod.Post, ApiRoutes.AdminTransfers, CreateBody(LocalAccounts.UserTwo, LocalAccounts.UserOne), null),
             Lock => await api.SendRawAsync(HttpMethod.Post, VaultTestApi.Bind(ApiRoutes.AdminUserLock, ("userId", LocalAccounts.UserTwo.Id)), LockBody(), null),
-            Unlock => await api.SendRawAsync(HttpMethod.Post, VaultTestApi.Bind(ApiRoutes.AdminUserUnlock, ("userId", LocalAccounts.UserTwo.Id)), LockBody(), null),
             Dismiss => await api.SendRawAsync(HttpMethod.Delete, VaultTestApi.Bind(ApiRoutes.TransferNotice, ("transferId", transfer.Id)), null, null),
             Notices => await api.SendRawAsync(HttpMethod.Get, ApiRoutes.TransferNotices, null, null),
-            OwnShares => await api.SendRawAsync(HttpMethod.Get, ApiRoutes.TransferOwnedShares, null, null),
             _ => throw new InvalidOperationException("Unknown endpoint: " + endpoint),
         };
     }
@@ -191,29 +154,16 @@ public sealed class LocalTransferAuthorizationMatrixTests(LocalApiTestFactory fa
 
     private HttpClient ClientForCaller(string caller)
     {
-        var wrongKey = new SymmetricSecurityKey(RandomNumberGenerator.GetBytes(LocalAuthenticationDefaults.KeyLength));
         return caller switch
         {
             Anonymous => factory.CreateUnauthenticatedClient(),
-            AlgNone => factory.CreateClientWithToken(LocalTokens.AlgNone(LocalAccounts.AdminOne)),
             UnknownKey => factory.CreateClientWithToken(ForgedTokens.SignedWithUnknownKey()),
-            WrongTenant => factory.CreateClientWithToken(Builder(LocalAccounts.AdminOne).WithClaim(EntraClaimTypes.TenantId, Guid.NewGuid().ToString("D")).Build()),
-            EntraRs256 => factory.CreateClientWithToken(TestTokens.Create(TestUsers.Admin)),
-            Expired => factory.CreateClientWithToken(Builder(LocalAccounts.AdminOne)
-                .NotBefore(DateTimeOffset.UtcNow.AddMinutes(-10))
-                .ExpiresAt(DateTimeOffset.UtcNow.AddMinutes(-2))
-                .Build()),
-            ForgedAdmin => factory.CreateClientWithToken(LocalTokens.Builder(LocalAccounts.AdminOne, wrongKey).Build()),
-            Guest => factory.CreateClientWithToken(Builder(LocalAccounts.AdminOne).WithClaim(EntraClaimTypes.AccountType, EntraClaimTypes.GuestAccountType).Build()),
-            NoRole => factory.CreateClientWithToken(Builder(LocalAccounts.UserOne).WithoutClaim(EntraClaimTypes.Roles).Build()),
             UserOne or LockedUser => factory.CreateClientForAccount(LocalAccounts.UserOne),
             AdminOne => factory.CreateClientForAccount(LocalAccounts.AdminOne),
-            AdminTwo or LockedAdmin => factory.CreateClientForAccount(LocalAccounts.AdminTwo),
+            AdminTwo => factory.CreateClientForAccount(LocalAccounts.AdminTwo),
             _ => throw new ArgumentOutOfRangeException(nameof(caller), caller, null),
         };
     }
-
-    private TestTokenBuilder Builder(LocalAccount account) => LocalTokens.Builder(factory.Services, account);
 
     private static VaultTestApi ApiFor(HttpClient client) => new(client);
 

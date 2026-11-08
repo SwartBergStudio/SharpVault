@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using SharpVault.Dtos.OneTimeLinks;
 using SharpVault.Dtos.Transfers;
 using SharpVault.Dtos.Users;
 using SharpVault.UI.Shared.Navigation;
@@ -38,11 +39,15 @@ public class ShellTestContext : MudTestContext
         UsersClient = Substitute.For<IAdminUsersApiClient>();
         TransferNoticesClient = Substitute.For<ITransferNoticesApiClient>();
         TransferNoticesClient.ListAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(ApiResponse<TransferNoticeListDto>.Success(new TransferNoticeListDto())));
+        OneTimeLinksClient = Substitute.For<IOneTimeLinksApiClient>();
+        OneTimeLinksClient.GetSettingsAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(ApiResponse<OneTimeLinkSettingsDto>.Success(new OneTimeLinkSettingsDto { DefaultLifetimeMinutes = 1440, MaxLifetimeMinutes = 10080 })));
+        OneTimeLinksClient.ListNoticesAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(ApiResponse<OneTimeLinkNoticeListDto>.Success(new OneTimeLinkNoticeListDto())));
         Services.AddSingleton(Accessor);
         Services.AddSingleton(IdleMonitor);
         Services.AddSingleton(MeClient);
         Services.AddSingleton(UsersClient);
         Services.AddSingleton(TransferNoticesClient);
+        Services.AddSingleton(OneTimeLinksClient);
         Services.AddSingleton(Options.Create(IdleOptions));
         Services.AddSingleton(Options.Create(SignInOptions));
         Services.AddSingleton(new RoutedAssemblies(RoutedAssemblyList));
@@ -68,6 +73,8 @@ public class ShellTestContext : MudTestContext
     public IAdminUsersApiClient UsersClient { get; }
 
     public ITransferNoticesApiClient TransferNoticesClient { get; }
+
+    public IOneTimeLinksApiClient OneTimeLinksClient { get; }
 
     public void ReturnsCurrentUser(CurrentUserDto user) =>
         Accessor.GetAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(ApiResponse<CurrentUserDto>.Success(user)));

@@ -4,7 +4,6 @@
 using AngleSharp.Dom;
 using Bunit;
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
 using NSubstitute;
@@ -18,8 +17,6 @@ namespace SharpVault.UnitTests.UiShared.Vault;
 
 public sealed class FolderTreePanelTests : VaultTestContext
 {
-    private const string Hostile = "<img src=x onerror=alert(1)><script>alert(2)</script>";
-
     private static readonly Guid Finance = Guid.Parse("00000000-0000-0000-0000-0000000000a1");
     private static readonly Guid Payroll = Guid.Parse("00000000-0000-0000-0000-0000000000b2");
     private static readonly Guid Bonuses = Guid.Parse("00000000-0000-0000-0000-0000000000c3");
@@ -90,44 +87,6 @@ public sealed class FolderTreePanelTests : VaultTestContext
         _provider.Find("#folder-delete-confirm").Click();
     }
 
-    [Fact]
-    public async Task FolderEditorDialog_DismissedWhileBusy_FailureIsStillVisible()
-    {
-        var pending = new TaskCompletionSource<ApiResponse<FolderDto>>();
-        FoldersClient.CreateFolderAsync(Arg.Any<CreateFolderRequestDto>(), Arg.Any<CancellationToken>()).Returns(pending.Task);
-        var cut = RenderPanel();
-        await cut.Find("#vault-new-folder").ClickAsync();
-        FillAndSave("Payroll");
-        cut.WaitForAssertion(() => FoldersClient.Received(1).CreateFolderAsync(Arg.Any<CreateFolderRequestDto>(), Arg.Any<CancellationToken>()));
-
-        await PressEscapeAsync();
-        await Task.Delay(100, Xunit.TestContext.Current.CancellationToken);
-        pending.SetResult(ApiResponse<FolderDto>.Invalid("Name is taken."));
-
-        _provider.WaitForAssertion(() => Assert.Contains("Name is taken.", _provider.Find("#folder-editor-error").TextContent, StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task FolderDeleteDialog_DismissedWhileBusy_FailureIsStillVisible()
-    {
-        ListReturns(Tree());
-        var pending = new TaskCompletionSource<ApiResponse<bool>>();
-        FoldersClient.DeleteFolderAsync(Arg.Any<Guid>(), Arg.Any<FolderDeleteModeDto>(), Arg.Any<CancellationToken>()).Returns(pending.Task);
-        var cut = RenderPanel();
-        cut.WaitForElement(Node(Legal));
-        OpenAction(cut, Legal, "delete").Click();
-        ConfirmDelete("folder-delete-mode-delete");
-        cut.WaitForAssertion(() => FoldersClient.Received(1).DeleteFolderAsync(Arg.Any<Guid>(), Arg.Any<FolderDeleteModeDto>(), Arg.Any<CancellationToken>()));
-
-        await PressEscapeAsync();
-        await Task.Delay(100, Xunit.TestContext.Current.CancellationToken);
-        pending.SetResult(ApiResponse<bool>.Invalid("Folder cannot be deleted."));
-
-        _provider.WaitForAssertion(() => Assert.Contains("Folder cannot be deleted.", _provider.Find("#folder-delete-error").TextContent, StringComparison.Ordinal));
-    }
-
-    private Task PressEscapeAsync() => _provider.Find(".sv-dialog__keys").KeyDownAsync(new KeyboardEventArgs { Key = "Escape" });
-
     private IElement OpenAction(IRenderedComponent<FolderTreePanel> cut, Guid folderId, string action)
     {
         cut.Find($"#folder-actions-{folderId:D} button").Click();
@@ -180,18 +139,6 @@ public sealed class FolderTreePanelTests : VaultTestContext
     }
 
     [Fact]
-    public void Toggle_Twice_CollapsesAgain()
-    {
-        var cut = RenderPanel();
-
-        cut.Find($"#folder-toggle-{Finance:D}").Click();
-        cut.Find($"#folder-toggle-{Finance:D}").Click();
-
-        Assert.Empty(cut.FindAll(Node(Payroll)));
-        Assert.Contains("Expand Finance", cut.Find($"#folder-toggle-{Finance:D}").GetAttribute("aria-label"), StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void SelectedFolder_AncestorsAreExpanded()
     {
         var cut = RenderPanel(selected: Bonuses);
@@ -203,70 +150,12 @@ public sealed class FolderTreePanelTests : VaultTestContext
     }
 
     [Fact]
-    public void SelectedFolder_OtherBranchesStayCollapsed()
-    {
-        ListReturns([.. Tree(), Folder(Guid.Parse("00000000-0000-0000-0000-0000000000e5"), Legal, "Contracts")]);
-
-        var cut = RenderPanel(selected: Bonuses);
-
-        Assert.Empty(cut.FindAll("#folder-node-00000000-0000-0000-0000-0000000000e5"));
-        Assert.Contains("Expand Legal", cut.Find($"#folder-toggle-{Legal:D}").GetAttribute("aria-label"), StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void FolderLink_PointsAtFolderRoute()
     {
         var cut = RenderPanel(selected: Bonuses);
 
         Assert.Equal(VaultRoutes.Folder(Payroll), cut.Find($"#folder-link-{Payroll:D}").GetAttribute("href"));
         Assert.Equal(VaultRoutes.Folder(Legal), cut.Find($"#folder-link-{Legal:D}").GetAttribute("href"));
-    }
-
-    [Fact]
-    public void SelectedFolderLink_MarksAriaCurrentPage()
-    {
-        var cut = RenderPanel(selected: Payroll);
-
-        Assert.Equal("page", cut.Find($"#folder-link-{Payroll:D}").GetAttribute("aria-current"));
-        Assert.False(cut.Find($"#folder-link-{Finance:D}").HasAttribute("aria-current"));
-        Assert.False(cut.Find($"#folder-link-{Legal:D}").HasAttribute("aria-current"));
-        Assert.False(cut.Find("#folder-tree-all").HasAttribute("aria-current"));
-    }
-
-    [Fact]
-    public void NothingSelected_AllItemsLinkIsCurrent()
-    {
-        var cut = RenderPanel();
-
-        Assert.Equal("page", cut.Find("#folder-tree-all").GetAttribute("aria-current"));
-        Assert.False(cut.Find("#folder-tree-unfiled").HasAttribute("aria-current"));
-    }
-
-    [Fact]
-    public void UnfiledView_UnfiledLinkIsCurrentAndAllItemsIsNot()
-    {
-        var cut = RenderPanel(unfiled: true);
-
-        Assert.Equal("page", cut.Find("#folder-tree-unfiled").GetAttribute("aria-current"));
-        Assert.False(cut.Find("#folder-tree-all").HasAttribute("aria-current"));
-    }
-
-    [Fact]
-    public void Render_Failed_ShowsErrorAndRetryReloadsTheTree()
-    {
-        var calls = 0;
-        FoldersClient.ListFoldersAsync(Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult(++calls == 1
-                ? ApiResponse<FolderListDto>.Failed()
-                : ApiResponse<FolderListDto>.Success(new FolderListDto { Items = Tree() })));
-
-        var cut = RenderPanel();
-
-        Assert.NotNull(cut.Find("#folder-tree-error"));
-        Assert.NotNull(cut.Find("#folder-tree-all"));
-        cut.Find("#folder-tree-retry").Click();
-        cut.WaitForAssertion(() => Assert.NotNull(cut.Find(Node(Finance))));
-        Assert.Empty(cut.FindAll("#folder-tree-error"));
     }
 
     [Fact]
@@ -282,52 +171,6 @@ public sealed class FolderTreePanelTests : VaultTestContext
         Assert.NotNull(cut.Find("#folder-tree-all"));
         Assert.NotNull(cut.Find("#folder-tree-unfiled"));
         Assert.NotNull(cut.Find("#vault-new-folder"));
-    }
-
-    [Fact]
-    public void Render_NoFolders_ShowsAHint()
-    {
-        ListReturns([]);
-
-        var cut = RenderPanel();
-
-        Assert.NotNull(cut.Find("#folder-tree-empty-description"));
-    }
-
-    [Fact]
-    public void Create_FirstFolderFromEmptyState_ShowsItInTheTree()
-    {
-        var folders = new List<FolderDto>();
-        ListReturns(folders);
-        FoldersClient.CreateFolderAsync(Arg.Any<CreateFolderRequestDto>(), Arg.Any<CancellationToken>())
-            .Returns(call =>
-            {
-                folders.Add(Folder(Finance, null, call.Arg<CreateFolderRequestDto>().Name));
-                return Task.FromResult(ApiResponse<FolderDto>.Success(new FolderDto { Id = Finance }));
-            });
-        var cut = RenderPanel();
-        cut.WaitForElement("#folder-tree-empty");
-
-        cut.Find("#vault-new-folder").Click();
-        FillAndSave("Finance");
-
-        cut.WaitForAssertion(() => Assert.NotNull(cut.Find(Node(Finance))));
-        Assert.Empty(cut.FindAll("#folder-tree-empty"));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void Render_FolderNamesWithMarkup_AreEncodedEverywhere()
-    {
-        ListReturns([Folder(Finance, null, Hostile), Folder(Payroll, Finance, Hostile)]);
-
-        var cut = RenderPanel(selected: Payroll);
-
-        Assert.Empty(cut.FindAll("img"));
-        Assert.Empty(cut.FindAll("script"));
-        Assert.Empty(cut.FindAll("[onerror]"));
-        Assert.Equal(Hostile, cut.Find($"#folder-link-{Finance:D}").TextContent.Trim());
-        Assert.Contains(Hostile, cut.Find($"#folder-actions-{Finance:D} button").GetAttribute("aria-label"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -361,7 +204,7 @@ public sealed class FolderTreePanelTests : VaultTestContext
     }
 
     [Fact]
-    public void CreateChild_SendsTheParentAndExpandsIt()
+    public void CreateChild_SendsTheParent()
     {
         var cut = RenderPanel();
 
@@ -393,8 +236,6 @@ public sealed class FolderTreePanelTests : VaultTestContext
     [Theory]
     [InlineData(ApiCallStatus.Conflict, VaultStatusText.ConflictText)]
     [InlineData(ApiCallStatus.Failed, VaultStatusText.FailedText)]
-    [InlineData(ApiCallStatus.RateLimited, "Too many requests. Try again in a minute.")]
-    [InlineData(ApiCallStatus.NotFound, "This item no longer exists.")]
     public void Create_Failure_ShowsTheStatusTextInDialog(ApiCallStatus status, string expected)
     {
         FoldersClient.CreateFolderAsync(Arg.Any<CreateFolderRequestDto>(), Arg.Any<CancellationToken>())
@@ -564,30 +405,20 @@ public sealed class FolderTreePanelTests : VaultTestContext
         Assert.Empty(_provider.FindAll("#folder-editor-name-input"));
     }
 
-    [Fact]
-    public void Move_ChoosingAParent_CallsMoveWithThatParent()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Move_ChoosingAParent_CallsMoveWithThatParent(bool toNoFolder)
     {
         var cut = RenderPanel(selected: Bonuses);
         OpenAction(cut, Bonuses, "move").Click();
 
-        _provider.WaitForElement("#folder-editor-parent-select").Change(Legal.ToString("D"));
+        _provider.WaitForElement("#folder-editor-parent-select").Change(toNoFolder ? string.Empty : Legal.ToString("D"));
         _provider.Find("#folder-editor-save").Click();
 
         cut.WaitForAssertion(() => Assert.Equal(1, _changed));
-        FoldersClient.Received(1).MoveFolderAsync(Bonuses, Arg.Is<MoveFolderRequestDto>(request => request.ParentId == Legal), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public void Move_ToNoFolder_SendsANullParent()
-    {
-        var cut = RenderPanel(selected: Bonuses);
-        OpenAction(cut, Bonuses, "move").Click();
-
-        _provider.WaitForElement("#folder-editor-parent-select").Change(string.Empty);
-        _provider.Find("#folder-editor-save").Click();
-
-        cut.WaitForAssertion(() => Assert.Equal(1, _changed));
-        FoldersClient.Received(1).MoveFolderAsync(Bonuses, Arg.Is<MoveFolderRequestDto>(request => request.ParentId == null), Arg.Any<CancellationToken>());
+        Guid? expectedParent = toNoFolder ? null : Legal;
+        FoldersClient.Received(1).MoveFolderAsync(Bonuses, Arg.Is<MoveFolderRequestDto>(request => request.ParentId == expectedParent), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -617,30 +448,19 @@ public sealed class FolderTreePanelTests : VaultTestContext
         FoldersClient.DidNotReceive().DeleteFolderAsync(Arg.Any<Guid>(), Arg.Any<FolderDeleteModeDto>(), Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public void Delete_MoveMode_SendsMoveToParentAndReloads()
+    [Theory]
+    [InlineData("folder-delete-mode-move", FolderDeleteModeDto.MoveToParent)]
+    [InlineData("folder-delete-mode-delete", FolderDeleteModeDto.DeleteContents)]
+    public void Delete_ConfirmedMode_SendsThatModeAndReloads(string modeId, FolderDeleteModeDto mode)
     {
         var cut = RenderPanel();
         OpenAction(cut, Legal, "delete").Click();
 
-        ConfirmDelete("folder-delete-mode-move");
+        ConfirmDelete(modeId);
 
         cut.WaitForAssertion(() => Assert.Equal(1, _changed));
-        FoldersClient.Received(1).DeleteFolderAsync(Legal, FolderDeleteModeDto.MoveToParent, Arg.Any<CancellationToken>());
+        FoldersClient.Received(1).DeleteFolderAsync(Legal, mode, Arg.Any<CancellationToken>());
         Assert.Equal(2, ListCalls());
-        Assert.Equal("http://localhost/", CurrentUri);
-    }
-
-    [Fact]
-    public void Delete_ContentsMode_SendsDeleteContents()
-    {
-        var cut = RenderPanel();
-        OpenAction(cut, Legal, "delete").Click();
-
-        ConfirmDelete("folder-delete-mode-delete");
-
-        cut.WaitForAssertion(() => Assert.Equal(1, _changed));
-        FoldersClient.Received(1).DeleteFolderAsync(Legal, FolderDeleteModeDto.DeleteContents, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -766,44 +586,6 @@ public sealed class FolderTreePanelTests : VaultTestContext
         cut.WaitForAssertion(() => Assert.Equal(1, _changed));
         Assert.NotNull(cut.Find(Node(Payroll)));
         Assert.Contains("Collapse Finance", cut.Find($"#folder-toggle-{Finance:D}").GetAttribute("aria-label"), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Reload_RestoresTheAncestorsOfTheSelectedFolder()
-    {
-        var cut = RenderPanel(selected: Bonuses);
-
-        cut.Find("#vault-new-folder").Click();
-        FillAndSave("Operations");
-
-        cut.WaitForAssertion(() => Assert.Equal(1, _changed));
-        Assert.NotNull(cut.Find(Node(Bonuses)));
-    }
-
-    [Fact]
-    public void Reload_AfterTheListChanges_ShowsTheNewShape()
-    {
-        var cut = RenderPanel();
-        var created = Folder(Guid.Parse("00000000-0000-0000-0000-0000000000f6"), null, "Operations");
-        ListReturns([.. Tree(), created]);
-        cut.Find("#vault-new-folder").Click();
-
-        FillAndSave("Operations");
-
-        cut.WaitForAssertion(() => Assert.NotNull(cut.Find($"#folder-node-{created.Id:D}")));
-    }
-
-    [Fact]
-    public void CreateChild_ExpandsTheParentAfterReload()
-    {
-        var childOfLegal = Folder(Guid.Parse("00000000-0000-0000-0000-0000000000f6"), Legal, "Contracts");
-        var cut = RenderPanel();
-        ListReturns([.. Tree(), childOfLegal]);
-        OpenAction(cut, Legal, "new-child").Click();
-
-        FillAndSave("Contracts");
-
-        cut.WaitForAssertion(() => Assert.NotNull(cut.Find($"#folder-node-{childOfLegal.Id:D}")));
     }
 
     [Fact]

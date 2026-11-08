@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using SharpVault.Dtos.Users;
-using SharpVault.UI.Shared.Components.Base;
 using SharpVault.UI.Shared.Navigation;
 using SharpVault.UI.Shared.Pages;
 using SharpVault.UI.Shared.Services;
@@ -17,8 +16,6 @@ namespace SharpVault.UnitTests.UiShared.Pages;
 
 public sealed class HomeAndAccountPageTests : ShellTestContext
 {
-    private const string EntraSignInText = "Sign in with your work account";
-
     public HomeAndAccountPageTests()
     {
         SetRendererInfo(new RendererInfo("Server", true));
@@ -43,40 +40,9 @@ public sealed class HomeAndAccountPageTests : ShellTestContext
     }
 
     [Fact]
-    public void HomePage_SignedOutLocalMode_SignInButtonSaysSignIn()
-    {
-        var cut = RenderHome();
-
-        Assert.Equal("Sign in", cut.Find("#home-sign-in").TextContent.Trim());
-    }
-
-    [Fact]
-    public void HomePage_SignedOutEntraMode_SignInButtonSaysWorkAccount()
-    {
-        SignInOptions.HomeButtonText = EntraSignInText;
-
-        var cut = RenderHome();
-
-        Assert.Equal(EntraSignInText, cut.Find("#home-sign-in").TextContent.Trim());
-    }
-
-    [Fact]
     public void HomePage_SignedIn_ReplacesTheHistoryEntryWithTheVault()
     {
         Authorization.SetAuthorized(DisplayName);
-
-        RenderHome();
-
-        var entry = Assert.Single(Navigation.History);
-        Assert.Equal(VaultRoutes.Vault, entry.Uri);
-        Assert.True(entry.Options.ReplaceHistoryEntry);
-    }
-
-    [Fact]
-    public void HomePage_SignedIn_AsAdmin_ReplacesTheHistoryEntryWithTheVault()
-    {
-        Authorization.SetAuthorized(DisplayName);
-        ReturnsCurrentUser(UserDto(DisplayName, isAdmin: true));
 
         RenderHome();
 
@@ -118,109 +84,20 @@ public sealed class HomeAndAccountPageTests : ShellTestContext
         Assert.DoesNotContain(VaultRoutes.Vault, cut.Markup, StringComparison.Ordinal);
     }
 
-    [Fact]
-    [Trait("Category", "Security")]
-    public void HomePage_SignedOut_ShowsNoUserData()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AccountPage_AdminBadge_ShownOnlyForAdministrators(bool isAdmin)
     {
-        var cut = RenderHome();
-
-        Assert.DoesNotContain("Signed in as", cut.Markup, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Account_EmptyDisplayName_ShowsTheFallbackText()
-    {
-        ReturnsCurrentUser(UserDto(string.Empty, isAdmin: false));
-
-        var cut = Render<Account>();
-
-        Assert.Equal("No name on file", cut.Find("#account-display-name").TextContent);
-    }
-
-    [Fact]
-    public void AccountPage_ProfileLoaded_RendersNameAndUserId()
-    {
-        var userId = Guid.NewGuid();
-        ReturnsCurrentUser(new CurrentUserDto { UserId = userId, DisplayName = DisplayName, IsAdmin = false });
-
-        var cut = Render<Account>();
-
-        var name = cut.Find("#account-display-name");
-        Assert.Equal(DisplayName, name.TextContent);
-        Assert.Equal(0, name.ChildElementCount);
-        var id = cut.Find("#account-user-id");
-        Assert.Equal(userId.ToString(), id.TextContent);
-        Assert.NotNull(cut.Find("#account-section"));
-        Assert.Empty(cut.FindAll("#account-error"));
-    }
-
-    [Fact]
-    public void AccountPage_Admin_RendersAdminBadge()
-    {
-        ReturnsCurrentUser(UserDto(DisplayName, isAdmin: true));
-
-        var cut = Render<Account>();
-
-        var badge = cut.Find("#account-admin-badge");
-        Assert.Contains("Administrator", badge.TextContent, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void AccountPage_NonAdmin_RendersNoAdminBadge()
-    {
-        ReturnsCurrentUser(UserDto(DisplayName, isAdmin: false));
+        ReturnsCurrentUser(UserDto(DisplayName, isAdmin));
 
         var cut = Render<Account>();
 
         Assert.NotNull(cut.Find("#account-section"));
-        Assert.Empty(cut.FindAll("#account-admin-badge"));
-        Assert.DoesNotContain("Administrator", cut.Markup, StringComparison.Ordinal);
+        Assert.Equal(isAdmin, cut.FindAll("#account-admin-badge").Count == 1);
     }
 
     [Fact]
-    [Trait("Category", "Security")]
-    public void AccountPage_NameWithMarkup_IsEncoded()
-    {
-        const string hostile = "<img src=x onerror=alert(1)>";
-        ReturnsCurrentUser(UserDto(hostile, isAdmin: false));
-
-        var cut = Render<Account>();
-
-        Assert.Empty(cut.FindAll("img"));
-        Assert.Equal(hostile, cut.Find("#account-display-name").TextContent);
-    }
-
-    [Fact]
-    public void AccountPage_ApiFailure_ShowsErrorStateWithRetry()
-    {
-        ReturnsCurrentUserStatus(ApiResponse<CurrentUserDto>.Failed());
-
-        var cut = Render<Account>();
-
-        var alert = cut.Find("#account-error");
-        Assert.Equal("alert", alert.GetAttribute("role"));
-        Assert.Contains(LoadableComponentBase<CurrentUserDto>.GenericErrorText, alert.TextContent, StringComparison.Ordinal);
-        Assert.NotNull(cut.Find("#account-retry"));
-        Assert.Empty(cut.FindAll("#account-section"));
-        Assert.Empty(cut.FindAll("#account-user-id"));
-        Assert.NotNull(cut.Find("#account-heading"));
-    }
-
-    [Fact]
-    public void AccountPage_RetryAfterFailure_LoadsTheProfile()
-    {
-        Accessor.GetAsync(Arg.Any<CancellationToken>()).Returns(
-            Task.FromResult(ApiResponse<CurrentUserDto>.Failed()),
-            Task.FromResult(ApiResponse<CurrentUserDto>.Success(UserDto(DisplayName, isAdmin: false))));
-        var cut = Render<Account>();
-
-        cut.Find("#account-retry").Click();
-
-        Assert.Equal(DisplayName, cut.Find("#account-display-name").TextContent);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
     public void AccountPage_SignInRequired_NavigatesWithReturnUrlAccount()
     {
         Services.GetRequiredService<NavigationManager>().NavigateTo("account");

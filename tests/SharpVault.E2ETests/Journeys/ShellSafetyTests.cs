@@ -16,6 +16,7 @@ public sealed class ShellSafetyTests(E2EHost host)
     private const string IdleMonitorScriptPattern = "**/idle-monitor.js";
     private const string BlockedRequestConsoleText = "net::ERR_FAILED";
     private const string FailedResourceConsoleText = "Failed to load resource";
+    private const string BlazorScriptPattern = "**/blazor.web*.js";
     private const string IdleFastForward = "16:00";
     private const string CircuitTimeoutConsoleText = "Server timeout elapsed without receiving a message from the server";
     private const int IdleLimitMinutes = 16;
@@ -108,6 +109,24 @@ public sealed class ShellSafetyTests(E2EHost host)
         await shell.WaitForShellAsync();
         await shell.AssertBlazorErrorBannerHiddenAsync();
         session.Errors.AssertClean(page.Url);
+    }
+
+    [Fact]
+    public async Task SignedInPage_BeforeTheAppStarts_ShowsTheBootSkeletonAndRemovesItOnceStarted()
+    {
+        await using var session = await host.OpenSessionAsync();
+        var page = await session.NewPageAsync();
+        await SignInAsync(page, E2EAccounts.UserOne);
+        var shell = new ShellPage(page);
+
+        await page.RouteAsync(BlazorScriptPattern, route => route.AbortAsync());
+        await page.GotoAsync(host.WebUrl + Routes.Vault);
+        await shell.AssertBootSkeletonShownAsync();
+
+        await page.UnrouteAsync(BlazorScriptPattern);
+        await page.GotoAsync(host.WebUrl + Routes.Vault);
+        await shell.WaitForShellAsync();
+        await shell.AssertBootSkeletonHiddenAsync();
     }
 
     [Fact]

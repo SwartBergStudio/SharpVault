@@ -37,17 +37,6 @@ public sealed class VaultMarkupTests
         ["recycle-bin-purge-dialog"] = RecycleBinPurgeDialogAsync,
     };
 
-    public static TheoryData<string> ScenarioNames()
-    {
-        var data = new TheoryData<string>();
-        foreach (var name in Scenarios.Keys)
-        {
-            data.Add(name);
-        }
-
-        return data;
-    }
-
     private static SecretDto Secret(string name, bool damaged = false) => new()
     {
         Id = Guid.NewGuid(),
@@ -272,34 +261,27 @@ public sealed class VaultMarkupTests
 
     private static string Describe(IElement element) => element.OuterHtml.Length > 160 ? element.OuterHtml[..160] : element.OuterHtml;
 
-    [Theory]
-    [MemberData(nameof(ScenarioNames))]
-    public async Task AllVaultComponents_EveryInteractiveElement_HasId(string scenario)
+    [Fact]
+    public async Task AllVaultComponents_InteractiveElements_HaveUniqueIds()
     {
-        await using var context = new VaultTestContext();
+        var failures = new List<string>();
+        foreach (var (scenario, render) in Scenarios)
+        {
+            await using var context = new VaultTestContext();
+            var elements = await render(context);
 
-        var elements = await Scenarios[scenario](context);
+            var interactive = elements.Where(IsInteractive).ToList();
+            Assert.NotEmpty(interactive);
+            failures.AddRange(interactive
+                .Where(element => string.IsNullOrWhiteSpace(element.Id))
+                .Select(element => $"{scenario}: interactive element without an id: {Describe(element)}"));
+            failures.AddRange(elements
+                .Where(element => !string.IsNullOrEmpty(element.Id))
+                .GroupBy(element => element.Id, StringComparer.Ordinal)
+                .Where(group => group.Count() > 1)
+                .Select(group => $"{scenario}: duplicate id {group.Key} x{group.Count()}"));
+        }
 
-        var interactive = elements.Where(IsInteractive).ToList();
-        var missing = interactive.Where(element => string.IsNullOrWhiteSpace(element.Id)).Select(Describe).ToList();
-        Assert.NotEmpty(interactive);
-        Assert.True(missing.Count == 0, $"{scenario}: interactive elements without an id:{Environment.NewLine}{string.Join(Environment.NewLine, missing)}");
-    }
-
-    [Theory]
-    [MemberData(nameof(ScenarioNames))]
-    public async Task AllVaultComponents_Ids_AreUniquePerRender(string scenario)
-    {
-        await using var context = new VaultTestContext();
-
-        var elements = await Scenarios[scenario](context);
-
-        var duplicates = elements
-            .Where(element => !string.IsNullOrEmpty(element.Id))
-            .GroupBy(element => element.Id, StringComparer.Ordinal)
-            .Where(group => group.Count() > 1)
-            .Select(group => $"{group.Key} x{group.Count()}")
-            .ToList();
-        Assert.True(duplicates.Count == 0, $"{scenario}: duplicate ids: {string.Join(", ", duplicates)}");
+        Assert.Empty(failures);
     }
 }

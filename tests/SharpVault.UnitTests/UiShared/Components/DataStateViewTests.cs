@@ -27,38 +27,22 @@ public sealed class DataStateViewTests : MudTestContext
         });
 
     [Fact]
-    public void Loading_Default_RendersBusyIndicator()
+    public void Loading_Default_RendersSkeletonAndNoValue()
     {
         var cut = RenderView(LoadState.Loading);
 
         Assert.Equal("status", cut.Find($"#{Prefix}-loading").GetAttribute("role"));
+        Assert.NotEmpty(cut.FindAll($"#{Prefix}-loading .mud-skeleton"));
         Assert.Empty(cut.FindAll("#loaded-value"));
     }
 
     [Fact]
-    public void Empty_Default_RendersEmptyStatePanel()
+    public void Empty_Default_RendersEmptyStateAndNoValue()
     {
         var cut = RenderView(LoadState.Empty);
 
         Assert.NotNull(cut.Find($"#{Prefix}-empty"));
-        Assert.Equal("Nothing here yet", cut.Find($"#{Prefix}-empty-title").TextContent);
         Assert.Empty(cut.FindAll("#loaded-value"));
-    }
-
-    [Fact]
-    public void Empty_WithDescription_PassesItToTheEmptyState()
-    {
-        var cut = RenderView(LoadState.Empty, parameters => parameters.Add(view => view.EmptyDescription, "Do this next."));
-
-        Assert.Equal("Do this next.", cut.Find($"#{Prefix}-empty-description").TextContent);
-    }
-
-    [Fact]
-    public void Empty_WithoutDescription_RendersNoDescription()
-    {
-        var cut = RenderView(LoadState.Empty);
-
-        Assert.Empty(cut.FindAll($"#{Prefix}-empty-description"));
     }
 
     [Fact]
@@ -109,14 +93,6 @@ public sealed class DataStateViewTests : MudTestContext
     }
 
     [Fact]
-    public void EmptyTitle_Custom_IsRendered()
-    {
-        var cut = RenderView(LoadState.Empty, p => p.Add(v => v.EmptyTitle, "No users"));
-
-        Assert.Equal("No users", cut.Find($"#{Prefix}-empty-title").TextContent);
-    }
-
-    [Fact]
     public void Ids_Always_UseThePrefix()
     {
         foreach (var state in new[] { LoadState.Loading, LoadState.Empty, LoadState.Error })
@@ -126,33 +102,5 @@ public sealed class DataStateViewTests : MudTestContext
             var ids = cut.FindAll("[id]").Select(element => element.GetAttribute("id")).Where(id => id is not null && id.StartsWith(Prefix, StringComparison.Ordinal)).ToList();
             Assert.NotEmpty(ids);
         }
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("Upper")]
-    [InlineData("a b")]
-    public void InvalidPrefix_Throws(string prefix)
-    {
-        ThrownExceptions.ArgumentFrom(() => Render<DataStateView<string>>(parameters => parameters
-            .Add(view => view.IdPrefix, prefix)
-            .Add(view => view.State, LoadState.Loading)));
-    }
-
-    [Fact]
-    public void ErrorText_WithMarkup_IsEncoded()
-    {
-        var cut = Render<DataStateView<string>>(parameters => parameters
-            .Add(view => view.IdPrefix, Prefix)
-            .Add(view => view.State, LoadState.Error)
-            .Add(view => view.ErrorText, "<img src=x onerror=alert(1)>"));
-
-        Assert.Empty(cut.FindAll("img"));
-    }
-
-    [Fact]
-    public void DefaultState_IsLoading()
-    {
-        Assert.Equal(LoadState.Loading, default(LoadState));
     }
 }

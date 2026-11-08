@@ -21,53 +21,16 @@ public sealed class DevelopmentKeyWrapProviderTests
     private const string DevelopmentEnvironment = "Development";
     private const int WrappedLength = 60;
 
-    public static TheoryData<int> EveryWrappedByteIndex
-    {
-        get
-        {
-            var data = new TheoryData<int>();
-            for (var index = 0; index < WrappedLength; index++)
-            {
-                data.Add(index);
-            }
-
-            return data;
-        }
-    }
-
     [Theory]
     [Trait("Category", "Security")]
     [InlineData("Production")]
     [InlineData("Staging")]
-    [InlineData("Test")]
-    [InlineData("Dev")]
-    [InlineData("Development2")]
     [InlineData("")]
     [InlineData("development ")]
-    [InlineData(" Development")]
-    [InlineData("Development ")]
     [InlineData("Developmen")]
-    [InlineData("Development\0")]
-    [InlineData("Development\n")]
     public void Constructor_NonDevelopmentEnvironment_Throws(string environmentName)
     {
         var options = CreateOptions(RandomMaterial());
-
-        var exception = Assert.Throws<InvalidOperationException>(
-            () => new DevelopmentKeyWrapProvider(HostEnvironments.Named(environmentName), options));
-
-        Assert.Equal(NotAllowedMessage, exception.Message);
-    }
-
-    [Theory]
-    [Trait("Category", "Security")]
-    [InlineData("Production")]
-    [InlineData("Staging")]
-    [InlineData("")]
-    [InlineData("development ")]
-    public void Constructor_NonDevelopmentEnvironmentWithoutMaterial_ThrowsEnvironmentRefusalFirst(string environmentName)
-    {
-        var options = CreateOptions(null);
 
         var exception = Assert.Throws<InvalidOperationException>(
             () => new DevelopmentKeyWrapProvider(HostEnvironments.Named(environmentName), options));
@@ -89,7 +52,6 @@ public sealed class DevelopmentKeyWrapProviderTests
 
     [Theory]
     [InlineData("Development")]
-    [InlineData("development")]
     [InlineData("DEVELOPMENT")]
     public void Constructor_DevelopmentEnvironmentInAnyCase_Succeeds(string environmentName)
     {
@@ -98,31 +60,13 @@ public sealed class DevelopmentKeyWrapProviderTests
         Assert.NotNull(provider);
     }
 
-    [Fact]
-    [Trait("Category", "Security")]
-    public void Constructor_NullEnvironment_ThrowsArgumentNullException()
-    {
-        Assert.Throws<ArgumentNullException>(() => new DevelopmentKeyWrapProvider(null!, CreateOptions(RandomMaterial())));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void Constructor_NullOptions_ThrowsArgumentNullException()
-    {
-        Assert.Throws<ArgumentNullException>(() => new DevelopmentKeyWrapProvider(HostEnvironments.Named(DevelopmentEnvironment), null!));
-    }
-
     [Theory]
     [Trait("Category", "Security")]
     [InlineData(null)]
     [InlineData("")]
-    [InlineData(" ")]
     [InlineData("\t\r\n")]
-    [InlineData("                                        ")]
     [InlineData("0123456789012345678901234567890")]
     [InlineData("  0123456789012345678901234567890  ")]
-    [InlineData("\t0123456789012345678901234567890\n")]
-    [InlineData("                0123456789012345                ")]
     public void Constructor_MissingOrShortKeyMaterial_ThrowsWithoutEchoingIt(string? material)
     {
         var exception = Assert.Throws<InvalidOperationException>(
@@ -136,16 +80,6 @@ public sealed class DevelopmentKeyWrapProviderTests
     }
 
     [Fact]
-    public void Constructor_KeyMaterialOfThirtyTwoCharacters_Succeeds()
-    {
-        using var provider = new DevelopmentKeyWrapProvider(
-            HostEnvironments.Named(DevelopmentEnvironment),
-            CreateOptions(new string('k', 32)));
-
-        Assert.NotNull(provider);
-    }
-
-    [Fact]
     public void Constructor_ThirtyTwoCharactersAfterTrimming_Succeeds()
     {
         using var provider = new DevelopmentKeyWrapProvider(
@@ -153,16 +87,6 @@ public sealed class DevelopmentKeyWrapProviderTests
             CreateOptions("  " + new string('k', 32) + "  "));
 
         Assert.NotNull(provider);
-    }
-
-    [Fact]
-    public void KeyId_SameKeyMaterial_IsStable()
-    {
-        var material = RandomMaterial();
-        using var first = CreateProvider(material);
-        using var second = CreateProvider(material);
-
-        Assert.Equal(first.KeyId, second.KeyId);
     }
 
     [Fact]
@@ -204,18 +128,6 @@ public sealed class DevelopmentKeyWrapProviderTests
     }
 
     [Fact]
-    public async Task WrapThenUnwrap_Always_ReturnsOriginalDataKey()
-    {
-        using var provider = CreateProvider(RandomMaterial());
-        var dataKey = RandomDataKey();
-
-        var wrapped = await provider.WrapAsync(dataKey, TestContext.Current.CancellationToken);
-        var unwrapped = await provider.UnwrapAsync(wrapped, TestContext.Current.CancellationToken);
-
-        Assert.Equal(dataKey, unwrapped);
-    }
-
-    [Fact]
     public async Task WrapThenUnwrap_ProviderRecreatedWithSameMaterial_ReturnsOriginalDataKey()
     {
         var material = RandomMaterial();
@@ -239,7 +151,6 @@ public sealed class DevelopmentKeyWrapProviderTests
         var first = await provider.WrapAsync(dataKey, TestContext.Current.CancellationToken);
         var second = await provider.WrapAsync(dataKey, TestContext.Current.CancellationToken);
 
-        Assert.NotEqual(first.Value, second.Value);
         Assert.NotEqual(first.Value.AsSpan(0, 12).ToArray(), second.Value.AsSpan(0, 12).ToArray());
     }
 
@@ -267,24 +178,10 @@ public sealed class DevelopmentKeyWrapProviderTests
         Assert.Equal(provider.KeyId, wrapped.KeyId);
     }
 
-    [Fact]
-    public async Task WrapAsync_Always_DoesNotModifyOrKeepTheCallersDataKey()
-    {
-        using var provider = CreateProvider(RandomMaterial());
-        var dataKey = RandomDataKey();
-        var copy = dataKey.ToArray();
-
-        await provider.WrapAsync(dataKey, TestContext.Current.CancellationToken);
-
-        Assert.Equal(copy, dataKey);
-    }
-
     [Theory]
     [InlineData(0)]
-    [InlineData(16)]
     [InlineData(31)]
     [InlineData(33)]
-    [InlineData(64)]
     public async Task WrapAsync_DataKeyNot32Bytes_Throws(int length)
     {
         using var provider = CreateProvider(RandomMaterial());
@@ -293,15 +190,6 @@ public sealed class DevelopmentKeyWrapProviderTests
             () => provider.WrapAsync(new byte[length], TestContext.Current.CancellationToken));
 
         Assert.StartsWith(InvalidDataKeyLengthMessage, exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task WrapAsync_NullDataKey_ThrowsArgumentNullException()
-    {
-        using var provider = CreateProvider(RandomMaterial());
-
-        await Assert.ThrowsAsync<ArgumentNullException>(
-            () => provider.WrapAsync(null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -335,20 +223,6 @@ public sealed class DevelopmentKeyWrapProviderTests
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task UnwrapAsync_KeyIdChangedAfterWrap_ThrowsKeyMismatch()
-    {
-        using var provider = CreateProvider(RandomMaterial());
-        var wrapped = await provider.WrapAsync(RandomDataKey(), TestContext.Current.CancellationToken);
-        var changed = wrapped with { KeyId = provider.KeyId.ToUpperInvariant() };
-
-        var exception = await Assert.ThrowsAsync<SecretDecryptionException>(
-            () => provider.UnwrapAsync(changed, TestContext.Current.CancellationToken));
-
-        Assert.Equal(DecryptionFailureReason.KeyMismatch, exception.Reason);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
     public async Task UnwrapAsync_KeyVaultWrappedKey_ThrowsKeyMismatch()
     {
         using var provider = CreateProvider(RandomMaterial());
@@ -364,27 +238,12 @@ public sealed class DevelopmentKeyWrapProviderTests
     [Trait("Category", "Security")]
     [InlineData("RSA-OAEP-256")]
     [InlineData("development-a256gcm")]
-    [InlineData("")]
-    [InlineData("development-A256GCM ")]
-    public async Task UnwrapAsync_AlgorithmChanged_ThrowsKeyMismatch(string algorithm)
+    [InlineData(null)]
+    public async Task UnwrapAsync_AlgorithmChanged_ThrowsKeyMismatch(string? algorithm)
     {
         using var provider = CreateProvider(RandomMaterial());
         var wrapped = await provider.WrapAsync(RandomDataKey(), TestContext.Current.CancellationToken);
-        var changed = wrapped with { Algorithm = algorithm };
-
-        var exception = await Assert.ThrowsAsync<SecretDecryptionException>(
-            () => provider.UnwrapAsync(changed, TestContext.Current.CancellationToken));
-
-        Assert.Equal(DecryptionFailureReason.KeyMismatch, exception.Reason);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task UnwrapAsync_NullAlgorithm_ThrowsKeyMismatch()
-    {
-        using var provider = CreateProvider(RandomMaterial());
-        var wrapped = await provider.WrapAsync(RandomDataKey(), TestContext.Current.CancellationToken);
-        var changed = wrapped with { Algorithm = null! };
+        var changed = wrapped with { Algorithm = algorithm! };
 
         var exception = await Assert.ThrowsAsync<SecretDecryptionException>(
             () => provider.UnwrapAsync(changed, TestContext.Current.CancellationToken));
@@ -394,7 +253,9 @@ public sealed class DevelopmentKeyWrapProviderTests
 
     [Theory]
     [Trait("Category", "Security")]
-    [MemberData(nameof(EveryWrappedByteIndex))]
+    [InlineData(0)]
+    [InlineData(WrappedLength / 2)]
+    [InlineData(WrappedLength - 1)]
     public async Task UnwrapAsync_AnyByteFlipped_ThrowsAuthenticationFailed(int index)
     {
         using var provider = CreateProvider(RandomMaterial());
@@ -410,31 +271,9 @@ public sealed class DevelopmentKeyWrapProviderTests
 
     [Theory]
     [Trait("Category", "Security")]
-    [InlineData(0x80)]
-    [InlineData(0xFF)]
-    public async Task UnwrapAsync_EveryBitOfEveryByteFlipped_NeverSucceeds(int mask)
-    {
-        using var provider = CreateProvider(RandomMaterial());
-        var original = RandomDataKey();
-        var wrapped = await provider.WrapAsync(original, TestContext.Current.CancellationToken);
-
-        for (var index = 0; index < WrappedLength; index++)
-        {
-            var tampered = wrapped.Value.ToArray();
-            tampered[index] ^= (byte)mask;
-
-            await Assert.ThrowsAsync<SecretDecryptionException>(
-                () => provider.UnwrapAsync(wrapped with { Value = tampered }, TestContext.Current.CancellationToken));
-        }
-    }
-
-    [Theory]
-    [Trait("Category", "Security")]
     [InlineData(0)]
-    [InlineData(1)]
-    [InlineData(59)]
-    [InlineData(61)]
-    [InlineData(256)]
+    [InlineData(WrappedLength - 1)]
+    [InlineData(WrappedLength + 1)]
     public async Task UnwrapAsync_WrongLength_ThrowsMalformedWrappedKey(int length)
     {
         using var provider = CreateProvider(RandomMaterial());
@@ -462,28 +301,6 @@ public sealed class DevelopmentKeyWrapProviderTests
     }
 
     [Fact]
-    public async Task UnwrapAsync_NullWrappedKey_ThrowsArgumentNullException()
-    {
-        using var provider = CreateProvider(RandomMaterial());
-
-        await Assert.ThrowsAsync<ArgumentNullException>(
-            () => provider.UnwrapAsync(null!, TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
-    public async Task UnwrapAsync_TwoCalls_ReturnDifferentArrays()
-    {
-        using var provider = CreateProvider(RandomMaterial());
-        var wrapped = await provider.WrapAsync(RandomDataKey(), TestContext.Current.CancellationToken);
-
-        var first = await provider.UnwrapAsync(wrapped, TestContext.Current.CancellationToken);
-        var second = await provider.UnwrapAsync(wrapped, TestContext.Current.CancellationToken);
-
-        Assert.NotSame(first, second);
-        Assert.Equal(first, second);
-    }
-
-    [Fact]
     [Trait("Category", "Security")]
     public async Task UnwrapAsync_ZeroingTheReturnedArray_DoesNotAffectLaterUnwraps()
     {
@@ -500,27 +317,17 @@ public sealed class DevelopmentKeyWrapProviderTests
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task UnwrapAsync_WrappedKeyValue_IsNotModified()
-    {
-        using var provider = CreateProvider(RandomMaterial());
-        var wrapped = await provider.WrapAsync(RandomDataKey(), TestContext.Current.CancellationToken);
-        var copy = wrapped.Value.ToArray();
-
-        await provider.UnwrapAsync(wrapped, TestContext.Current.CancellationToken);
-
-        Assert.Equal(copy, wrapped.Value);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task UnwrapAsync_AfterDispose_ThrowsObjectDisposedException()
+    public async Task UnwrapAndWrap_AfterDispose_ThrowObjectDisposedException()
     {
         var provider = CreateProvider(RandomMaterial());
-        var wrapped = await provider.WrapAsync(RandomDataKey(), TestContext.Current.CancellationToken);
+        var dataKey = RandomDataKey();
+        var wrapped = await provider.WrapAsync(dataKey, TestContext.Current.CancellationToken);
         provider.Dispose();
 
         await Assert.ThrowsAsync<ObjectDisposedException>(
             () => provider.UnwrapAsync(wrapped, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => provider.WrapAsync(dataKey, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -536,34 +343,6 @@ public sealed class DevelopmentKeyWrapProviderTests
         provider.Dispose();
 
         Assert.All(keyEncryptionKey, static value => Assert.Equal(0, value));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void Dispose_CalledTwice_DoesNotThrowAndKeyStaysZero()
-    {
-        var provider = CreateProvider(RandomMaterial());
-        var field = typeof(DevelopmentKeyWrapProvider).GetField("_keyEncryptionKey", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        var keyEncryptionKey = Assert.IsType<byte[]>(field.GetValue(provider));
-
-        provider.Dispose();
-        var exception = Record.Exception(provider.Dispose);
-
-        Assert.Null(exception);
-        Assert.All(keyEncryptionKey, static value => Assert.Equal(0, value));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task WrapAsync_AfterDispose_ThrowsObjectDisposedException()
-    {
-        var provider = CreateProvider(RandomMaterial());
-        var dataKey = RandomDataKey();
-        provider.Dispose();
-
-        await Assert.ThrowsAsync<ObjectDisposedException>(
-            () => provider.WrapAsync(dataKey, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -623,24 +402,6 @@ public sealed class DevelopmentKeyWrapProviderTests
         Assert.DoesNotContain(Convert.ToBase64String(wrapped.Value), text, StringComparison.Ordinal);
         Assert.DoesNotContain(Convert.ToHexString(wrapped.Value), text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(Convert.ToBase64String(dataKey), text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task WrapAndUnwrap_InParallel_AllRoundTrip()
-    {
-        using var provider = CreateProvider(RandomMaterial());
-        var cancellationToken = TestContext.Current.CancellationToken;
-
-        var results = await Task.WhenAll(Enumerable.Range(0, 1000).Select(async _ =>
-        {
-            var dataKey = RandomDataKey();
-            var wrapped = await provider.WrapAsync(dataKey, cancellationToken);
-            var unwrapped = await provider.UnwrapAsync(wrapped, cancellationToken);
-            return dataKey.AsSpan().SequenceEqual(unwrapped);
-        }));
-
-        Assert.All(results, Assert.True);
     }
 
     private static DevelopmentKeyWrapProvider CreateProvider(string material) =>

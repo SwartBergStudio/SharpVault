@@ -22,21 +22,36 @@ The main session orchestrates and delegates. It does not write production code i
 | Agent | Model | Job |
 |---|---|---|
 | `planner` | Opus 5.5 | Writes the plan to `.github/spec/{feature-name}.md` |
-| `implementer` | Haiku | Implements all the tasks of the plan, one agent start to finish |
-| `test-writer` | Haiku | Writes and runs the tests listed in the plan, after the implementer has finished |
+| `implementer` | Haiku | Implements one batch of tasks. A fresh agent for each batch |
+| `test-writer` | Haiku | Writes and runs the tests for one batch, after the code for it is done |
 | `reviewer` | Opus 5.5 | Reviews the diff, builds and tests, approves or requests changes |
 | `docs-writer` | Haiku | Updates `docs/` and the README |
 
-For every piece of work:
+Size the process to the work:
+
+- **Small** (a bug fix, or a change to a few files): no planner and no spec. The main session briefs one `implementer`, or makes the fix itself when that is cheaper, then runs the affected tests. No docs agent unless behaviour in `docs/` changed.
+- **Feature**: the full steps below.
+
+For a feature:
 
 1. Create the branch `feature/{feature-name}` from `main`.
-2. Ask the `planner` for a plan. Read it and follow it.
-3. Hand the whole plan to one `implementer`. When it has finished all tasks, hand the test list to one `test-writer`. One agent runs at a time: no parallel agents and no per-agent worktrees.
-4. Ask the `reviewer` to review. Send its findings back to an `implementer` or `test-writer` and repeat until it approves.
+2. Ask the `planner` for a plan of at most 150 lines. Read it and follow it.
+3. Give each batch of tasks (about five files) to a fresh `implementer`, then its tests to a fresh `test-writer`. Do not resume an old agent with `SendMessage`: the plan on disk carries the state, and a long-lived agent gets more expensive with every turn. One agent runs at a time: no parallel agents and no per-agent worktrees.
+4. Run the full suite once, then ask the `reviewer` to review the whole diff. Send blocking findings to a fresh `implementer` or `test-writer`. Fix them and re-check them by filter. Review once more only if the fixes were large.
 5. Ask the `docs-writer` to update `docs/PROGRESS.md` and any affected docs.
-6. Commit, push and open a pull request to `main`.
+6. Commit. Push and open a pull request only when the owner says so.
 
-Do not pass a `model` override when delegating: each agent's model is set in `.claude/agents/`.
+Do not pass a `model` override when delegating, because each agent's model is set in `.claude/agents/`. The exception: if the project agents are not loaded (the session started outside this folder, and you get `Agent type 'implementer' not found`), use `general-purpose` with `model: haiku` for the Haiku roles, and tell it to read its `.claude/agents/*.md` file first.
+
+### Keeping the work moving and the cost down
+
+- **Do not stop to ask about anything that can be changed later.** Work may be running with nobody at the keyboard, and an open question blocks everything behind it. Take the recommended default, record it in the plan as a default, not as an owner decision, list it in the final report, and keep going. Ask only about what is hard to reverse or goes outside this machine (pushing, deleting data). Even then, finish all the other work first.
+- **Do not trust a dialog answer that arrives after a long wait.** The click that activates a terminal can answer an open dialog. Say what was selected and treat it as a default until the owner confirms it.
+- **The requested work comes first.** A defect found on the way that does not block it gets written down in the spec and is fixed after the requested work, in the same session. Do not start a side fix ahead of the feature.
+- **Test our logic, not the framework.** Do not test what .NET, Blazor, MudBlazor, System.Text.Json, Azure SDKs or AES-GCM already guarantee, such as Blazor encoding markup or AES-GCM detecting a flipped byte. Test that we use them correctly, once: that tampering is refused, or that a setting we chose is applied. Use a few rows per rule (each boundary and each distinct failure), not every possible value. Do not test that a constant equals its value. Style and convention checks are one test over all files, or an analyzer, not one case per file. Security rules we wrote still get full coverage: ownership, permissions, approvals, what gets logged, what is bound into encryption.
+- **Tests:** while working, run only the affected tests, by filter. Run the full suite once at the end of the work. Use `-nr:false`, and no mutation runs unless the owner asks.
+- **A failing test is a defect, not noise.** A flaky browser test gets its cause measured. Do not re-run it until it passes, and do not raise its timeout to hide it.
+- **Report plainly** what ran, what passed, what did not, and what was not checked. Do not commit or push when the owner has said they will test first.
 
 ## Skills
 
@@ -68,7 +83,7 @@ Work is only done when all of these are true:
   for specific browser methods that .NET cannot call directly (for example `navigator.clipboard.writeText`, or Web Crypto for one-time links),
   wrapped behind a C# interface and kept to small, focused modules.
   All UI lives in `SharpVault.UI.Shared` so Web and MAUI share it.
-  The UI is built on MudBlazor 9.11.0, used only through the `Sv*` wrappers in `Components/Common`. Pages only route and compose, with no code beyond parameter wiring. Feature components live in `Components/{Feature}`.
+  The UI is built on MudBlazor 9.12.0, used only through the `Sv*` wrappers in `Components/Common`. Pages only route and compose, with no code beyond parameter wiring. Feature components live in `Components/{Feature}`.
   Every interactive element gets a stable `id` attribute for testing. Wrappers check their ids (lowercase kebab-case).
   Admin decisions in the UI read `IsAdmin` from `GET /api/me`. The API is the security boundary.
   The Web's Content Security Policy allows inline styles only through `style-src 'unsafe-inline'`, because MudBlazor sets style attributes at runtime. Scripts stay `'self'`, and our markup has no `style` attributes and no inline script.

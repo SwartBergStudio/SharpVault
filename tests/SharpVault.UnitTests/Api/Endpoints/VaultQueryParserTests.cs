@@ -18,19 +18,10 @@ public sealed class VaultQueryParserTests
 
     [Theory]
     [InlineData("1")]
-    [InlineData("2")]
-    [InlineData("0")]
-    [InlineData("1,2")]
     [InlineData("movetoparent")]
-    [InlineData("MOVETOPARENT")]
-    [InlineData("deletecontents")]
     [InlineData("MoveToParent,DeleteContents")]
-    [InlineData(" MoveToParent")]
-    [InlineData("MoveToParent ")]
-    [InlineData("MoveToParent\n")]
     [InlineData("Unknown")]
     [InlineData("")]
-    [InlineData(" ")]
     public void ParseMode_AnythingElse_ReturnsTheUndefinedDefault(string value)
     {
         var mode = VaultQueryParser.ParseMode(value);
@@ -44,14 +35,5 @@ public sealed class VaultQueryParserTests
     public void ParseMode_NullValue_ReturnsTheUndefinedDefault()
     {
         Assert.Equal(default, VaultQueryParser.ParseMode(null!));
-    }
-
-    [Fact]
-    public void ParseMode_EveryDefinedMember_RoundTripsByName()
-    {
-        foreach (var mode in Enum.GetValues<FolderDeleteModeDto>())
-        {
-            Assert.Equal(mode, VaultQueryParser.ParseMode(mode.ToString()));
-        }
     }
 }

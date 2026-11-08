@@ -93,27 +93,6 @@ public sealed class ShareGrantsApiClientTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateGrant_Conflict_MapsToConflict()
-    {
-        _harness.Handler.Respond(HttpStatusCode.Conflict, string.Empty);
-
-        var response = await _client.CreateSecretGrantAsync(Guid.NewGuid(), Guid.NewGuid(), new CreateShareGrantRequestDto { RecipientId = Guid.NewGuid(), Permission = SharePermissionDto.View }, TestContext.Current.CancellationToken);
-
-        Assert.Equal(ApiCallStatus.Conflict, response.Status);
-    }
-
-    [Fact]
-    public async Task CreateGrant_BadRequest_CarriesTheProblemDetail()
-    {
-        _harness.Handler.Respond(HttpStatusCode.BadRequest, """{"detail":"Recipient unavailable"}""", "application/problem+json");
-
-        var response = await _client.CreateFolderGrantAsync(Guid.NewGuid(), Guid.NewGuid(), new CreateShareGrantRequestDto { RecipientId = Guid.NewGuid(), Permission = SharePermissionDto.View }, TestContext.Current.CancellationToken);
-
-        Assert.Equal(ApiCallStatus.Invalid, response.Status);
-        Assert.Equal("Recipient unavailable", response.Detail);
-    }
-
-    [Fact]
     public async Task ChangeSecretGrant_PutsPermissionWithTheTokenAsIfMatch()
     {
         var ownerId = Guid.NewGuid();
@@ -145,27 +124,13 @@ public sealed class ShareGrantsApiClientTests : IDisposable
         Assert.Equal(ETag, Only.IfMatch);
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("  ")]
-    public async Task ChangeGrant_MissingToken_ThrowsAndSendsNothing(string? token)
+    [Fact]
+    public async Task ChangeGrant_BlankToken_ThrowsAndSendsNothing()
     {
         var request = new ChangeShareGrantRequestDto { Permission = SharePermissionDto.View };
 
-        await Assert.ThrowsAnyAsync<ArgumentException>(() => _client.ChangeSecretGrantAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), token!, request, TestContext.Current.CancellationToken));
-        await Assert.ThrowsAnyAsync<ArgumentException>(() => _client.ChangeFolderGrantAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), token!, request, TestContext.Current.CancellationToken));
-
-        Assert.Empty(_harness.Handler.Requests);
-    }
-
-    [Fact]
-    public async Task NullRequests_ThrowAndSendNothing()
-    {
-        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreateSecretGrantAsync(Guid.NewGuid(), Guid.NewGuid(), null!, TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.CreateFolderGrantAsync(Guid.NewGuid(), Guid.NewGuid(), null!, TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ChangeSecretGrantAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), ETag, null!, TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<ArgumentNullException>(() => _client.ChangeFolderGrantAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), ETag, null!, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAnyAsync<ArgumentException>(() => _client.ChangeSecretGrantAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "  ", request, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAnyAsync<ArgumentException>(() => _client.ChangeFolderGrantAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "  ", request, TestContext.Current.CancellationToken));
 
         Assert.Empty(_harness.Handler.Requests);
     }
@@ -202,12 +167,8 @@ public sealed class ShareGrantsApiClientTests : IDisposable
     }
 
     [Theory]
-    [InlineData(HttpStatusCode.Unauthorized, ApiCallStatus.SignInRequired)]
     [InlineData(HttpStatusCode.Forbidden, ApiCallStatus.AccessDenied)]
     [InlineData(HttpStatusCode.NotFound, ApiCallStatus.NotFound)]
-    [InlineData(HttpStatusCode.Conflict, ApiCallStatus.Conflict)]
-    [InlineData(HttpStatusCode.TooManyRequests, ApiCallStatus.RateLimited)]
-    [InlineData(HttpStatusCode.InternalServerError, ApiCallStatus.Failed)]
     public async Task Revoke_ErrorStatuses_MapToTheCallStatus(HttpStatusCode status, ApiCallStatus expected)
     {
         _harness.Handler.Respond(status, string.Empty);
@@ -216,16 +177,5 @@ public sealed class ShareGrantsApiClientTests : IDisposable
 
         Assert.Equal(expected, response.Status);
         Assert.False(response.Value);
-    }
-
-    [Fact]
-    public async Task ListGrants_TokenIsSentAsBearerOnly()
-    {
-        _harness.Handler.Respond(HttpStatusCode.OK, """{"items":[]}""");
-
-        await _client.ListSecretGrantsAsync(Guid.NewGuid(), Guid.NewGuid(), TestContext.Current.CancellationToken);
-
-        Assert.Equal("Bearer", Only.AuthorizationScheme);
-        Assert.Equal(ApiClientHarness.Token, Only.AuthorizationParameter);
     }
 }

@@ -1,0 +1,20 @@
+@inherits LoadableComponentBase<OneTimeLinkPageDto>
+@inject IOneTimeLinksApiClient Links
+
+<StatusBanner Id="otl-edit-status" Message="@_status" />
+
+<DataStateView TValue="OneTimeLinkPageDto" IdPrefix="otl-edit-links" State="State" Value="Value" ErrorText="@ErrorText" OnRetry="ReloadAsync">
+    <Loading></Loading>
+    <Empty></Empty>
+    <Error></Error>
+    <ChildContent Context="page">
+        <SvAlert Id="otl-edit-warning" Kind="AlertKind.Warning">
+            <p id="otl-edit-warning-text">@WarningText(page.Items.Count)</p>
+            <SvButton Id="otl-edit-revoke" Variant="SvButtonVariant.Danger" Icon="@SvIcons.Delete" Disabled="IsCommandRunning" OnClick="@OpenRevoke">Revoke</SvButton>
+        </SvAlert>
+    </ChildContent>
+</DataStateView>
+
+<ConfirmDialog IdPrefix="otl-edit-revoke-prompt" Title="Revoke these links?" Open="@_confirming" Danger="true" ConfirmText="Revoke" Busy="@IsCommandRunning" OnConfirm="@ConfirmRevokeAsync" OnCancel="@CloseRevoke">
+    <p>Anyone with these links can no longer open them. Make a new link to share the updated details.</p>
+</ConfirmDialog>

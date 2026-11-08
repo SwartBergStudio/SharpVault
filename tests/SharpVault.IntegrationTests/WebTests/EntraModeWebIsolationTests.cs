@@ -64,6 +64,7 @@ public sealed class EntraModeWebIsolationTests(WebTestFactory factory)
         using var derived = factory.WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Production");
+            builder.UseSetting("WebGateway:Key", TestWebGateway.Key);
             builder.UseSetting("AzureAd:TenantId", string.Empty);
             builder.UseSetting("AzureAd:ClientId", string.Empty);
         });
@@ -80,6 +81,7 @@ public sealed class EntraModeWebIsolationTests(WebTestFactory factory)
         using var derived = factory.WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Production");
+            builder.UseSetting("WebGateway:Key", TestWebGateway.Key);
             builder.UseSetting("AzureAd:ClientId", string.Empty);
         });
 
@@ -95,6 +97,7 @@ public sealed class EntraModeWebIsolationTests(WebTestFactory factory)
         using var derived = factory.WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Staging");
+            builder.UseSetting("WebGateway:Key", TestWebGateway.Key);
             builder.UseSetting("AzureAd:TenantId", string.Empty);
             builder.UseSetting("AzureAd:ClientId", string.Empty);
         });

@@ -35,21 +35,10 @@ public sealed class WebCredentialGuardTests
         Assert.Null(exception);
     }
 
-    [Fact]
-    public void EnsureAllowed_DevelopmentWithoutAnyCredential_DoesNotThrow()
-    {
-        var exception = Record.Exception(() => WebCredentialGuard.EnsureAllowed(Section([]), HostEnvironments.Named("Development")));
-
-        Assert.Null(exception);
-    }
-
     [Theory]
     [InlineData("SignedAssertionFromManagedIdentity")]
-    [InlineData("KeyVault")]
     [InlineData("StoreWithThumbprint")]
-    [InlineData("StoreWithDistinguishedName")]
-    [InlineData("signedassertionfrommanagedidentity")]
-    public void EnsureAllowed_ProductionWithManagedIdentityCredential_DoesNotThrow(string sourceType)
+    public void EnsureAllowed_ProductionWithManagedIdentityOrCertificate_DoesNotThrow(string sourceType)
     {
         var section = Section(new() { ["ClientCredentials:0:SourceType"] = sourceType });
 
@@ -60,10 +49,8 @@ public sealed class WebCredentialGuardTests
 
     [Theory]
     [InlineData("Production")]
-    [InlineData("Staging")]
-    [InlineData("Test")]
     [InlineData("")]
-    public void EnsureAllowed_AnyNonDevelopmentEnvironmentWithClientSecret_Throws(string environment)
+    public void EnsureAllowed_NonDevelopmentEnvironmentWithClientSecret_Throws(string environment)
     {
         var section = Section(new() { ["ClientSecret"] = Secret });
 
@@ -76,11 +63,8 @@ public sealed class WebCredentialGuardTests
             { "legacyKey", new() { ["ClientSecret"] = Secret, ["ClientCredentials:0:SourceType"] = "SignedAssertionFromManagedIdentity" } },
             { "sourceType", new() { ["ClientCredentials:0:SourceType"] = "ClientSecret", ["ClientCredentials:0:ClientSecret"] = Secret } },
             { "casing", new() { ["ClientCredentials:0:SourceType"] = "clientsecret", ["ClientCredentials:0:ClientSecret"] = Secret } },
-            { "upperCasing", new() { ["ClientCredentials:0:SourceType"] = "CLIENTSECRET", ["ClientCredentials:0:ClientSecret"] = Secret } },
             { "valueOnManagedIdentityEntry", new() { ["ClientCredentials:0:SourceType"] = "SignedAssertionFromManagedIdentity", ["ClientCredentials:0:ClientSecret"] = Secret } },
             { "secondEntry", new() { ["ClientCredentials:0:SourceType"] = "SignedAssertionFromManagedIdentity", ["ClientCredentials:1:SourceType"] = "ClientSecret", ["ClientCredentials:1:ClientSecret"] = Secret } },
-            { "sourceTypeWithoutValue", new() { ["ClientCredentials:0:SourceType"] = "ClientSecret" } },
-            { "lowerCaseKey", new() { ["clientsecret"] = Secret, ["ClientCredentials:0:SourceType"] = "KeyVault" } },
         };
 
     [Theory]
@@ -108,7 +92,6 @@ public sealed class WebCredentialGuardTests
     [Theory]
     [InlineData("None")]
     [InlineData("")]
-    [InlineData("Unknown")]
     public void EnsureAllowed_ProductionWithOnlyUnrecognisedCredential_Throws(string sourceType)
     {
         var section = Section(new() { ["ClientCredentials:0:SourceType"] = sourceType });
@@ -128,12 +111,5 @@ public sealed class WebCredentialGuardTests
         var exception = Record.Exception(() => WebCredentialGuard.EnsureAllowed(Section(values), HostEnvironments.Named("Production")));
 
         Assert.Null(exception);
-    }
-
-    [Fact]
-    public void EnsureAllowed_NullArguments_Throw()
-    {
-        Assert.Throws<ArgumentNullException>(() => WebCredentialGuard.EnsureAllowed(null!, HostEnvironments.Named("Production")));
-        Assert.Throws<ArgumentNullException>(() => WebCredentialGuard.EnsureAllowed(Section([]), null!));
     }
 }

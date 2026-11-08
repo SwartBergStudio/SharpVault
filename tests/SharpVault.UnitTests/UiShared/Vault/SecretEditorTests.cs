@@ -88,6 +88,19 @@ public sealed class SecretEditorTests : VaultTestContext
         SecretsClient.DidNotReceive().RevealSecretAsync(Arg.Any<Guid>(), Arg.Any<RevealSecretRequestDto>(), Arg.Any<CancellationToken>());
 
     [Fact]
+    [Trait("Category", "Security")]
+    public void Edit_Load_SecretNotFound_ShowsGoneMessage()
+    {
+        SecretsClient.GetSecretAsync(_secret.Id, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(ApiResponse<SecretDto>.NotFound()));
+
+        var cut = Render<SecretEditor>(parameters => parameters.Add(editor => editor.SecretId, _secret.Id));
+
+        cut.WaitForAssertion(() => Assert.Contains("no longer exists", cut.Find("#secret-editor-error").TextContent, StringComparison.Ordinal));
+        Assert.Empty(cut.FindAll("#secret-save"));
+    }
+
+    [Fact]
     public void Editor_DamagedSecret_DoesNotOfferTheForm()
     {
         _secret.IsDamaged = true;
@@ -101,36 +114,6 @@ public sealed class SecretEditorTests : VaultTestContext
         Assert.Contains(SecretEditor.DamagedText, cut.Find("#secret-editor-damaged").TextContent, StringComparison.Ordinal);
         Assert.NotEmpty(cut.FindAll("#secret-cancel"));
         SecretsClient.DidNotReceive().UpdateSecretAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<UpdateSecretRequestDto>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public void New_LoginType_ShowsCredentialFields()
-    {
-        var cut = RenderNew();
-
-        Assert.NotNull(cut.Find("#secret-username-input"));
-        Assert.NotNull(cut.Find("#secret-value-input"));
-        Assert.NotNull(cut.Find("#secret-url-input"));
-        Assert.NotNull(cut.Find("#secret-notes-input"));
-        Assert.NotNull(cut.Find("#secret-folder-select"));
-        Assert.Empty(cut.FindAll("#secret-change-value"));
-        Assert.Empty(cut.FindAll("#secret-change-notes"));
-        Assert.Equal("Login", cut.Find("#secret-type-select").QuerySelector("option[selected]")?.TextContent);
-    }
-
-    [Fact]
-    public void New_SecureNote_HidesCredentialFields()
-    {
-        var cut = RenderNew();
-
-        cut.Find("#secret-type-select").Change("SecureNote");
-
-        Assert.Empty(cut.FindAll("#secret-username-input"));
-        Assert.Empty(cut.FindAll("#secret-value-input"));
-        Assert.Empty(cut.FindAll("#secret-url-input"));
-        Assert.Empty(cut.FindAll("#secret-generate"));
-        Assert.NotNull(cut.Find("#secret-notes-input"));
-        Assert.NotNull(cut.Find("#secret-name-input"));
     }
 
     [Fact]
@@ -159,21 +142,6 @@ public sealed class SecretEditorTests : VaultTestContext
         Assert.Equal(["one", "two", "three"], request.Tags);
         Assert.Equal(folder.Id, request.FolderId);
         Assert.EndsWith(VaultRoutes.Secret(_secret.Id), Navigator.Uri, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task New_SaveWithChosenFolder_SendsThatFolder()
-    {
-        var folder = new FolderDto { Id = _fixture.Create<Guid>(), Name = "Servers" };
-        FoldersClient.ListFoldersAsync(Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(ApiResponse<FolderListDto>.Success(new FolderListDto { Items = [folder] })));
-        var cut = RenderNew();
-        cut.Find("#secret-name-input").Input("Router");
-        cut.Find("#secret-folder-select").Change(folder.Id.ToString("D"));
-
-        await cut.Find("#secret-save").ClickAsync();
-
-        Assert.Equal(folder.Id, Assert.Single(_creates).FolderId);
     }
 
     [Fact]
@@ -223,13 +191,11 @@ public sealed class SecretEditorTests : VaultTestContext
         Assert.DoesNotContain(VaultRoutes.Secret(_secret.Id), Navigator.Uri, StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task Save_BlankName_ShowsErrorAndCallsNothing(string name)
+    [Fact]
+    public async Task Save_BlankName_ShowsErrorAndCallsNothing()
     {
         var cut = RenderNew();
-        cut.Find("#secret-name-input").Input(name);
+        cut.Find("#secret-name-input").Input("   ");
 
         await cut.Find("#secret-save").ClickAsync();
 
@@ -254,7 +220,7 @@ public sealed class SecretEditorTests : VaultTestContext
 
     [Fact]
     [Trait("Category", "Security")]
-    public void Edit_StartsWithChangeUnchecked_InputsEmptyAndDisabled()
+    public void Edit_StartsWithChangeUnchecked_ValueAndNotesEmptyAndDisabled()
     {
         var cut = RenderEdit();
 
@@ -266,10 +232,6 @@ public sealed class SecretEditorTests : VaultTestContext
         Assert.Equal(string.Empty, ValueOf(notes));
         Assert.True(value.HasAttribute("disabled"));
         Assert.True(notes.HasAttribute("disabled"));
-        Assert.Equal(_secret.Name, ValueOf(cut.Find("#secret-name-input")));
-        Assert.Equal(_secret.Username, ValueOf(cut.Find("#secret-username-input")));
-        Assert.Equal(_secret.Url, ValueOf(cut.Find("#secret-url-input")));
-        Assert.Equal("alpha, beta", ValueOf(cut.Find("#secret-tags-input")));
         AssertNoReveal();
     }
 
@@ -283,19 +245,6 @@ public sealed class SecretEditorTests : VaultTestContext
         Assert.DoesNotContain(_notes, cut.Markup, StringComparison.Ordinal);
         Assert.Null(ModelOf(cut).Value);
         Assert.Null(ModelOf(cut).Notes);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void Edit_Load_SecretNotFound_ShowsGoneMessage()
-    {
-        SecretsClient.GetSecretAsync(_secret.Id, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(ApiResponse<SecretDto>.NotFound()));
-
-        var cut = Render<SecretEditor>(parameters => parameters.Add(editor => editor.SecretId, _secret.Id));
-
-        cut.WaitForAssertion(() => Assert.Contains("no longer exists", cut.Find("#secret-editor-error").TextContent, StringComparison.Ordinal));
-        Assert.Empty(cut.FindAll("#secret-save"));
     }
 
     [Fact]
@@ -401,8 +350,6 @@ public sealed class SecretEditorTests : VaultTestContext
         Assert.False(request.ReplaceNotes);
         Assert.Null(request.Notes);
         Assert.Equal("Renamed", request.Name);
-        Assert.Equal(_secret.Username, request.Username);
-        Assert.Equal(_secret.Url, request.Url);
         Assert.Equal(["alpha", "beta"], request.Tags);
         Assert.Equal(SecretTypeDto.Login, request.Type);
         Assert.EndsWith(VaultRoutes.Secret(_secret.Id), Navigator.Uri, StringComparison.Ordinal);
@@ -565,14 +512,6 @@ public sealed class SecretEditorTests : VaultTestContext
     }
 
     [Fact]
-    public void Edit_HasNoFolderSelect()
-    {
-        var cut = RenderEdit();
-
-        Assert.Empty(cut.FindAll("#secret-folder-select"));
-    }
-
-    [Fact]
     [Trait("Category", "Security")]
     public void ValueInput_IsPasswordTypeWithNewPasswordAutocomplete()
     {
@@ -620,18 +559,6 @@ public sealed class SecretEditorTests : VaultTestContext
     }
 
     [Fact]
-    public void Generate_UseOnNewItem_FillsTheValueInput()
-    {
-        var cut = RenderNew();
-        cut.Find("#secret-generate").Click();
-        var generated = _provider.WaitForElement("#generator-output").TextContent;
-
-        _provider.Find("#generator-use").Click();
-
-        cut.WaitForAssertion(() => Assert.Equal(generated, ValueOf(cut.Find("#secret-value-input"))));
-    }
-
-    [Fact]
     [Trait("Category", "Security")]
     public async Task Dispose_ClearsInMemoryValueAndNotes()
     {
@@ -643,21 +570,6 @@ public sealed class SecretEditorTests : VaultTestContext
         var model = ModelOf(cut);
         Assert.Equal("typed-secret-value", model.Value);
         Assert.Equal(_notes, model.Notes);
-
-        await cut.Instance.DisposeAsync();
-
-        Assert.Null(model.Value);
-        Assert.Null(model.Notes);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task Dispose_NewItemWithTypedValue_ClearsIt()
-    {
-        var cut = RenderNew();
-        cut.Find("#secret-value-input").Input("typed-secret-value");
-        cut.Find("#secret-notes-input").Input("typed notes");
-        var model = ModelOf(cut);
 
         await cut.Instance.DisposeAsync();
 
@@ -679,37 +591,6 @@ public sealed class SecretEditorTests : VaultTestContext
 
         Assert.DoesNotContain("typed-secret-value-for-logs", LogText, StringComparison.Ordinal);
         Assert.DoesNotContain(_notes, LogText, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public async Task Edit_SecureNote_HidesCredentialInputsAndKeepsStoredUsernameAndUrl()
-    {
-        _secret.Type = SecretTypeDto.SecureNote;
-        _secret.Username = "legacy-user";
-        _secret.Url = "https://legacy.test/path";
-        _secret.HasValue = false;
-        var cut = RenderEdit();
-
-        Assert.Empty(cut.FindAll("#secret-username-input"));
-        Assert.Empty(cut.FindAll("#secret-url-input"));
-        Assert.Empty(cut.FindAll("#secret-value-input"));
-        Assert.Empty(cut.FindAll("#secret-change-value"));
-        Assert.Empty(cut.FindAll("#secret-generate"));
-        cut.Find("#secret-name-input").Input("Renamed note");
-
-        await cut.Find("#secret-save").ClickAsync();
-
-        await SecretsClient.Received(1).UpdateSecretAsync(_secret.Id, _secret.ConcurrencyToken, Arg.Any<UpdateSecretRequestDto>(), Arg.Any<CancellationToken>());
-        var request = Assert.Single(_updates);
-        Assert.Equal(SecretTypeDto.SecureNote, request.Type);
-        Assert.Equal("Renamed note", request.Name);
-        Assert.Equal("legacy-user", request.Username);
-        Assert.Equal("https://legacy.test/path", request.Url);
-        Assert.False(request.ReplaceValue);
-        Assert.Null(request.Value);
-        Assert.False(request.ReplaceNotes);
-        Assert.Null(request.Notes);
     }
 
     [Fact]

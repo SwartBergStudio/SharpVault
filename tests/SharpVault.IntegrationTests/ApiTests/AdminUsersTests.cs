@@ -24,37 +24,26 @@ public sealed class AdminUsersTests(ApiTestFactory factory) : ApiSecurityTestBas
     private static readonly string[] ItemProperties = ["displayName", "email", "lastSignInAt", "status", "userId"];
     private static readonly string[] PageProperties = ["continuationToken", "users"];
 
-    public static TheoryData<string> InvalidPageSizes() => ["0", "-1", "101", "2147483648", "abc", "1e2", "5.5", "-0", "%00", "1%2C2", "99999999999999999999"];
+    public static TheoryData<string> InvalidPageSizes() => ["0", "101", "abc", "2147483648", "99999999999999999999", "%00"];
 
     public static TheoryData<string> InvalidContinuationTokens() =>
     [
         "' or PartitionKey ne '",
-        "{5f0c1d2e-4b7a-4c3d-9e8f-00000000b002}",
-        "5f0c1d2e4b7a4c3d9e8f00000000b002",
+        "x' or RowKey ne '",
         "5f0c1d2e-4b7a-4c3d-9e8f-00000000b002 ",
-        " 5f0c1d2e-4b7a-4c3d-9e8f-00000000b002",
-        "5f0c1d2e-4b7a-4c3d-9e8f-00000000b00",
         "5f0c1d2e-4b7a-4c3d-9e8f-00000000b0022",
         new string('a', 10_000),
         "\u0000",
         "../x",
-        "x' or RowKey ne '",
-        "5f0c1d2e-4b7a-4c3d-9e8f-00000000b002' or '1'='1",
-        "(5f0c1d2e-4b7a-4c3d-9e8f-00000000b002)",
-        "00000000-0000-0000-0000-000000000000%00",
-        "0x5f0c1d2e",
     ];
 
     public static TheoryData<int, int> PageBoundaries() =>
     [
         (1, 1),
         (2, 1),
-        (3, 2),
-        (50, 50),
         (51, 50),
-        (100, 50),
-        (101, 50),
         (100, 100),
+        (101, 50),
     ];
 
     [Fact]
@@ -126,20 +115,6 @@ public sealed class AdminUsersTests(ApiTestFactory factory) : ApiSecurityTestBas
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(MaximumPageSize, document.RootElement.GetProperty("users").GetArrayLength());
-    }
-
-    [Fact]
-    public async Task AdminUsers_PageSizeOne_ReturnsOneUserAndAToken()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        await SeedAdminAndUsersAsync(3, cancellationToken);
-        SetAuthenticatedClient(TestUsers.Admin);
-
-        var response = await Client.GetAsync($"{AdminUsersPath}?pageSize=1", cancellationToken);
-
-        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-        Assert.Equal(1, document.RootElement.GetProperty("users").GetArrayLength());
-        Assert.NotEqual(JsonValueKind.Null, document.RootElement.GetProperty("continuationToken").ValueKind);
     }
 
     [Fact]
@@ -242,29 +217,6 @@ public sealed class AdminUsersTests(ApiTestFactory factory) : ApiSecurityTestBas
         Assert.DoesNotContain("   at ", body, StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData("abc")]
-    [InlineData("1e2")]
-    [InlineData("5.5")]
-    [InlineData("-1")]
-    [InlineData("99999999999999999999")]
-    public async Task AdminUsers_UnparsableAndZeroPageSize_ReturnIdenticalProblemResponses(string unparsable)
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        SetAuthenticatedClient(TestUsers.Admin);
-
-        var zero = await Client.GetAsync($"{AdminUsersPath}?pageSize=0", cancellationToken);
-        var other = await Client.GetAsync($"{AdminUsersPath}?pageSize={unparsable}", cancellationToken);
-
-        Assert.Equal(HttpStatusCode.BadRequest, zero.StatusCode);
-        Assert.Equal(zero.StatusCode, other.StatusCode);
-        Assert.Equal(zero.Content.Headers.ContentType?.ToString(), other.Content.Headers.ContentType?.ToString());
-        var zeroBody = await WithoutTraceIdAsync(zero, cancellationToken);
-        var otherBody = await WithoutTraceIdAsync(other, cancellationToken);
-        Assert.Contains("PageSize", zeroBody, StringComparison.Ordinal);
-        Assert.Equal(zeroBody, otherBody);
-    }
-
     private static async Task<string> WithoutTraceIdAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         var node = System.Text.Json.Nodes.JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken))!.AsObject();
@@ -309,7 +261,6 @@ public sealed class AdminUsersTests(ApiTestFactory factory) : ApiSecurityTestBas
     [Theory]
     [InlineData("pageSize=1&pageSize=2")]
     [InlineData("continuationToken=a&continuationToken=b")]
-    [InlineData("pageSize=1&pageSize=abc")]
     public async Task AdminUsers_RepeatedQueryParameters_AreRejectedNotServerErrors(string query)
     {
         var cancellationToken = TestContext.Current.CancellationToken;

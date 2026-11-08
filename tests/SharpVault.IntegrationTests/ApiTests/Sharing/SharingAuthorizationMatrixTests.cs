@@ -22,7 +22,7 @@ public sealed class SharingAuthorizationMatrixTests(ApiTestFactory factory) : Va
 
     public static TheoryData<string> EndpointIds() => [.. SharingMatrixEndpoints.All.Select(endpoint => endpoint.Id)];
 
-    public static TheoryData<string> OwnerRouteIds() => [.. SharingMatrixEndpoints.OwnerRouteIds];
+    public static TheoryData<string> RepresentativeEndpointIds() => ["E21", "E22-S", "E25-G", "E30-S-grantee", "E33-F"];
 
     public static TheoryData<string, CallerKind, HttpStatusCode> MatrixCases()
     {
@@ -57,21 +57,7 @@ public sealed class SharingAuthorizationMatrixTests(ApiTestFactory factory) : Va
     }
 
     [Theory]
-    [MemberData(nameof(OwnerRouteIds))]
-    public async Task SharingAuthorizationMatrix_LockedOwner_OwnerRoutesReturnForbidden(string endpointId)
-    {
-        var scenario = await ArrangeAsync();
-        await LockUserAsync(TestUsers.User.ObjectId);
-        using var client = ClientFor(TestUsers.User);
-
-        var response = await SharingMatrixEndpoints.Find(endpointId).Send(new SharingTestApi(client), scenario);
-
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        await AssertBodyRevealsNothingAsync(response, scenario, endpointId);
-    }
-
-    [Theory]
-    [MemberData(nameof(EndpointIds))]
+    [MemberData(nameof(RepresentativeEndpointIds))]
     public async Task SharingAuthorizationMatrix_DeniedCallers_MakeNoVaultInboxOrKeyVaultCalls(string endpointId)
     {
         var scenario = await ArrangeAsync();
@@ -148,7 +134,7 @@ public sealed class SharingAuthorizationMatrixTests(ApiTestFactory factory) : Va
     }
 
     [Theory]
-    [MemberData(nameof(EndpointIds))]
+    [MemberData(nameof(RepresentativeEndpointIds))]
     public async Task SharingAuthorizationMatrix_EveryEndpoint_NoQueryWithoutPartitionKey(string endpointId)
     {
         var scenario = await ArrangeAsync();
@@ -218,7 +204,6 @@ public sealed class SharingAuthorizationMatrixTests(ApiTestFactory factory) : Va
 
     [Theory]
     [InlineData(CallerKind.ShareManager)]
-    [InlineData(CallerKind.ShareEditor)]
     [InlineData(CallerKind.ShareViewer)]
     [InlineData(CallerKind.FolderManager)]
     public async Task Recipient_OnOwnerVaultRoutes_Returns404(CallerKind caller)

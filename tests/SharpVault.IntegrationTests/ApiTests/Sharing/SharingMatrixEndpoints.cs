@@ -98,11 +98,6 @@ public static class SharingMatrixEndpoints
         new("E36", (api, s) => Response(api.SearchDirectoryAsync("other")), Ok, Ok, Ok, Ok, Ok, Ok, Ok, Ok),
     ];
 
-    public static IReadOnlyList<string> OwnerRouteIds { get; } =
-    [
-        "E28-S", "E28-T", "E29-S", "E29-T", "E30-S-grantee", "E30-S-viewer", "E31-S-grantee", "E31-S-viewer", "E32-F", "E33-F", "E33-G", "E34-F", "E35-F",
-    ];
-
     public static SharingMatrixEndpoint Find(string id) => All.Single(endpoint => endpoint.Id == id);
 
     public static HttpStatusCode ExpectedDenied(CallerKind caller) => caller switch

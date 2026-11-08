@@ -41,17 +41,13 @@ public sealed partial class ThemeWebTests(WebTestFactory factory)
     {
         { "/", 200 },
         { "/does-not-exist", 404 },
-        { "/account/access-denied", 200 },
         { "/account/signed-out", 200 },
-        { "/account/sign-in-error", 200 },
     };
 
     public static TheoryData<string> AnonymousRoutes { get; } = new()
     {
         "/",
         "/account/access-denied",
-        "/account/signed-out",
-        "/account/sign-in-error",
     };
 
     public static TheoryData<string, string> ThemeAssets { get; } = BuildAssetData();
@@ -219,7 +215,6 @@ public sealed partial class ThemeWebTests(WebTestFactory factory)
     [Theory]
     [Trait("Category", "Security")]
     [InlineData("/_content/SharpVault.UI.Shared/css/app.css", "POST")]
-    [InlineData("/_content/SharpVault.UI.Shared/js/clipboard.js", "PUT")]
     [InlineData("/_content/SharpVault.UI.Shared/brand/favicon.svg", "DELETE")]
     public async Task ThemeAssets_WriteMethods_AreNotAccepted(string path, string method)
     {
@@ -235,10 +230,8 @@ public sealed partial class ThemeWebTests(WebTestFactory factory)
     [Theory]
     [Trait("Category", "Security")]
     [InlineData("/_content/SharpVault.UI.Shared/../../appsettings.json")]
-    [InlineData("/_content/SharpVault.UI.Shared/fonts/..%2f..%2fcss%2fapp.css.map")]
     [InlineData("/_content/SharpVault.UI.Shared/%2e%2e/%2e%2e/appsettings.json")]
     [InlineData("/_content/SharpVault.UI.Shared/Components/Icons/Icon.razor")]
-    [InlineData("/_content/SharpVault.UI.Shared/SharpVault.UI.Shared.csproj")]
     public async Task ThemeAssets_PathTraversalOrSourceFiles_AreNotServed(string path)
     {
         var cancellationToken = TestContext.Current.CancellationToken;

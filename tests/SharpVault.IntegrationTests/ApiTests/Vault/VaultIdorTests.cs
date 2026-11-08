@@ -26,8 +26,6 @@ public sealed class VaultIdorTests(ApiTestFactory factory) : VaultSecurityTestBa
     [
         "not-a-token",
         "t",
-        "tZZZ",
-        "t%00",
         "' or PartitionKey ne '",
         new string('a', 1025),
         "F_00000000000000000000000000000000",

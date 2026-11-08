@@ -6,7 +6,9 @@ extern alias WebApp;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using System.Net.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using SharpVault.Authentication.Local;
@@ -59,6 +61,19 @@ public sealed class SharpVaultApiRegistrationTests : IDisposable
     }
 
     [Fact]
+    [Trait("Category", "Security")]
+    public void AddSharpVaultApiClient_DefaultHttpClient_HasNoProofHandler()
+    {
+        var builder = CreateBuilder(entra: false);
+        builder.AddSharpVaultApiClient();
+        using var provider = builder.Services.BuildServiceProvider();
+
+        var chain = HandlerChainTypes(provider.GetRequiredService<IHttpMessageHandlerFactory>().CreateHandler(string.Empty));
+
+        Assert.DoesNotContain(typeof(WebGatewayProofHandler), chain);
+    }
+
+    [Fact]
     public void AddWebAuthentication_LocalCookieOptions_EqualEntraCookieOptions()
     {
         var local = CreateBuilder(entra: false);
@@ -92,6 +107,17 @@ public sealed class SharpVaultApiRegistrationTests : IDisposable
 
         Assert.False(Directory.Exists(_directory));
         Assert.DoesNotContain(builder.Services, descriptor => descriptor.ServiceType == typeof(LocalSigningKey));
+    }
+
+    private static List<Type> HandlerChainTypes(HttpMessageHandler handler)
+    {
+        var types = new List<Type>();
+        for (HttpMessageHandler? current = handler; current is not null; current = (current as DelegatingHandler)?.InnerHandler)
+        {
+            types.Add(current.GetType());
+        }
+
+        return types;
     }
 
     private static CookieAuthenticationOptions CookieOptions(HostApplicationBuilder builder)

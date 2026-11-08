@@ -1,6 +1,9 @@
 // SharpVault - Copyright (c) SwartBergStudio.
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
+extern alias WebApp;
+
+using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -9,6 +12,7 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using SharpVault.Authentication.Identity;
 using SharpVault.Authentication.Local;
+using WebApp::SharpVault.Web.Security;
 
 namespace SharpVault.UnitTests.Authentication.Local;
 
@@ -73,6 +77,18 @@ public sealed class LocalTokenIssuerTests
         Assert.Equal(TimeSpan.FromMinutes(5), first.ValidTo - first.ValidFrom);
         Assert.Equal(Start.UtcDateTime, first.ValidFrom);
         Assert.NotEqual(first.Id, second.Id);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void Issue_PrincipalWithAddressClaim_TokenHasNoAddressClaim()
+    {
+        var principal = PrincipalFor(LocalAccounts.UserOne);
+        ClientAddressClaim.AddTo(principal, IPAddress.Parse("203.0.113.5"));
+
+        var token = new JsonWebToken(Issuer.Issue(principal));
+
+        Assert.DoesNotContain(token.Claims, claim => claim.Type == ClientAddressClaim.Type);
     }
 
     [Fact]

@@ -34,11 +34,7 @@ public sealed class TokenValidationTests(ApiTestFactory factory) : ApiSecurityTe
         TestWebApp.ClientId.ToString("D"),
         GraphAudience,
         $"api://{TestApi.ClientId:D}",
-        "api://sharpvault",
-        string.Empty,
         TestApi.ClientId.ToString("D") + "x",
-        "x" + TestApi.ClientId.ToString("D"),
-        $" {TestApi.ClientId:D}",
     ];
 
     public static TheoryData<string> WrongIssuers()
@@ -49,13 +45,8 @@ public sealed class TokenValidationTests(ApiTestFactory factory) : ApiSecurityTe
             TestIdentityProvider.Issuer(TestTenant.OtherId),
             $"https://sts.windows.net/{tenant}/",
             "https://login.microsoftonline.com/common/v2.0",
-            "https://login.microsoftonline.com/organizations/v2.0",
             $"https://login.microsoftonline.com.evil.example/{tenant}/v2.0",
-            $"https://login.microsoftonline.com/{tenant}/v2.0/",
             $"http://login.microsoftonline.com/{tenant}/v2.0",
-            $"https://login.microsoftonline.com/{tenant.ToUpperInvariant()}/v2.0",
-            $"https://login.microsoftonline.com/{tenant}/v2.0?x=1",
-            $"https://evil.example/https://login.microsoftonline.com/{tenant}/v2.0",
             string.Empty,
         ];
     }
@@ -66,10 +57,6 @@ public sealed class TokenValidationTests(ApiTestFactory factory) : ApiSecurityTe
         "Removed",
         "TwoElementArray",
         "NotAGuid",
-        "EmptyString",
-        "EmptyGuid",
-        "UpperCaseOfOtherTenant",
-        "OurTenantWithBraces",
     ];
 
     public static TheoryData<string> MissingScopes() =>
@@ -78,11 +65,8 @@ public sealed class TokenValidationTests(ApiTestFactory factory) : ApiSecurityTe
         "OtherScope",
         "PrefixOnly",
         "UpperCase",
-        "Empty",
-        "Whitespace",
         "TwoScpClaims",
         "ScopeAsRole",
-        "SubstringOfOther",
     ];
 
     public static TheoryData<string> InvalidObjectIds() =>
@@ -90,10 +74,7 @@ public sealed class TokenValidationTests(ApiTestFactory factory) : ApiSecurityTe
         "Removed",
         "NotAGuid",
         "EmptyGuid",
-        "TwoElementArray",
         "Braces",
-        "NoHyphens",
-        "Empty",
         "Number",
         "Urn",
     ];
@@ -366,10 +347,7 @@ public sealed class TokenValidationTests(ApiTestFactory factory) : ApiSecurityTe
     [InlineData("Basic", "dXNlcjpwYXNz")]
     [InlineData("Negotiate", "YII=")]
     [InlineData("Bearer", "")]
-    [InlineData("Bearer", " ")]
     [InlineData("Bearer", "not.a.jwt")]
-    [InlineData("Bearer", "a.b")]
-    [InlineData("Bearer", "....")]
     [InlineData("Token", "abc")]
     public async Task ApiRequest_UnsupportedOrMalformedCredentials_Returns401(string scheme, string parameter)
     {

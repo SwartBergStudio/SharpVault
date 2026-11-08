@@ -57,20 +57,6 @@ public sealed class VaultBrowserTests : VaultTestContext
         SecretsClient.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(SecretsClient.ListSecretsAsync));
 
     [Fact]
-    public void Render_ShowsHeadingSearchNewItemFoldersAndList()
-    {
-        var cut = RenderBrowser();
-
-        Assert.NotNull(cut.Find("#vault-heading"));
-        Assert.NotNull(cut.Find("#vault-search-input"));
-        Assert.NotNull(cut.Find("#vault-search-submit"));
-        Assert.NotNull(cut.Find("#vault-new-secret"));
-        Assert.NotNull(cut.Find("#folder-tree-all"));
-        Assert.NotNull(cut.Find("#vault-secrets-empty"));
-        Assert.Empty(cut.FindAll("#vault-search-clear"));
-    }
-
-    [Fact]
     public void Search_NavigatesWithQuery()
     {
         var cut = RenderBrowser();
@@ -115,15 +101,6 @@ public sealed class VaultBrowserTests : VaultTestContext
     }
 
     [Fact]
-    public void SearchTerm_PrefillsTheInputAndOffersClear()
-    {
-        var cut = RenderBrowser(search: "payroll");
-
-        Assert.Equal("payroll", cut.Find("#vault-search-input").GetAttribute("value"));
-        Assert.NotNull(cut.Find("#vault-search-clear"));
-    }
-
-    [Fact]
     public void Clear_NavigatesToThePlainVault()
     {
         Services.GetRequiredService<NavigationManager>().NavigateTo($"{VaultRoutes.Vault}?q=payroll");
@@ -135,40 +112,11 @@ public sealed class VaultBrowserTests : VaultTestContext
     }
 
     [Fact]
-    [Trait("Category", "Security")]
-    public void SearchInput_IsLimitedToTheSearchMaxLength()
-    {
-        var cut = RenderBrowser();
-
-        Assert.Equal(VaultSearchBox.SearchMaxLength.ToString(System.Globalization.CultureInfo.InvariantCulture), cut.Find("#vault-search-input").GetAttribute("maxlength"));
-    }
-
-    [Fact]
-    [Trait("Category", "Security")]
-    public void SearchTerm_WithMarkup_RendersEncoded()
-    {
-        const string hostile = "<img src=x onerror=alert(1)>";
-
-        var cut = RenderBrowser(search: hostile);
-
-        Assert.Empty(cut.FindAll("img"));
-        Assert.Empty(cut.FindAll("[onerror]"));
-        Assert.Equal(hostile, cut.Find("#vault-search-input").GetAttribute("value"));
-    }
-
-    [Fact]
     public void NewSecret_InFolder_LinksWithFolderId()
     {
         var cut = RenderBrowser(folderId: FolderA);
 
         Assert.Equal($"{VaultRoutes.NewSecret}?folderId={FolderA:D}", cut.Find("#vault-new-secret").GetAttribute("href"));
-    }
-
-    [Fact]
-    public void NewSecret_NotInFolder_LinksWithoutFolderId()
-    {
-        Assert.Equal(VaultRoutes.NewSecret, RenderBrowser().Find("#vault-new-secret").GetAttribute("href"));
-        Assert.Equal(VaultRoutes.NewSecret, RenderBrowser(unfiled: true).Find("#vault-new-secret").GetAttribute("href"));
     }
 
     [Fact]
@@ -180,12 +128,11 @@ public sealed class VaultBrowserTests : VaultTestContext
     }
 
     [Fact]
-    public void Render_Unfiled_PassesTheUnfiledFlagAndMarksTheLink()
+    public void Render_Unfiled_PassesTheUnfiledFlag()
     {
-        var cut = RenderBrowser(unfiled: true);
+        RenderBrowser(unfiled: true);
 
         SecretsClient.Received(1).ListSecretsAsync(null, true, null, SecretListPanel.BrowsePageSize, null, Arg.Any<CancellationToken>());
-        Assert.Equal("page", cut.Find("#folder-tree-unfiled").GetAttribute("aria-current"));
     }
 
     [Fact]

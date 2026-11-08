@@ -1,0 +1,14 @@
+@page "/one-time-links/new/{OwnerId:guid}/{SecretId:guid}"
+@attribute [Authorize]
+
+<PageTitle>New one-time link</PageTitle>
+
+<OneTimeLinkCreateView OwnerId="@OwnerId" SecretId="@SecretId" />
+
+@code {
+    [Parameter]
+    public Guid OwnerId { get; set; }
+
+    [Parameter]
+    public Guid SecretId { get; set; }
+}

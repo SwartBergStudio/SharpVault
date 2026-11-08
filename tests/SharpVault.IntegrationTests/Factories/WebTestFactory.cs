@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Web;
+using SharpVault.Authentication.WebGateway;
 using SharpVault.IntegrationTests.Authentication;
 using SharpVault.IntegrationTests.Logging;
 using SharpVault.IntegrationTests.Support;
@@ -22,6 +23,8 @@ public sealed class WebTestFactory : WebApplicationFactory<WebApp::Program>
     private ApiTestFactory? _api;
 
     public CapturingLoggerProvider Logs { get; } = new();
+
+    public ApiOpenFault OpenFault { get; } = new();
 
     public void UseApi(ApiTestFactory api)
     {
@@ -44,6 +47,7 @@ public sealed class WebTestFactory : WebApplicationFactory<WebApp::Program>
     {
         builder.UseEnvironment(Environments.Development);
         TestIdentityProvider.ApplyWebSettings(builder);
+        builder.UseSetting("WebGateway:Key", TestWebGateway.Key);
         builder.UseSetting("Logging:LogLevel:Default", "Debug");
         builder.UseSetting("Logging:LogLevel:Microsoft", "Debug");
         builder.UseSetting("Logging:LogLevel:Microsoft.AspNetCore", "Debug");
@@ -55,12 +59,23 @@ public sealed class WebTestFactory : WebApplicationFactory<WebApp::Program>
         builder.ConfigureTestServices(services =>
         {
             TestIdentityProvider.ConfigureWeb(services);
+            services.AddSingleton<IStartupFilter, LoopbackStartupFilter>();
             services.AddSingleton<IStartupFilter, TestCookieSignInStartupFilter>();
             services.AddSingleton(FakeTokenAcquisition.Create());
             if (_api is not null)
             {
                 var api = _api;
-                services.UsePrimaryHandler(() => api.Server.CreateHandler());
+                var openFault = OpenFault;
+                services.UsePrimaryHandler(() => new ApiOpenFaultHandler(
+                    api.Server.CreateHandler(context =>
+                    {
+                        context.Connection.RemoteIpAddress = TestAddresses.WebHost;
+                        if (context.Request.Headers.ContainsKey(WebGatewayHeaders.Time) && !context.Request.Headers.ContainsKey(WebGatewayHeaders.ClientIp))
+                        {
+                            context.Request.Headers[WebGatewayHeaders.ClientIp] = string.Empty;
+                        }
+                    }),
+                    openFault));
             }
             else
             {

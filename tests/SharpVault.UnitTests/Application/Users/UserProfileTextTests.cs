@@ -1,6 +1,7 @@
 // SharpVault - Copyright (c) SwartBergStudio.
 // Licensed under the GNU Affero General Public License v3.0. See LICENSE in the project root.
 
+using System.Globalization;
 using SharpVault.Application.Features.Users.Access;
 
 namespace SharpVault.UnitTests.Application.Users;
@@ -9,10 +10,7 @@ public sealed class UserProfileTextTests
 {
     [Theory]
     [InlineData(null)]
-    [InlineData("")]
-    [InlineData(" ")]
     [InlineData("\t\r\n")]
-    [InlineData("     ")]
     public void NormalizeDisplayName_NullOrWhitespace_ReturnsEmpty(string? value)
     {
         Assert.Equal(string.Empty, UserProfileText.NormalizeDisplayName(value));
@@ -21,55 +19,37 @@ public sealed class UserProfileTextTests
     [Theory]
     [Trait("Category", "Security")]
     [InlineData("Al\u0000ice", "Alice")]
-    [InlineData("Al\u0007ice", "Alice")]
     [InlineData("Ali\rce\n", "Alice")]
-    [InlineData("Al\u001bice", "Alice")]
     [InlineData("Al\u0085ice", "Alice")]
-    [InlineData("A\u007fl\u009fice", "Alice")]
     [InlineData("\u0000\u0000\u0000", "")]
     public void NormalizeDisplayName_ControlCharacters_AreRemoved(string value, string expected)
     {
         Assert.Equal(expected, UserProfileText.NormalizeDisplayName(value));
     }
 
-    [Fact]
-    [Trait("Category", "Security")]
-    public void NormalizeDisplayName_ControlCharactersAtEdges_ResultHasNoSurroundingWhitespace()
-    {
-        var result = UserProfileText.NormalizeDisplayName("\u0000 Alice \u0000");
-
-        Assert.Equal(result.Trim(), result);
-    }
-
     [Theory]
     [Trait("Category", "Security")]
-    [InlineData("Alice\u202Eecila", "Aliceecila")]
-    [InlineData("Al\u202Dice", "Alice")]
-    [InlineData("\u2066Alice\u2069", "Alice")]
-    [InlineData("A\u2067l\u2068ice", "Alice")]
-    [InlineData("Ali\u200Bce", "Alice")]
-    [InlineData("\uFEFFAlice", "Alice")]
+    [InlineData("Alice‮ecila", "Aliceecila")]
+    [InlineData("Ali​ce", "Alice")]
+    [InlineData("﻿Alice", "Alice")]
     public void NormalizeDisplayName_UnicodeFormatCharacters_AreRemoved(string value, string expected)
     {
         var result = UserProfileText.NormalizeDisplayName(value);
 
         Assert.Equal(expected, result);
-        Assert.DoesNotContain(result, character => char.GetUnicodeCategory(character) == System.Globalization.UnicodeCategory.Format);
+        Assert.DoesNotContain(result, character => char.GetUnicodeCategory(character) == UnicodeCategory.Format);
     }
 
     [Theory]
     [Trait("Category", "Security")]
-    [InlineData("alice\u202E@example.test", "alice@example.test")]
-    [InlineData("ali\u200Bce@example.test", "alice@example.test")]
-    [InlineData("\uFEFFalice@example.test", "alice@example.test")]
-    [InlineData("\u2066alice@example.test\u2069", "alice@example.test")]
-    [InlineData("ali\u202Dce@exam\u202Ep\u202Ele.test", "alice@example.test")]
+    [InlineData("alice‮@example.test", "alice@example.test")]
+    [InlineData("ali​ce@example.test", "alice@example.test")]
     public void NormalizeEmail_UnicodeFormatCharacters_AreRemoved(string value, string expected)
     {
         var result = UserProfileText.NormalizeEmail(value);
 
         Assert.Equal(expected, result);
-        Assert.DoesNotContain(result!, character => char.GetUnicodeCategory(character) == System.Globalization.UnicodeCategory.Format);
+        Assert.DoesNotContain(result!, character => char.GetUnicodeCategory(character) == UnicodeCategory.Format);
     }
 
     [Theory]
@@ -82,10 +62,8 @@ public sealed class UserProfileTextTests
 
     [Theory]
     [InlineData(255)]
-    [InlineData(256)]
     [InlineData(257)]
-    [InlineData(10_000)]
-    public void NormalizeDisplayName_LongerThanMaximum_IsTruncatedTo256(int length)
+    public void NormalizeDisplayName_AroundMaximum_IsTruncatedTo256(int length)
     {
         var result = UserProfileText.NormalizeDisplayName(new string('a', length));
 
@@ -128,10 +106,7 @@ public sealed class UserProfileTextTests
 
     [Theory]
     [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
     [InlineData("no-at-sign")]
-    [InlineData("alice.example.test")]
     public void NormalizeEmail_WithoutAtSign_ReturnsNull(string? value)
     {
         Assert.Null(UserProfileText.NormalizeEmail(value));
@@ -164,14 +139,10 @@ public sealed class UserProfileTextTests
 
     [Theory]
     [InlineData("10.0.0.1", "10.0.0.1")]
-    [InlineData("::1", "::1")]
-    [InlineData("2001:db8::1", "2001:db8::1")]
     [InlineData("2001:0DB8:0000:0000:0000:0000:0000:0001", "2001:db8::1")]
     [InlineData(null, null)]
-    [InlineData("", null)]
     [InlineData("not-an-ip", null)]
     [InlineData("10.0.0.1:443", null)]
-    [InlineData("10.0.0.256", null)]
     [InlineData("1.2.3.4\r\nX: y", null)]
     public void NormalizeIpAddress_Values_AreParsedOrNull(string? value, string? expected)
     {

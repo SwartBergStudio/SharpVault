@@ -14,12 +14,20 @@ public static class UserProfileText
 
     public const int IpAddressMaxLength = 45;
 
+    public const int UserAgentMaxLength = 256;
+
     public static string NormalizeDisplayName(string? value) => Clean(value, DisplayNameMaxLength);
 
     public static string? NormalizeEmail(string? value)
     {
         var cleaned = Clean(value, EmailMaxLength);
         return cleaned.Contains('@', StringComparison.Ordinal) ? cleaned : null;
+    }
+
+    public static string? NormalizeUserAgent(string? value)
+    {
+        var cleaned = Clean(value, UserAgentMaxLength);
+        return cleaned.Length == 0 ? null : cleaned;
     }
 
     public static string? NormalizeIpAddress(string? value)

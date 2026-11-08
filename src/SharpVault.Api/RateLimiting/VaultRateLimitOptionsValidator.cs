@@ -14,6 +14,7 @@ public sealed class VaultRateLimitOptionsValidator : IValidateOptions<VaultRateL
     internal const string ShareWritesInvalid = "VaultRateLimits:ShareWritesPerMinute must be between 1 and 100000.";
     internal const string DirectorySearchesInvalid = "VaultRateLimits:DirectorySearchesPerMinute must be between 1 and 100000.";
     internal const string AdminActionsInvalid = "VaultRateLimits:AdminActionsPerMinute must be between 1 and 100000.";
+    internal const string OneTimeLinkOpensInvalid = "VaultRateLimits:OneTimeLinkOpensPerMinute must be between 1 and 100000.";
 
     public ValidateOptionsResult Validate(string? name, VaultRateLimitOptions options)
     {
@@ -43,6 +44,11 @@ public sealed class VaultRateLimitOptionsValidator : IValidateOptions<VaultRateL
         if (options.DirectorySearchesPerMinute is < MinimumLimit or > MaximumLimit)
         {
             failures.Add(DirectorySearchesInvalid);
+        }
+
+        if (options.OneTimeLinkOpensPerMinute is < MinimumLimit or > MaximumLimit)
+        {
+            failures.Add(OneTimeLinkOpensInvalid);
         }
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);

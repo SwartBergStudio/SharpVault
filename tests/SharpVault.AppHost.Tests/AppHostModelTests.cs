@@ -249,21 +249,25 @@ public sealed class AppHostModelTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(["api", "development-key-material", "storage", "tables", "web"], names);
+        Assert.Equal(["api", "development-key-material", "storage", "tables", "web", "web-gateway-key"], names);
     }
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task AppHost_Model_DeclaresOnlyTheDevelopmentKeyMaterialParameter()
+    public async Task AppHost_Model_DeclaresOnlyTheKeyMaterialParameters()
     {
         var builder = await CreateBuilderAsync();
 
-        var parameter = Assert.Single(builder.Resources.OfType<ParameterResource>());
+        var parameters = builder.Resources.OfType<ParameterResource>().ToList();
 
-        Assert.Equal(AppHostResourceNames.DevelopmentKeyMaterial, parameter.Name);
-        Assert.Equal("development-key-material", parameter.Name);
-        Assert.True(parameter.Secret);
-        Assert.NotNull(parameter.Default);
+        Assert.Equal(
+            [AppHostResourceNames.DevelopmentKeyMaterial, AppHostResourceNames.WebGatewayKey],
+            parameters.Select(parameter => parameter.Name).Order(StringComparer.Ordinal));
+        Assert.All(parameters, parameter =>
+        {
+            Assert.True(parameter.Secret);
+            Assert.NotNull(parameter.Default);
+        });
     }
 
     [Fact]
@@ -292,7 +296,7 @@ public sealed class AppHostModelTests
     public async Task AppHost_ApiProject_ReceivesDevelopmentKeyMaterialParameter()
     {
         var builder = await CreateBuilderAsync();
-        var parameter = Assert.Single(builder.Resources.OfType<ParameterResource>());
+        var parameter = Assert.Single(builder.Resources.OfType<ParameterResource>(), resource => resource.Name == AppHostResourceNames.DevelopmentKeyMaterial);
         var api = Find<ProjectResource>(builder, ApiName);
 
         var variables = await RunEnvironmentCallbacksAsync(api);
@@ -322,7 +326,7 @@ public sealed class AppHostModelTests
     public async Task AppHost_WebProject_ReceivesNoEncryptionSettings()
     {
         var builder = await CreateBuilderAsync();
-        var parameter = Assert.Single(builder.Resources.OfType<ParameterResource>());
+        var parameter = Assert.Single(builder.Resources.OfType<ParameterResource>(), resource => resource.Name == AppHostResourceNames.DevelopmentKeyMaterial);
         var web = Find<ProjectResource>(builder, WebName);
 
         var variables = await RunEnvironmentCallbacksAsync(web);
@@ -431,6 +435,50 @@ public sealed class AppHostModelTests
         return directory?.FullName ?? throw new InvalidOperationException("The repository root could not be located.");
     }
 
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task RunMode_GivesBothHostsTheSameWebGatewayKey()
+    {
+        var builder = await CreateBuilderAsync();
+        var parameter = Assert.Single(builder.Resources.OfType<ParameterResource>(), resource => resource.Name == AppHostResourceNames.WebGatewayKey);
+        var api = Find<ProjectResource>(builder, ApiName);
+        var web = Find<ProjectResource>(builder, WebName);
+
+        var apiVariables = await RunEnvironmentCallbacksAsync(api);
+        var webVariables = await RunEnvironmentCallbacksAsync(web);
+
+        Assert.Same(parameter, apiVariables[AppHostResourceNames.WebGatewayKeyVariable]);
+        Assert.Same(parameter, webVariables[AppHostResourceNames.WebGatewayKeyVariable]);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task PublishMode_SetsNoWebGatewayKey()
+    {
+        var outputPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var builder = await CreateBuilderAsync(
+                ["--operation", "publish", "--publisher", "manifest", "--output-path", outputPath]);
+            var api = Find<ProjectResource>(builder, ApiName);
+            var web = Find<ProjectResource>(builder, WebName);
+
+            var apiVariables = await RunEnvironmentCallbacksAsync(api);
+            var webVariables = await RunEnvironmentCallbacksAsync(web);
+
+            Assert.False(apiVariables.ContainsKey(AppHostResourceNames.WebGatewayKeyVariable));
+            Assert.False(webVariables.ContainsKey(AppHostResourceNames.WebGatewayKeyVariable));
+            Assert.DoesNotContain(builder.Resources, resource => resource is ParameterResource parameter && parameter.Name == AppHostResourceNames.WebGatewayKey);
+        }
+        finally
+        {
+            if (Directory.Exists(outputPath))
+            {
+                Directory.Delete(outputPath, recursive: true);
+            }
+        }
+    }
+
     private static async Task<IDistributedApplicationTestingBuilder> CreateBuilderAsync() =>
         await CreateBuilderAsync([]);
 
@@ -470,7 +518,9 @@ public sealed class AppHostModelTests
         var builder = await CreateBuilderAsync();
 
         Assert.DoesNotContain(builder.Resources, resource => resource.Name == AppHostResourceNames.WebClientSecretParameter);
-        Assert.Single(builder.Resources.OfType<ParameterResource>());
+        Assert.Equal(
+            [AppHostResourceNames.DevelopmentKeyMaterial, AppHostResourceNames.WebGatewayKey],
+            builder.Resources.OfType<ParameterResource>().Select(parameter => parameter.Name).Order(StringComparer.Ordinal));
     }
 
     [Theory]

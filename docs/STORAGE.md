@@ -29,18 +29,19 @@ Start-up lists the tables before it creates the missing ones, so the identity mu
 
 ## Tables
 
-Tables are listed in `TableNames.All`: `Users`, `AuditLog`, `Vaults`, `SecretAuditLog`, `Maintenance`, `ShareInbox`, `TransferJobs` and `SessionRevocations`. At startup the API lists the existing tables once, then creates only the missing ones. A restart therefore makes one list call, not one failing create per table.
+Tables are listed in `TableNames.All`: `Users`, `AuditLog`, `Vaults`, `SecretAuditLog`, `Maintenance`, `ShareInbox`, `TransferJobs`, `SessionRevocations` and `OneTimeLinks`. At startup the API lists the existing tables once, then creates only the missing ones. A restart therefore makes one list call, not one failing create per table.
 
 | Table | Partition key | Row key | Purpose |
 |---|---|---|---|
 | `Users` | `user` | user id (`D`) | One row per user, written on sign-in with ETag concurrency. Holds the directory data and the lock status. |
-| `AuditLog` | month, `yyyyMM` (UTC) | inverted ticks (19 digits) and entry id (`N`) | Append-only audit entries: event type, actor, target, time, IP address, reason, and for vault events the owner id and secret id. Never secret values. |
+| `AuditLog` | month, `yyyyMM` (UTC) | inverted ticks (19 digits) and entry id (`N`) | Append-only audit entries: event type, actor, target, time, IP address, reason, and for vault events the owner id and secret id. Never secret values. `IpAddress` may be null. For a request that came through the Web, it is the address the Web saw: the visitor's when the Web is reached directly or forwarded headers are configured, and the ingress's otherwise. Rows written before the address fix hold the Web host's address. See [ONE-TIME-LINKS.md](ONE-TIME-LINKS.md#forwarded-headers). |
 | `Vaults` | owner object id (`D`) | see [Vaults table](#vaults-table) | Secrets, folders, history versions, recycle bin rows, share grants, transfer staging rows and the vault key ring. |
 | `SecretAuditLog` | owner object id (`D`) | `{secretId:N}_{invertedTicks:D19}_{entryId:N}` | Per-secret index of the same entries, newest first. Insert only. |
 | `Maintenance` | `lease` | lease name, for example `recycle-bin-purge` or `transfer-jobs` | Leases that let one instance run a background job at a time. The recycle bin purge also keeps its resume checkpoint (`RunId`, `AfterUserId`). |
 | `ShareInbox` | recipient object id (`D`) | `{ownerId:N}_{kind}_{itemId:N}`, where kind is `s` (secret) or `f` (folder) | One row per share grant a user holds, with the folder the recipient filed it under (`FiledFolderKey`). Written with the grant. |
 | `TransferJobs` | `transfer` for jobs and source markers, `notice_{userId:D}` for notices | `job_{id}` for a job, `src_{sourceUserId:N}` for the open-transfer marker, and the transfer id for a notice | Transfer jobs with their state, one marker per source user with an open transfer, and the in-app notices. The job and notice ids are stored with their hex digits inverted (`TransferKeys.Complement`). |
 | `SessionRevocations` | UTC day the session expires (`yyyyMMdd`) | `{userId:N}_{sessionId}` | One row per web session that was signed out or ended by the server idle limit. A lock ends the session in the Web only, through its own per-process store, and writes no row here. It holds only the user id, a random session id and the day. No token, name or secret. Checked by point read. Rows are deleted by a purge that runs on the recycle bin purge schedule and sweeps the 30 days before today. |
+| `OneTimeLinks` | `l_{linkId:N}` for the link, `c_{creatorId:D}` for the creator's index and notices, `e_{yyyyMMddHH}` (UTC expiry hour) for expiry rows | `link`, `a_{linkId:N}`, `n_{invertedTicks:D19}_{linkId:N}`, and `{linkId:N}` in the expiry partition | Link rows hold the sealed payload, which the server stores as opaque bytes and never decrypts. Creator index rows, in-app notices and expiry rows for the hourly purge. See [ONE-TIME-LINKS.md](ONE-TIME-LINKS.md). |
 
 Each `AuditLog` write adds one row, and a vault event with an owner and a secret id also adds one `SecretAuditLog` row. The two inserts are separate requests with no transaction. If the second insert fails, the exception propagates.
 

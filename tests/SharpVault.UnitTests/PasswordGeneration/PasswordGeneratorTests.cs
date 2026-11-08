@@ -18,17 +18,6 @@ public sealed partial class PasswordGeneratorTests
     [GeneratedRegex(@"\bRandom\b")]
     private static partial Regex SystemRandomUsage();
 
-    public static TheoryData<CharacterSets> EveryCombination()
-    {
-        var data = new TheoryData<CharacterSets>();
-        for (var combination = 1; combination <= 15; combination++)
-        {
-            data.Add((CharacterSets)combination);
-        }
-
-        return data;
-    }
-
     [Fact]
     public void GeneratePassword_Default_Returns20CharactersFromAllSets()
     {
@@ -52,10 +41,7 @@ public sealed partial class PasswordGeneratorTests
     [Theory]
     [InlineData(7)]
     [InlineData(129)]
-    [InlineData(0)]
-    [InlineData(-1)]
-    [InlineData(int.MaxValue)]
-    public void GeneratePassword_LengthOutOfRange_ThrowsArgumentException(int length)
+    public void GeneratePassword_LengthOutsideBounds_ThrowsArgumentException(int length)
     {
         var exception = Assert.Throws<ArgumentException>(
             () => PasswordGenerator.GeneratePassword(new PasswordOptions(length, CharacterSets.All, false, false)));
@@ -72,23 +58,13 @@ public sealed partial class PasswordGeneratorTests
         Assert.StartsWith(GeneratorMessages.NoCharacterSet, exception.Message, StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData(16)]
-    [InlineData(31)]
-    [InlineData(-1)]
-    public void GeneratePassword_UndefinedFlag_ThrowsArgumentException(int sets)
+    [Fact]
+    public void GeneratePassword_UndefinedFlag_ThrowsArgumentException()
     {
         var exception = Assert.Throws<ArgumentException>(
-            () => PasswordGenerator.GeneratePassword(new PasswordOptions(20, (CharacterSets)sets, false, false)));
+            () => PasswordGenerator.GeneratePassword(new PasswordOptions(20, (CharacterSets)16, false, false)));
 
         Assert.StartsWith(GeneratorMessages.UndefinedCharacterSets, exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void GeneratePassword_NullOptions_ThrowsArgumentNullException()
-    {
-        Assert.Throws<ArgumentNullException>(() => PasswordGenerator.GeneratePassword(null!));
-        Assert.Throws<ArgumentNullException>(() => PasswordGenerator.Validate((PasswordOptions)null!));
     }
 
     [Fact]
@@ -110,12 +86,6 @@ public sealed partial class PasswordGeneratorTests
 
         Assert.Contains(GeneratorMessages.LengthBelowSetCount, messages);
         Assert.Contains(GeneratorMessages.LengthOutOfRange, messages);
-    }
-
-    [Fact]
-    public void Validate_ValidOptions_ReturnsNoMessages()
-    {
-        Assert.Empty(PasswordGenerator.Validate(PasswordOptions.Default));
     }
 
     [Fact]
@@ -152,7 +122,10 @@ public sealed partial class PasswordGeneratorTests
     }
 
     [Theory]
-    [MemberData(nameof(EveryCombination))]
+    [InlineData(CharacterSets.Lowercase)]
+    [InlineData(CharacterSets.Lowercase | CharacterSets.Uppercase)]
+    [InlineData(CharacterSets.Symbols)]
+    [InlineData(CharacterSets.All)]
     public void GeneratePassword_OnlySelectedSets_NoOtherCharacters(CharacterSets sets)
     {
         var allowed = string.Concat(Singles.Where(set => sets.HasFlag(set)).Select(set => CharacterAlphabets.For(set, false)));

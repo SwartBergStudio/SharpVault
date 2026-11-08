@@ -16,4 +16,6 @@ public sealed class VaultRateLimitOptions
     public int DirectorySearchesPerMinute { get; set; } = 30;
 
     public int AdminActionsPerMinute { get; set; } = 120;
+
+    public int OneTimeLinkOpensPerMinute { get; set; } = 20;
 }

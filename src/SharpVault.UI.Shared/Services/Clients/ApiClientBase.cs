@@ -84,6 +84,7 @@ public abstract partial class ApiClientBase(
         }
 
         using var request = new HttpRequestMessage(method, route.TrimStart('/')) { Content = content };
+        request.Options.Set(ApiRequestOptions.Principal, principal);
         if (ifMatch is not null)
         {
             request.Headers.TryAddWithoutValidation(IfMatchHeader, ifMatch);

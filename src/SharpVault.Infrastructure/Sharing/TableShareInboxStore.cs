@@ -99,8 +99,8 @@ public sealed partial class TableShareInboxStore(TableServiceClient tableService
 
             try
             {
-                await _table.DeleteEntityAsync(partitionKey, rowKey, entity.ETag, cancellationToken);
-                return true;
+                using var deleted = await _table.DeleteEntityAsync(partitionKey, rowKey, entity.ETag, cancellationToken);
+                return deleted.Status != NotFoundStatus;
             }
             catch (RequestFailedException exception) when (exception.Status == NotFoundStatus)
             {

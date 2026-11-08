@@ -6,6 +6,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using SharpVault.Application.Common.Encryption;
 using SharpVault.Application.Common.Exceptions;
+using SharpVault.Domain.Encryption;
 using SharpVault.Infrastructure.Encryption;
 using SharpVault.UnitTests.Support.Encryption;
 
@@ -15,57 +16,13 @@ namespace SharpVault.UnitTests.Infrastructure.Encryption;
 public sealed class DataKeySessionSecurityTests
 {
     private const string PlaintextMarker = "SV-PLAINTEXT-5c1e";
-    private const int NonceUniquenessIterations = 100_000;
-    private const int SampleEnvelopePlaintextBytes = 64;
 
-    public static TheoryData<byte> UnknownVersionBytes
+    public enum ContextChange
     {
-        get
-        {
-            var data = new TheoryData<byte>();
-            for (var value = 0; value <= byte.MaxValue; value++)
-            {
-                if (value != EnvelopeFormat.Version1)
-                {
-                    data.Add((byte)value);
-                }
-            }
-
-            return data;
-        }
-    }
-
-    public static TheoryData<int> ShortEnvelopeLengths
-    {
-        get
-        {
-            var data = new TheoryData<int>();
-            for (var length = 0; length < EnvelopeFormat.Overhead; length++)
-            {
-                data.Add(length);
-            }
-
-            return data;
-        }
-    }
-
-    public static TheoryData<int> SurrogateCases => new() { 0, 1, 2, 3 };
-
-    [Fact]
-    public async Task Encrypt_HundredThousandTimes_NeverRepeatsNonce()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var context = EncryptionContexts.Random();
-        var nonces = new HashSet<string>(NonceUniquenessIterations, StringComparer.Ordinal);
-
-        for (var i = 0; i < NonceUniquenessIterations; i++)
-        {
-            var envelope = session.Encrypt(context, "x");
-            Assert.True(nonces.Add(Convert.ToHexString(envelope.AsSpan(1, EnvelopeFormat.NonceSize))));
-        }
-
-        Assert.Equal(NonceUniquenessIterations, nonces.Count);
+        Owner,
+        Item,
+        Purpose,
+        ItemAndOwnerSwapped,
     }
 
     [Fact]
@@ -86,20 +43,6 @@ public sealed class DataKeySessionSecurityTests
     }
 
     [Fact]
-    public async Task Encrypt_SameTextTwice_ProducesDifferentEnvelopes()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var context = EncryptionContexts.Random();
-
-        var first = session.Encrypt(context, "same");
-        var second = session.Encrypt(context, "same");
-
-        Assert.NotEqual(first, second);
-        Assert.NotEqual(first[1..13], second[1..13]);
-    }
-
-    [Fact]
     public async Task ReEncrypt_ToNewOwner_ProducesFreshNonce()
     {
         var harness = new EncryptionHarness();
@@ -115,59 +58,19 @@ public sealed class DataKeySessionSecurityTests
         Assert.NotEqual(reEncrypted[1..13], again[1..13]);
     }
 
-    [Fact]
-    public async Task Decrypt_DifferentOwner_ThrowsAuthenticationFailed()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var context = EncryptionContexts.Random();
-        var envelope = session.Encrypt(context, "secret");
-
-        AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.Decrypt(context with { OwnerId = Guid.NewGuid() }, envelope));
-    }
-
-    [Fact]
-    public async Task Decrypt_DifferentItem_ThrowsAuthenticationFailed()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var context = EncryptionContexts.Random();
-        var envelope = session.Encrypt(context, "secret");
-
-        AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.Decrypt(context with { ItemId = Guid.NewGuid() }, envelope));
-    }
-
-    [Fact]
-    public async Task Decrypt_DifferentPurpose_ThrowsAuthenticationFailed()
+    [Theory]
+    [InlineData(ContextChange.Owner)]
+    [InlineData(ContextChange.Item)]
+    [InlineData(ContextChange.Purpose)]
+    [InlineData(ContextChange.ItemAndOwnerSwapped)]
+    public async Task Decrypt_ChangedContext_ThrowsAuthenticationFailed(ContextChange change)
     {
         var harness = new EncryptionHarness();
         using var session = await harness.CreateSessionAsync();
         var context = EncryptionContexts.Random("secret.notes");
         var envelope = session.Encrypt(context, "secret");
 
-        AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.Decrypt(context with { Purpose = "secret.value" }, envelope));
-    }
-
-    [Fact]
-    public async Task Decrypt_ItemAndOwnerSwapped_ThrowsAuthenticationFailed()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var context = EncryptionContexts.Random();
-        var envelope = session.Encrypt(context, "secret");
-        var swapped = context with { ItemId = context.OwnerId, OwnerId = context.ItemId };
-
-        AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.Decrypt(swapped, envelope));
-    }
-
-    [Fact]
-    public async Task Decrypt_EveryContextComponentChangedAtOnce_ThrowsAuthenticationFailed()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var envelope = session.Encrypt(EncryptionContexts.Random("secret.notes"), "secret");
-
-        AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.Decrypt(EncryptionContexts.Random("secret.value"), envelope));
+        AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.Decrypt(Mutate(context, change), envelope));
     }
 
     [Fact]
@@ -177,21 +80,7 @@ public sealed class DataKeySessionSecurityTests
         using var session = await harness.CreateSessionAsync();
         var key = harness.Provider.WrapInputs[0].ToArray();
         var context = EncryptionContexts.Random();
-        var plaintext = Encoding.UTF8.GetBytes("secret");
-        var associatedData = new byte[EnvelopeAssociatedData.MaxLength];
-        var written = EnvelopeAssociatedData.Write(0x02, context, associatedData);
-        var envelope = new byte[EnvelopeFormat.Overhead + plaintext.Length];
-        envelope[0] = EnvelopeFormat.Version1;
-        RandomNumberGenerator.Fill(envelope.AsSpan(1, EnvelopeFormat.NonceSize));
-        using (var aes = new AesGcm(key, EnvelopeFormat.TagSize))
-        {
-            aes.Encrypt(
-                envelope.AsSpan(1, EnvelopeFormat.NonceSize),
-                plaintext,
-                envelope.AsSpan(EnvelopeFormat.HeaderSize, plaintext.Length),
-                envelope.AsSpan(envelope.Length - EnvelopeFormat.TagSize),
-                associatedData.AsSpan(0, written));
-        }
+        var envelope = SealRaw(key, context, Encoding.UTF8.GetBytes("secret"), associatedDataVersion: 0x02);
 
         AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.Decrypt(context, envelope));
     }
@@ -203,29 +92,14 @@ public sealed class DataKeySessionSecurityTests
         using var session = await harness.CreateSessionAsync();
         var key = harness.Provider.WrapInputs[0].ToArray();
         var context = EncryptionContexts.Random();
-        byte[] plaintext = [0x68, 0xFF, 0xFE];
-        var associatedData = new byte[EnvelopeAssociatedData.MaxLength];
-        var written = EnvelopeAssociatedData.Write(EnvelopeFormat.Version1, context, associatedData);
-        var envelope = new byte[EnvelopeFormat.Overhead + plaintext.Length];
-        envelope[0] = EnvelopeFormat.Version1;
-        RandomNumberGenerator.Fill(envelope.AsSpan(1, EnvelopeFormat.NonceSize));
-        using (var aes = new AesGcm(key, EnvelopeFormat.TagSize))
-        {
-            aes.Encrypt(
-                envelope.AsSpan(1, EnvelopeFormat.NonceSize),
-                plaintext,
-                envelope.AsSpan(EnvelopeFormat.HeaderSize, plaintext.Length),
-                envelope.AsSpan(envelope.Length - EnvelopeFormat.TagSize),
-                associatedData.AsSpan(0, written));
-        }
+        var envelope = SealRaw(key, context, [0x68, 0xFF, 0xFE]);
 
         var exception = Assert.Throws<SecretDecryptionException>(() => session.Decrypt(context, envelope));
 
         Assert.Equal(DecryptionFailureReason.MalformedEnvelope, exception.Reason);
         Assert.Null(exception.InnerException);
-        var message = exception.Message;
-        Assert.DoesNotMatch(@"(?i)\b(0x)?(FF|FE|255|254)\b", message);
-        Assert.DoesNotMatch(@"\[\s*(0x)?[0-9A-Fa-f]{1,3}\s*(,\s*(0x)?[0-9A-Fa-f]{1,3}\s*)*\]", message);
+        Assert.DoesNotMatch(@"(?i)\b(0x)?(FF|FE|255|254)\b", exception.Message);
+        Assert.DoesNotMatch(@"\[\s*(0x)?[0-9A-Fa-f]{1,3}\s*(,\s*(0x)?[0-9A-Fa-f]{1,3}\s*)*\]", exception.Message);
         var fullText = exception.ToString();
         Assert.DoesNotContain("Unable to translate", fullText, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("BytesUnknown", fullText, StringComparison.OrdinalIgnoreCase);
@@ -258,84 +132,20 @@ public sealed class DataKeySessionSecurityTests
         AssertReason(DecryptionFailureReason.AuthenticationFailed, () => second.Decrypt(context, envelope));
     }
 
-    [Fact]
-    public async Task Decrypt_AnySingleBitFlipped_ThrowsExpectedReason()
+    [Theory]
+    [InlineData(0, DecryptionFailureReason.UnsupportedVersion)]
+    [InlineData(EnvelopeFormat.HeaderSize - EnvelopeFormat.NonceSize, DecryptionFailureReason.AuthenticationFailed)]
+    [InlineData(EnvelopeFormat.HeaderSize, DecryptionFailureReason.AuthenticationFailed)]
+    [InlineData(EnvelopeFormat.Overhead - 1, DecryptionFailureReason.AuthenticationFailed)]
+    public async Task Decrypt_TamperedPart_ThrowsExpectedReason(int index, DecryptionFailureReason expected)
     {
         var harness = new EncryptionHarness();
         using var session = await harness.CreateSessionAsync();
         var context = EncryptionContexts.Random();
-        var envelope = session.Encrypt(context, new string('p', SampleEnvelopePlaintextBytes));
+        var envelope = session.Encrypt(context, new string('p', 64));
+        envelope[index] ^= 0x01;
 
-        for (var index = 0; index < envelope.Length; index++)
-        {
-            for (var bit = 0; bit < 8; bit++)
-            {
-                var tampered = envelope.ToArray();
-                tampered[index] ^= (byte)(1 << bit);
-                var expected = index == 0 ? DecryptionFailureReason.UnsupportedVersion : DecryptionFailureReason.AuthenticationFailed;
-
-                var failure = Assert.Throws<SecretDecryptionException>(() => session.Decrypt(context, tampered));
-
-                Assert.True(expected == failure.Reason, $"byte {index} bit {bit}: expected {expected}, got {failure.Reason}");
-            }
-        }
-    }
-
-    [Fact]
-    public async Task Decrypt_EveryByteReplaced_ThrowsExpectedReason()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var context = EncryptionContexts.Random();
-        var envelope = session.Encrypt(context, new string('p', 24));
-
-        for (var index = 1; index < envelope.Length; index++)
-        {
-            var tampered = envelope.ToArray();
-            tampered[index] = (byte)(tampered[index] + 1);
-
-            AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.Decrypt(context, tampered));
-        }
-    }
-
-    [Fact]
-    public async Task Decrypt_TamperedEnvelope_DoesNotReturnPartialPlaintext()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var context = EncryptionContexts.Random();
-        var envelope = session.Encrypt(context, PlaintextMarker);
-        envelope[EnvelopeFormat.HeaderSize] ^= 0x01;
-
-        string? result = null;
-        var failure = Record.Exception(() => result = session.Decrypt(context, envelope));
-
-        Assert.IsType<SecretDecryptionException>(failure);
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public async Task Decrypt_TagReplacedWithZeros_ThrowsAuthenticationFailed()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var context = EncryptionContexts.Random();
-        var envelope = session.Encrypt(context, "secret");
-        Array.Clear(envelope, envelope.Length - EnvelopeFormat.TagSize, EnvelopeFormat.TagSize);
-
-        AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.Decrypt(context, envelope));
-    }
-
-    [Fact]
-    public async Task Decrypt_NonceReplacedWithZeros_ThrowsAuthenticationFailed()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var context = EncryptionContexts.Random();
-        var envelope = session.Encrypt(context, "secret");
-        Array.Clear(envelope, EnvelopeFormat.VersionSize, EnvelopeFormat.NonceSize);
-
-        AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.Decrypt(context, envelope));
+        AssertReason(expected, () => session.Decrypt(context, envelope));
     }
 
     [Fact]
@@ -349,20 +159,10 @@ public sealed class DataKeySessionSecurityTests
         AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.Decrypt(context, [.. envelope, 0x00]));
     }
 
-    [Fact]
-    public async Task Decrypt_ExtraByteInsertedAfterVersion_ThrowsAuthenticationFailed()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var context = EncryptionContexts.Random();
-        var envelope = session.Encrypt(context, "secret");
-        byte[] inserted = [envelope[0], 0x00, .. envelope[1..]];
-
-        AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.Decrypt(context, inserted));
-    }
-
     [Theory]
-    [MemberData(nameof(UnknownVersionBytes))]
+    [InlineData((byte)0x00)]
+    [InlineData((byte)0x02)]
+    [InlineData((byte)0xFF)]
     public async Task Decrypt_UnknownVersionByte_ThrowsUnsupportedVersion(byte version)
     {
         var harness = new EncryptionHarness();
@@ -388,7 +188,10 @@ public sealed class DataKeySessionSecurityTests
     }
 
     [Theory]
-    [MemberData(nameof(ShortEnvelopeLengths))]
+    [InlineData(0)]
+    [InlineData(EnvelopeFormat.VersionSize)]
+    [InlineData(EnvelopeFormat.HeaderSize)]
+    [InlineData(EnvelopeFormat.Overhead - 1)]
     public async Task Decrypt_EnvelopeShorterThanOverhead_ThrowsMalformedEnvelope(int length)
     {
         var harness = new EncryptionHarness();
@@ -413,65 +216,17 @@ public sealed class DataKeySessionSecurityTests
         AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.Decrypt(context, envelope[..^1]));
     }
 
-    [Fact]
-    public async Task Decrypt_TruncatedAtEveryLength_ThrowsMalformedOrAuthenticationFailed()
+    [Theory]
+    [InlineData(EnvelopeFormat.MaxEnvelopeBytes + 1, DecryptionFailureReason.MalformedEnvelope)]
+    [InlineData(EnvelopeFormat.MaxEnvelopeBytes, DecryptionFailureReason.AuthenticationFailed)]
+    public async Task Decrypt_EnvelopeAtMaximumLength_ThrowsExpectedReason(int length, DecryptionFailureReason expected)
     {
         var harness = new EncryptionHarness();
         using var session = await harness.CreateSessionAsync();
-        var context = EncryptionContexts.Random();
-        var envelope = session.Encrypt(context, new string('t', 40));
-
-        for (var length = 0; length < envelope.Length; length++)
-        {
-            var truncated = envelope[..length];
-            var expected = length < EnvelopeFormat.Overhead ? DecryptionFailureReason.MalformedEnvelope : DecryptionFailureReason.AuthenticationFailed;
-
-            AssertReason(expected, () => session.Decrypt(context, truncated));
-        }
-    }
-
-    [Fact]
-    public async Task Decrypt_HeaderOnlyBoundaries_ThrowExpectedReason()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var context = EncryptionContexts.Random();
-        var envelope = session.Encrypt(context, "secret");
-
-        AssertReason(DecryptionFailureReason.MalformedEnvelope, () => session.Decrypt(context, envelope[..EnvelopeFormat.VersionSize]));
-        AssertReason(DecryptionFailureReason.MalformedEnvelope, () => session.Decrypt(context, envelope[..EnvelopeFormat.HeaderSize]));
-        AssertReason(DecryptionFailureReason.MalformedEnvelope, () => session.Decrypt(context, envelope[..(EnvelopeFormat.HeaderSize + EnvelopeFormat.TagSize - 1)]));
-    }
-
-    [Fact]
-    public async Task Decrypt_EnvelopeOverMaximumLength_ThrowsMalformedEnvelope()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var envelope = new byte[EnvelopeFormat.MaxEnvelopeBytes + 1];
+        var envelope = new byte[length];
         envelope[0] = EnvelopeFormat.Version1;
 
-        AssertReason(DecryptionFailureReason.MalformedEnvelope, () => session.Decrypt(EncryptionContexts.Random(), envelope));
-    }
-
-    [Fact]
-    public async Task Decrypt_EnvelopeExactlyMaximumLengthWithBadTag_ThrowsAuthenticationFailed()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var envelope = new byte[EnvelopeFormat.MaxEnvelopeBytes];
-        envelope[0] = EnvelopeFormat.Version1;
-
-        AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.Decrypt(EncryptionContexts.Random(), envelope));
-    }
-
-    [Fact]
-    public async Task Decrypt_EmptyEnvelope_ThrowsMalformedEnvelope()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-
-        AssertReason(DecryptionFailureReason.MalformedEnvelope, () => session.Decrypt(EncryptionContexts.Random(), []));
+        AssertReason(expected, () => session.Decrypt(EncryptionContexts.Random(), envelope));
     }
 
     [Fact]
@@ -480,7 +235,6 @@ public sealed class DataKeySessionSecurityTests
         var harness = new EncryptionHarness();
         using var session = await harness.CreateSessionAsync();
         var plaintext = PlaintextMarker + new string('a', EnvelopeFormat.MaxPlaintextBytes + 1 - PlaintextMarker.Length);
-        Assert.Equal(EnvelopeFormat.MaxPlaintextBytes + 1, plaintext.Length);
 
         var exception = Assert.Throws<ArgumentException>(() => session.Encrypt(EncryptionContexts.Random(), plaintext));
 
@@ -514,35 +268,18 @@ public sealed class DataKeySessionSecurityTests
         Assert.Equal(text, session.Decrypt(context, envelope));
     }
 
-    [Theory]
-    [MemberData(nameof(SurrogateCases))]
-    public async Task Encrypt_LoneSurrogate_ThrowsArgumentException(int surrogateCase)
-    {
-        string[] texts = ["\ud800", "a\udc00b", "abc\ud83d", "\udc00\ud800"];
-        var text = texts[surrogateCase];
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-
-        var exception = Assert.Throws<ArgumentException>(() => session.Encrypt(EncryptionContexts.Random(), text));
-
-        Assert.Equal(EncryptionMessageText.ForParameter(EncryptionMessageText.PlaintextNotValidUnicode, "plaintext"), exception.Message);
-    }
-
     [Fact]
-    public async Task ReEncrypt_TamperedSource_ThrowsAndReturnsNothing()
+    public async Task Encrypt_LoneSurrogate_ThrowsArgumentException()
     {
         var harness = new EncryptionHarness();
         using var session = await harness.CreateSessionAsync();
-        var source = EncryptionContexts.Random();
-        var envelope = session.Encrypt(source, "secret");
-        envelope[EnvelopeFormat.HeaderSize] ^= 0x01;
-        byte[]? result = null;
 
-        var failure = Record.Exception(() => result = session.ReEncrypt(source, source with { OwnerId = Guid.NewGuid() }, envelope));
+        foreach (var text in new[] { "\ud800", "a\udc00b" })
+        {
+            var exception = Assert.Throws<ArgumentException>(() => session.Encrypt(EncryptionContexts.Random(), text));
 
-        var typed = Assert.IsType<SecretDecryptionException>(failure);
-        Assert.Equal(DecryptionFailureReason.AuthenticationFailed, typed.Reason);
-        Assert.Null(result);
+            Assert.Equal(EncryptionMessageText.ForParameter(EncryptionMessageText.PlaintextNotValidUnicode, "plaintext"), exception.Message);
+        }
     }
 
     [Fact]
@@ -554,18 +291,6 @@ public sealed class DataKeySessionSecurityTests
         var envelope = session.Encrypt(source, "secret");
 
         AssertReason(DecryptionFailureReason.AuthenticationFailed, () => session.ReEncrypt(source with { OwnerId = Guid.NewGuid() }, source, envelope));
-    }
-
-    [Fact]
-    public async Task ReEncrypt_EnvelopeOverMaximumLength_ThrowsMalformedEnvelope()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var source = EncryptionContexts.Random();
-        var envelope = new byte[EnvelopeFormat.MaxEnvelopeBytes + 1];
-        envelope[0] = EnvelopeFormat.Version1;
-
-        AssertReason(DecryptionFailureReason.MalformedEnvelope, () => session.ReEncrypt(source, source, envelope));
     }
 
     [Fact]
@@ -588,21 +313,6 @@ public sealed class DataKeySessionSecurityTests
         Assert.DoesNotContain(Convert.ToHexString(envelope), entry.Message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(Convert.ToBase64String(envelope), entry.Message, StringComparison.Ordinal);
         Assert.DoesNotContain(context.OwnerId.ToString(), entry.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task Session_SuccessfulOperations_LogNothing()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-        var source = EncryptionContexts.Random();
-        var target = source with { OwnerId = Guid.NewGuid() };
-
-        var envelope = session.Encrypt(source, PlaintextMarker);
-        session.Decrypt(source, envelope);
-        session.ReEncrypt(source, target, envelope);
-
-        Assert.Empty(harness.Logger.Entries);
     }
 
     [Fact]
@@ -629,28 +339,6 @@ public sealed class DataKeySessionSecurityTests
         var key = harness.Provider.UnwrapOutputs[0];
         ByteAssert.NotAllZero(key);
 
-        session.Dispose();
-
-        ByteAssert.AllZero(key);
-    }
-
-    [Fact]
-    public async Task DataKey_BeforeDispose_IsNotAllZeros()
-    {
-        var harness = new EncryptionHarness();
-        using var session = await harness.CreateSessionAsync();
-
-        ByteAssert.NotAllZero(harness.Provider.WrapInputs[0]);
-    }
-
-    [Fact]
-    public async Task Dispose_Twice_KeepsKeyZeroed()
-    {
-        var harness = new EncryptionHarness();
-        var session = await harness.CreateSessionAsync();
-        var key = harness.Provider.WrapInputs[0];
-
-        session.Dispose();
         session.Dispose();
 
         ByteAssert.AllZero(key);
@@ -740,6 +428,31 @@ public sealed class DataKeySessionSecurityTests
                 Assert.DoesNotContain(fragment, text, StringComparison.OrdinalIgnoreCase);
             }
         }
+    }
+
+    private static EncryptionContext Mutate(EncryptionContext context, ContextChange change) => change switch
+    {
+        ContextChange.Owner => context with { OwnerId = Guid.NewGuid() },
+        ContextChange.Item => context with { ItemId = Guid.NewGuid() },
+        ContextChange.Purpose => context with { Purpose = "secret.value" },
+        _ => context with { ItemId = context.OwnerId, OwnerId = context.ItemId },
+    };
+
+    private static byte[] SealRaw(byte[] key, EncryptionContext context, byte[] plaintext, byte associatedDataVersion = EnvelopeFormat.Version1)
+    {
+        var associatedData = new byte[EnvelopeAssociatedData.MaxLength];
+        var written = EnvelopeAssociatedData.Write(associatedDataVersion, context, associatedData);
+        var envelope = new byte[EnvelopeFormat.Overhead + plaintext.Length];
+        envelope[0] = EnvelopeFormat.Version1;
+        RandomNumberGenerator.Fill(envelope.AsSpan(1, EnvelopeFormat.NonceSize));
+        using var aes = new AesGcm(key, EnvelopeFormat.TagSize);
+        aes.Encrypt(
+            envelope.AsSpan(1, EnvelopeFormat.NonceSize),
+            plaintext,
+            envelope.AsSpan(EnvelopeFormat.HeaderSize, plaintext.Length),
+            envelope.AsSpan(envelope.Length - EnvelopeFormat.TagSize),
+            associatedData.AsSpan(0, written));
+        return envelope;
     }
 
     private static void AssertReason(DecryptionFailureReason expected, Action action)

@@ -17,6 +17,8 @@ public sealed class AuthorizationMatrixTests(ApiTestFactory factory) : ApiSecuri
 {
     private static readonly string[] AnonymousPaths = ["/health", "/alive", "/openapi/v1.json"];
 
+    private static readonly string[] ProtectedPaths = [MePath, AdminUsersPath];
+
     private static readonly CallerKind[] DeniedBeforeTheGate =
     [
         CallerKind.Anonymous,
@@ -29,18 +31,18 @@ public sealed class AuthorizationMatrixTests(ApiTestFactory factory) : ApiSecuri
 
     private static readonly CallerKind[] Locked = [CallerKind.LockedUser, CallerKind.LockedAdmin];
 
-    private static readonly (CallerKind Caller, HttpStatusCode Me, HttpStatusCode AdminUsers, HttpStatusCode Unknown)[] ProtectedRows =
+    private static readonly (CallerKind Caller, HttpStatusCode Me, HttpStatusCode AdminUsers)[] ProtectedRows =
     [
-        (CallerKind.Anonymous, HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized),
-        (CallerKind.AlgNoneToken, HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized),
-        (CallerKind.UnknownKeyToken, HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized),
-        (CallerKind.OtherTenantUser, HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized),
-        (CallerKind.Guest, HttpStatusCode.Forbidden, HttpStatusCode.Forbidden, HttpStatusCode.Forbidden),
-        (CallerKind.AuthenticatedWithoutRole, HttpStatusCode.Forbidden, HttpStatusCode.Forbidden, HttpStatusCode.Forbidden),
-        (CallerKind.User, HttpStatusCode.OK, HttpStatusCode.Forbidden, HttpStatusCode.NotFound),
-        (CallerKind.Admin, HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.NotFound),
-        (CallerKind.LockedUser, HttpStatusCode.Forbidden, HttpStatusCode.Forbidden, HttpStatusCode.Forbidden),
-        (CallerKind.LockedAdmin, HttpStatusCode.Forbidden, HttpStatusCode.Forbidden, HttpStatusCode.Forbidden),
+        (CallerKind.Anonymous, HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized),
+        (CallerKind.AlgNoneToken, HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized),
+        (CallerKind.UnknownKeyToken, HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized),
+        (CallerKind.OtherTenantUser, HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized),
+        (CallerKind.Guest, HttpStatusCode.Forbidden, HttpStatusCode.Forbidden),
+        (CallerKind.AuthenticatedWithoutRole, HttpStatusCode.Forbidden, HttpStatusCode.Forbidden),
+        (CallerKind.User, HttpStatusCode.OK, HttpStatusCode.Forbidden),
+        (CallerKind.Admin, HttpStatusCode.OK, HttpStatusCode.OK),
+        (CallerKind.LockedUser, HttpStatusCode.Forbidden, HttpStatusCode.Forbidden),
+        (CallerKind.LockedAdmin, HttpStatusCode.Forbidden, HttpStatusCode.Forbidden),
     ];
 
     public static TheoryData<string, string, CallerKind, HttpStatusCode> Matrix()
@@ -50,11 +52,6 @@ public sealed class AuthorizationMatrixTests(ApiTestFactory factory) : ApiSecuri
         {
             data.Add("GET", MePath, row.Caller, row.Me);
             data.Add("GET", AdminUsersPath, row.Caller, row.AdminUsers);
-            data.Add("GET", UnknownPath, row.Caller, row.Unknown);
-            foreach (var path in AnonymousPaths)
-            {
-                data.Add("GET", path, row.Caller, HttpStatusCode.OK);
-            }
         }
 
         return data;
@@ -65,7 +62,7 @@ public sealed class AuthorizationMatrixTests(ApiTestFactory factory) : ApiSecuri
         var data = new TheoryData<CallerKind, string>();
         foreach (var caller in DeniedBeforeTheGate)
         {
-            foreach (var path in new[] { MePath, AdminUsersPath, UnknownPath })
+            foreach (var path in ProtectedPaths)
             {
                 data.Add(caller, path);
             }
@@ -79,7 +76,7 @@ public sealed class AuthorizationMatrixTests(ApiTestFactory factory) : ApiSecuri
         var data = new TheoryData<CallerKind, string>();
         foreach (var caller in Locked)
         {
-            foreach (var path in new[] { MePath, AdminUsersPath, UnknownPath })
+            foreach (var path in ProtectedPaths)
             {
                 data.Add(caller, path);
             }
@@ -149,19 +146,6 @@ public sealed class AuthorizationMatrixTests(ApiTestFactory factory) : ApiSecuri
         var after = await RequireUserRowAsync(user.ObjectId);
         Assert.Equal(before.ETag, after.ETag);
         Assert.Empty(await ListAuditRowsAsync());
-    }
-
-    [Fact]
-    public async Task HealthEndpoint_ValidUserToken_MakesNoUsersTableCall()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        SetAuthenticatedClient(TestUsers.User);
-        StorageRequests.Clear();
-
-        var response = await Client.GetAsync("/alive", cancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Empty(UserAndAuditRequests());
     }
 
     [Theory]

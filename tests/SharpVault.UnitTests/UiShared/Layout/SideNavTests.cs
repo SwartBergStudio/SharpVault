@@ -44,7 +44,7 @@ public sealed class SideNavTests : ShellTestContext
         var cut = RenderNav(UserDto(isAdmin: false));
 
         var ids = cut.FindAll("#side-nav a").Select(link => link.Id).ToList();
-        Assert.Equal(["nav-account", "nav-recycle-bin", "nav-shared", "nav-vault"], ids.Order(StringComparer.Ordinal));
+        Assert.Equal(["nav-account", "nav-one-time-links", "nav-recycle-bin", "nav-shared", "nav-vault"], ids.Order(StringComparer.Ordinal));
         Assert.Empty(cut.FindAll("#nav-admin-users"));
         Assert.Empty(cut.FindAll("#nav-admin-heading"));
     }
@@ -57,7 +57,7 @@ public sealed class SideNavTests : ShellTestContext
         var cut = RenderNav(UserDto(isAdmin: true));
 
         var ids = cut.FindAll("#side-nav a").Select(link => link.Id).ToList();
-        Assert.Equal(["nav-account", "nav-admin-transfers", "nav-admin-users", "nav-recycle-bin", "nav-shared", "nav-vault"], ids.Order(StringComparer.Ordinal));
+        Assert.Equal(["nav-account", "nav-admin-transfers", "nav-admin-users", "nav-one-time-links", "nav-recycle-bin", "nav-shared", "nav-vault"], ids.Order(StringComparer.Ordinal));
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public sealed class SideNavTests : ShellTestContext
 
         var cut = RenderNav(null);
 
-        Assert.Equal(["nav-account", "nav-recycle-bin", "nav-shared", "nav-vault"], cut.FindAll("#side-nav a").Select(link => link.Id).Order(StringComparer.Ordinal));
+        Assert.Equal(["nav-account", "nav-one-time-links", "nav-recycle-bin", "nav-shared", "nav-vault"], cut.FindAll("#side-nav a").Select(link => link.Id).Order(StringComparer.Ordinal));
         Assert.Empty(cut.FindAll("#nav-admin-users"));
     }
 
