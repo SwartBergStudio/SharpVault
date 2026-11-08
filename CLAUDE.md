@@ -83,7 +83,7 @@ Work is only done when all of these are true:
   for specific browser methods that .NET cannot call directly (for example `navigator.clipboard.writeText`, or Web Crypto for one-time links),
   wrapped behind a C# interface and kept to small, focused modules.
   All UI lives in `SharpVault.UI.Shared` so Web and MAUI share it.
-  The UI is built on MudBlazor 9.11.0, used only through the `Sv*` wrappers in `Components/Common`. Pages only route and compose, with no code beyond parameter wiring. Feature components live in `Components/{Feature}`.
+  The UI is built on MudBlazor 9.12.0, used only through the `Sv*` wrappers in `Components/Common`. Pages only route and compose, with no code beyond parameter wiring. Feature components live in `Components/{Feature}`.
   Every interactive element gets a stable `id` attribute for testing. Wrappers check their ids (lowercase kebab-case).
   Admin decisions in the UI read `IsAdmin` from `GET /api/me`. The API is the security boundary.
   The Web's Content Security Policy allows inline styles only through `style-src 'unsafe-inline'`, because MudBlazor sets style attributes at runtime. Scripts stay `'self'`, and our markup has no `style` attributes and no inline script.

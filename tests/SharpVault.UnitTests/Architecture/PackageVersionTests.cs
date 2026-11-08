@@ -11,11 +11,11 @@ public sealed class PackageVersionTests
     private const string UiSharedProject = "SharpVault.UI.Shared.csproj";
 
     [Fact]
-    public void MudBlazor_PackageVersion_IsPinnedTo9_11_0()
+    public void MudBlazor_PackageVersion_IsPinnedTo9_12_0()
     {
         var props = File.ReadAllText(Path.Combine(RepositoryRoot.Path, "Directory.Packages.props"));
 
-        Assert.Contains("<PackageVersion Include=\"MudBlazor\" Version=\"9.11.0\" />", props, StringComparison.Ordinal);
+        Assert.Contains("<PackageVersion Include=\"MudBlazor\" Version=\"9.12.0\" />", props, StringComparison.Ordinal);
     }
 
     [Fact]
