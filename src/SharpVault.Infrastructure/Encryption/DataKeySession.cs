@@ -18,6 +18,7 @@ public sealed partial class DataKeySession : IDataKeySession
 
     private readonly byte[] _dataKey;
     private readonly AesGcm _aesGcm;
+    private readonly Lock _aesGcmLock = new();
     private readonly ILogger _logger;
     private bool _disposed;
 
@@ -176,7 +177,10 @@ public sealed partial class DataKeySession : IDataKeySession
         RandomNumberGenerator.Fill(nonce);
         var tag = envelope.AsSpan(envelope.Length - EnvelopeFormat.TagSize);
 
-        _aesGcm.Encrypt(nonce, body, body, tag, associatedData[..written]);
+        lock (_aesGcmLock)
+        {
+            _aesGcm.Encrypt(nonce, body, body, tag, associatedData[..written]);
+        }
     }
 
     private void Open(EncryptionContext context, byte[] envelope, Span<byte> plaintext)
@@ -190,7 +194,10 @@ public sealed partial class DataKeySession : IDataKeySession
 
         try
         {
-            _aesGcm.Decrypt(nonce, ciphertext, tag, plaintext, associatedData[..written]);
+            lock (_aesGcmLock)
+            {
+                _aesGcm.Decrypt(nonce, ciphertext, tag, plaintext, associatedData[..written]);
+            }
         }
         catch (AuthenticationTagMismatchException)
         {

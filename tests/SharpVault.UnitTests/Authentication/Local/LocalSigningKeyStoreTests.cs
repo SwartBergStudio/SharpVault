@@ -77,8 +77,8 @@ public sealed class LocalSigningKeyStoreTests : IDisposable
     {
         await Task.WhenAll(Enumerable.Range(0, 32).Select(_ => Task.Run(() => LocalSigningKeyStore.LoadOrCreate(KeyPath))));
 
-        var files = Directory.GetFiles(Path.GetDirectoryName(KeyPath)!);
-        Assert.Equal([KeyPath], files);
+        var files = Directory.GetFiles(Path.GetDirectoryName(KeyPath)!).Order(StringComparer.Ordinal);
+        Assert.Equal([KeyPath, KeyPath + ".lock"], files);
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public sealed class LocalSigningKeyStoreTests : IDisposable
     {
         const int rounds = 4;
         const int processesPerRound = 6;
-        var executable = Path.Combine(AppContext.BaseDirectory, "SharpVault.UnitTests.exe");
+        var executable = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "SharpVault.UnitTests.exe" : "SharpVault.UnitTests");
         if (!File.Exists(executable))
         {
             Assert.Skip("The test host executable is not available.");

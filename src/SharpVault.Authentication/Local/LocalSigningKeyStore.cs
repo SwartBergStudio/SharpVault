@@ -10,6 +10,9 @@ public static class LocalSigningKeyStore
     private const string VendorFolder = "SharpVault";
     private const string KeyFileName = "dev-auth-key";
     private const string TempSuffix = ".tmp";
+    private const string LockSuffix = ".lock";
+    private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan LockRetryDelay = TimeSpan.FromMilliseconds(5);
     private const UnixFileMode OwnerOnlyFile = UnixFileMode.UserRead | UnixFileMode.UserWrite;
     private const UnixFileMode OwnerOnlyDirectory = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
     private const UnixFileMode GroupAndOtherBits =
@@ -36,6 +39,12 @@ public static class LocalSigningKeyStore
         var directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
         CreateDirectory(directory);
 
+        using var creationLock = AcquireCreationLock(path);
+        if (File.Exists(path))
+        {
+            return;
+        }
+
         var temporary = Path.Combine(directory, $"{Path.GetFileName(path)}.{Guid.NewGuid():N}{TempSuffix}");
         var material = RandomNumberGenerator.GetBytes(LocalAuthenticationDefaults.KeyLength);
         var encoded = Convert.ToBase64String(material);
@@ -51,6 +60,34 @@ public static class LocalSigningKeyStore
         finally
         {
             File.Delete(temporary);
+        }
+    }
+
+    private static FileStream AcquireCreationLock(string path)
+    {
+        var options = new FileStreamOptions
+        {
+            Mode = FileMode.OpenOrCreate,
+            Access = FileAccess.ReadWrite,
+            Share = FileShare.None,
+        };
+        if (!OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = OwnerOnlyFile;
+        }
+
+        var lockPath = path + LockSuffix;
+        var deadline = DateTime.UtcNow + LockTimeout;
+        while (true)
+        {
+            try
+            {
+                return new FileStream(lockPath, options);
+            }
+            catch (IOException) when (DateTime.UtcNow < deadline)
+            {
+                Thread.Sleep(LockRetryDelay);
+            }
         }
     }
 
